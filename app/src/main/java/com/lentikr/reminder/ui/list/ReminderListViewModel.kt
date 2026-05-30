@@ -18,8 +18,11 @@ class ReminderListViewModel(private val reminderRepository: ReminderRepository) 
     private val selectionMode = MutableStateFlow(false)
     private val selectedIds = MutableStateFlow<Set<Int>>(emptySet())
 
+    private val hasLoaded = MutableStateFlow(false)
+
     private val reminderItemsFlow = reminderRepository.getAllRemindersStream()
         .onEach { items ->
+            hasLoaded.value = true
             val validIds = items.map { it.id }.toSet()
             val filteredSelection = selectedIds.value.filter { it in validIds }.toSet()
             if (filteredSelection != selectedIds.value) {
@@ -28,11 +31,12 @@ class ReminderListViewModel(private val reminderRepository: ReminderRepository) 
         }
 
     val reminderListUiState: StateFlow<ReminderListUiState> =
-        combine(reminderItemsFlow, selectionMode, selectedIds) { items, isSelectionMode, selected ->
+        combine(reminderItemsFlow, selectionMode, selectedIds, hasLoaded) { items, isSelectionMode, selected, loaded ->
             ReminderListUiState(
                 itemList = items,
                 isSelectionMode = isSelectionMode,
-                selectedIds = selected
+                selectedIds = selected,
+                isLoading = !loaded
             )
         }.stateIn(
             scope = viewModelScope,
@@ -82,5 +86,6 @@ class ReminderListViewModel(private val reminderRepository: ReminderRepository) 
 data class ReminderListUiState(
     val itemList: List<ReminderItem> = listOf(),
     val isSelectionMode: Boolean = false,
-    val selectedIds: Set<Int> = emptySet()
+    val selectedIds: Set<Int> = emptySet(),
+    val isLoading: Boolean = true
 )

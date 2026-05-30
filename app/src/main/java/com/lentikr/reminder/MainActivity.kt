@@ -48,6 +48,7 @@ import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -519,218 +520,267 @@ fun ReminderListScreen(
         }
     }
     val coroutineScope = rememberCoroutineScope()
-    val tabs = ReminderTab.entries.toTypedArray()
-    val tabCounts = tabs.map { tab -> reminderListUiState.itemList.count(tab.filter) }
+    val tabs = remember { ReminderTab.entries.toTypedArray() }
+    val tabCounts = remember(reminderListUiState.itemList) {
+        tabs.map { tab -> reminderListUiState.itemList.count(tab.filter) }
+    }
     val segmentedHeight = 54.dp
     val segmentedBottomSpacing = 20.dp
     val bottomRowVerticalPadding = 12.dp
     val listBottomPadding = segmentedHeight + segmentedBottomSpacing + bottomRowVerticalPadding + 16.dp
 
-    Scaffold(
-        topBar = {
-            if (isSelectionMode) {
-        TopAppBar(
-            title = { Text("已选择 ${selectedIds.size} 项") },
-            actions = {
-                Button(
-                    onClick = { viewModel.exitSelectionMode() },
-                    shape = RoundedCornerShape(12.dp),
-                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary
-                    ),
-                    modifier = Modifier.padding(end = 12.dp)
-                ) {
-                    Text("取消")
-                }
-            }
-        )
-            } else {
-                TopAppBar(
-                    title = { Text("Reminder") },
-                    actions = {
-                        IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "设置"
-                            )
+    Box(modifier = Modifier.fillMaxSize()) {
+        Scaffold(
+            topBar = {
+                if (isSelectionMode) {
+                    TopAppBar(
+                        title = { Text("已选择 ${selectedIds.size} 项") },
+                        actions = {
+                            Button(
+                                onClick = { viewModel.exitSelectionMode() },
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                modifier = Modifier.padding(end = 12.dp)
+                            ) {
+                                Text("取消")
+                            }
                         }
-                    }
-                )
-            }
-        },
-        floatingActionButton = {},
-        modifier = modifier
-    ) { innerPadding ->
-        Box(
-            modifier = Modifier
-                .padding(innerPadding)
-                .fillMaxSize()
-        ) {
-            HorizontalPager(
-                state = pagerState,
-                modifier = Modifier.fillMaxSize()
-            ) { page ->
-                val filteredItems = reminderListUiState.itemList.filter(tabs[page].filter)
-                val sections = buildReminderSections(filteredItems)
-                val handleItemClick: (ReminderItem) -> Unit = { item ->
-                    if (isSelectionMode) {
-                        viewModel.toggleSelection(item.id)
-                    } else {
-                        navController.navigate(Routes.detailReminder(item.id))
-                    }
-                }
-                val handleItemLongPress: (ReminderItem) -> Unit = { item ->
-                    if (isSelectionMode) {
-                        viewModel.toggleSelection(item.id)
-                    } else {
-                        viewModel.startSelection(item.id)
-                    }
-                }
-                if (sections.isEmpty()) {
-                    EmptyStateCard(
-                        modifier = Modifier
-                            .padding(horizontal = 24.dp, vertical = 32.dp)
-                            .padding(bottom = listBottomPadding)
-                            .fillMaxWidth()
                     )
                 } else {
-                    LazyColumn(
-                        modifier = Modifier.fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = 16.dp,
-                            top = 16.dp,
-                            bottom = listBottomPadding
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
-                    ) {
-                        sections.forEach { section ->
-                            item(key = "${section.key}_${viewMode.name}") {
+                    TopAppBar(
+                        title = { Text("Reminder") },
+                        actions = {
+                            IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "设置"
+                                )
+                            }
+                        }
+                    )
+                }
+            },
+            floatingActionButton = {},
+            modifier = modifier
+        ) { innerPadding ->
+            Box(
+                modifier = Modifier
+                    .padding(innerPadding)
+                    .fillMaxSize()
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier.fillMaxSize(),
+                    beyondViewportPageCount = 1
+                ) { page ->
+                    val filteredItems = remember(reminderListUiState.itemList, page) {
+                        reminderListUiState.itemList.filter(tabs[page].filter)
+                    }
+                    val sections = remember(filteredItems) {
+                        buildReminderSections(filteredItems)
+                    }
+                    val handleItemClick = remember(isSelectionMode) {
+                        { item: ReminderItem ->
+                            if (isSelectionMode) {
+                                viewModel.toggleSelection(item.id)
+                            } else {
+                                navController.navigate(Routes.detailReminder(item.id))
+                            }
+                        }
+                    }
+                    val handleItemLongPress = remember(isSelectionMode) {
+                        { item: ReminderItem ->
+                            if (isSelectionMode) {
+                                viewModel.toggleSelection(item.id)
+                            } else {
+                                viewModel.startSelection(item.id)
+                            }
+                        }
+                    }
+
+                    if (reminderListUiState.isLoading) {
+                        // 正在加载时不显示 EmptyStateCard，避免闪屏
+                        Box(modifier = Modifier.fillMaxSize())
+                    } else if (sections.isEmpty()) {
+                        EmptyStateCard(
+                            modifier = Modifier
+                                .padding(horizontal = 24.dp, vertical = 32.dp)
+                                .padding(bottom = listBottomPadding)
+                                .fillMaxWidth()
+                        )
+                    } else {
+                        LazyColumn(
+                            modifier = Modifier.fillMaxSize(),
+                            contentPadding = PaddingValues(
+                                start = 16.dp,
+                                end = 16.dp,
+                                top = 16.dp,
+                                bottom = listBottomPadding
+                            ),
+                            verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
+                        ) {
+                            sections.forEach { section ->
+                                item(key = "header_${section.key}_${viewMode.name}") {
+                                    Text(
+                                        text = section.title,
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                        modifier = Modifier.padding(bottom = 8.dp)
+                                    )
+                                }
+
                                 if (viewMode == ReminderViewMode.CARD) {
-                                    ReminderSection(
-                                        title = section.title,
-                                        reminders = section.items,
-                                        isSelectionMode = isSelectionMode,
-                                        selectedIds = selectedIds,
-                                        onReminderClick = handleItemClick,
-                                        onReminderLongPress = handleItemLongPress,
-                                        onReminderToggleSelection = { reminder ->
-                                            viewModel.toggleSelection(reminder.id)
+                                    val rows = section.items.chunked(2)
+                                    items(
+                                        count = rows.size,
+                                        key = { index -> "row_${section.key}_${index}_${viewMode.name}" }
+                                    ) { rowIndex ->
+                                        val rowItems = rows[rowIndex]
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            rowItems.forEach { reminder ->
+                                                Box(modifier = Modifier.weight(1f)) {
+                                                    ReminderSummaryCard(
+                                                        reminder = reminder,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .heightIn(min = 180.dp),
+                                                        isSelectionMode = isSelectionMode,
+                                                        isSelected = reminder.id in selectedIds,
+                                                        onClick = { handleItemClick(reminder) },
+                                                        onLongPress = { handleItemLongPress(reminder) },
+                                                        onToggleSelection = { viewModel.toggleSelection(reminder.id) }
+                                                    )
+                                                }
+                                            }
+                                            if (rowItems.size < 2) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
                                         }
-                                    )
+                                    }
                                 } else {
-                                    ReminderListSection(
-                                        title = section.title,
-                                        reminders = section.items,
-                                        isSelectionMode = isSelectionMode,
-                                        selectedIds = selectedIds,
-                                        onReminderClick = handleItemClick,
-                                        onReminderLongPress = handleItemLongPress,
-                                        onReminderToggleSelection = { reminder ->
-                                            viewModel.toggleSelection(reminder.id)
-                                        }
-                                    )
+                                    items(
+                                        items = section.items,
+                                        key = { it.id }
+                                    ) { reminder ->
+                                        ReminderListItem(
+                                            reminder = reminder,
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = reminder.id in selectedIds,
+                                            onClick = { handleItemClick(reminder) },
+                                            onLongPress = { handleItemLongPress(reminder) },
+                                            onToggleSelection = { viewModel.toggleSelection(reminder.id) }
+                                        )
+                                    }
+                                }
+
+                                // 节之间留出一些间距
+                                item {
+                                    Spacer(modifier = Modifier.height(8.dp))
                                 }
                             }
                         }
                     }
                 }
-            }
 
-            Box(
-                modifier = Modifier
-                    .align(Alignment.BottomCenter)
-                    .fillMaxWidth()
-                    .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
-            ) {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
                 ) {
-                    val toggleIcon = if (viewMode == ReminderViewMode.CARD) Icons.AutoMirrored.Filled.ViewList else Icons.Default.ViewModule
-                    FloatingActionButton(
-                        onClick = {
-                            viewMode = if (viewMode == ReminderViewMode.CARD) ReminderViewMode.LIST else ReminderViewMode.CARD
-                        },
-                        shape = CircleShape,
-                        containerColor = MaterialTheme.colorScheme.primary,
-                        contentColor = MaterialTheme.colorScheme.onPrimary,
-                        modifier = Modifier.size(segmentedHeight)
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Icon(
-                            imageVector = toggleIcon,
-                            contentDescription = "切换视图"
-                        )
-                    }
-                    Spacer(modifier = Modifier.width(16.dp))
+                        val toggleIcon = if (viewMode == ReminderViewMode.CARD) Icons.AutoMirrored.Filled.ViewList else Icons.Default.ViewModule
+                        FloatingActionButton(
+                            onClick = {
+                                viewMode = if (viewMode == ReminderViewMode.CARD) ReminderViewMode.LIST else ReminderViewMode.CARD
+                            },
+                            shape = CircleShape,
+                            containerColor = MaterialTheme.colorScheme.primary,
+                            contentColor = MaterialTheme.colorScheme.onPrimary,
+                            modifier = Modifier.size(segmentedHeight)
+                        ) {
+                            Icon(
+                                imageVector = toggleIcon,
+                                contentDescription = "切换视图"
+                            )
+                        }
+                        Spacer(modifier = Modifier.width(16.dp))
 
-                    Box(
-                        modifier = Modifier
-                            .weight(1f),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        FloatingSegmentedTabs(
-                            tabs = tabs,
-                            counts = tabCounts,
-                            selectedIndex = pagerState.currentPage,
-                            onTabSelected = { index ->
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(index)
+                        Box(
+                            modifier = Modifier
+                                .weight(1f),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            FloatingSegmentedTabs(
+                                tabs = tabs,
+                                counts = tabCounts,
+                                selectedIndex = pagerState.currentPage,
+                                onTabSelected = { index ->
+                                    coroutineScope.launch {
+                                        pagerState.animateScrollToPage(index)
+                                    }
+                                },
+                                modifier = Modifier
+                                    .height(segmentedHeight)
+                                    .widthIn(min = 200.dp, max = 260.dp)
+                            )
+                        }
+
+                        val deleteEnabled = selectedIds.isNotEmpty()
+                        val deleteContainerColor: Color
+                        val deleteContentColor: Color
+                        val deleteElevation = if (isSelectionMode && !deleteEnabled) {
+                            FloatingActionButtonDefaults.elevation(
+                                defaultElevation = 0.dp,
+                                pressedElevation = 0.dp,
+                                focusedElevation = 0.dp,
+                                hoveredElevation = 0.dp
+                            )
+                        } else {
+                            FloatingActionButtonDefaults.elevation()
+                        }
+                        if (!isSelectionMode) {
+                            deleteContainerColor = MaterialTheme.colorScheme.primary
+                            deleteContentColor = MaterialTheme.colorScheme.onPrimary
+                        } else if (deleteEnabled) {
+                            deleteContainerColor = MaterialTheme.colorScheme.error
+                            deleteContentColor = MaterialTheme.colorScheme.onError
+                        } else {
+                            deleteContainerColor = MaterialTheme.colorScheme.surfaceVariant
+                            deleteContentColor = MaterialTheme.colorScheme.onSurfaceVariant
+                        }
+                        FloatingActionButton(
+                            onClick = {
+                                if (isSelectionMode) {
+                                    if (deleteEnabled) {
+                                        showDeleteDialog = true
+                                    }
+                                } else {
+                                    navController.navigate(Routes.ADD_REMINDER)
                                 }
                             },
                             modifier = Modifier
-                                .height(segmentedHeight)
-                                .widthIn(min = 200.dp, max = 260.dp)
-                        )
-                    }
-
-                    val deleteEnabled = selectedIds.isNotEmpty()
-                    val deleteContainerColor: Color
-                    val deleteContentColor: Color
-                    val deleteElevation = if (isSelectionMode && !deleteEnabled) {
-                        FloatingActionButtonDefaults.elevation(
-                            defaultElevation = 0.dp,
-                            pressedElevation = 0.dp,
-                            focusedElevation = 0.dp,
-                            hoveredElevation = 0.dp
-                        )
-                    } else {
-                        FloatingActionButtonDefaults.elevation()
-                    }
-                    if (!isSelectionMode) {
-                        deleteContainerColor = MaterialTheme.colorScheme.primary
-                        deleteContentColor = MaterialTheme.colorScheme.onPrimary
-                    } else if (deleteEnabled) {
-                        deleteContainerColor = MaterialTheme.colorScheme.error
-                        deleteContentColor = MaterialTheme.colorScheme.onError
-                    } else {
-                        deleteContainerColor = MaterialTheme.colorScheme.surfaceVariant
-                        deleteContentColor = MaterialTheme.colorScheme.onSurfaceVariant
-                    }
-                    FloatingActionButton(
-                        onClick = {
-                            if (isSelectionMode) {
-                                if (deleteEnabled) {
-                                    showDeleteDialog = true
-                                }
-                            } else {
-                                navController.navigate(Routes.ADD_REMINDER)
-                            }
-                        },
-                        modifier = Modifier
-                            .padding(start = 16.dp)
-                            .size(segmentedHeight),
-                        shape = CircleShape,
-                        containerColor = deleteContainerColor,
-                        contentColor = deleteContentColor,
-                        elevation = deleteElevation
-                    ) {
-                        Icon(
-                            imageVector = if (isSelectionMode) Icons.Default.Delete else Icons.Default.Add,
-                            contentDescription = if (isSelectionMode) "删除选中提醒" else "添加提醒"
-                        )
+                                .padding(start = 16.dp)
+                                .size(segmentedHeight),
+                            shape = CircleShape,
+                            containerColor = deleteContainerColor,
+                            contentColor = deleteContentColor,
+                            elevation = deleteElevation
+                        ) {
+                            Icon(
+                                imageVector = if (isSelectionMode) Icons.Default.Delete else Icons.Default.Add,
+                                contentDescription = if (isSelectionMode) "删除选中提醒" else "添加提醒"
+                            )
+                        }
                     }
                 }
             }
@@ -744,11 +794,11 @@ fun ReminderListScreen(
                         Row(
                             modifier = Modifier.fillMaxWidth(),
                             horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
-                    ) {
-                        Button(
-                            onClick = {
-                                showDeleteDialog = false
-                                viewModel.deleteSelected()
+                        ) {
+                            Button(
+                                onClick = {
+                                    showDeleteDialog = false
+                                    viewModel.deleteSelected()
                                 },
                                 shape = RoundedCornerShape(12.dp),
                                 colors = ButtonDefaults.buttonColors(
@@ -779,6 +829,19 @@ fun ReminderListScreen(
                     dismissButton = {}
                 )
             }
+        }
+
+        androidx.compose.animation.AnimatedVisibility(
+            visible = reminderListUiState.isLoading,
+            enter = androidx.compose.animation.fadeIn(),
+            exit = androidx.compose.animation.fadeOut(
+                animationSpec = androidx.compose.animation.core.tween(durationMillis = 400)
+            )
+        ) {
+            Surface(
+                modifier = Modifier.fillMaxSize(),
+                color = MaterialTheme.colorScheme.background
+            ) { }
         }
     }
 }
@@ -874,83 +937,6 @@ private fun reminderSortValue(reminder: ReminderItem): Int {
     }
 }
 
-@Composable
-private fun ReminderSection(
-    title: String,
-    reminders: List<ReminderItem>,
-    isSelectionMode: Boolean,
-    selectedIds: Set<Int>,
-    onReminderClick: (ReminderItem) -> Unit,
-    onReminderLongPress: (ReminderItem) -> Unit,
-    onReminderToggleSelection: (ReminderItem) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
-            val rows = reminders.chunked(2)
-            rows.forEach { rowItems ->
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    rowItems.forEach { reminder ->
-                        Box(
-                            modifier = Modifier.weight(1f)
-                        ) {
-                            ReminderSummaryCard(
-                                reminder = reminder,
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .heightIn(min = 180.dp),
-                                isSelectionMode = isSelectionMode,
-                                isSelected = reminder.id in selectedIds,
-                                onClick = { onReminderClick(reminder) },
-                                onLongPress = { onReminderLongPress(reminder) },
-                                onToggleSelection = { onReminderToggleSelection(reminder) }
-                            )
-                        }
-                    }
-                    if (rowItems.size < 2) {
-                        Spacer(modifier = Modifier.weight(1f))
-                    }
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ReminderListSection(
-    title: String,
-    reminders: List<ReminderItem>,
-    isSelectionMode: Boolean,
-    selectedIds: Set<Int>,
-    onReminderClick: (ReminderItem) -> Unit,
-    onReminderLongPress: (ReminderItem) -> Unit,
-    onReminderToggleSelection: (ReminderItem) -> Unit
-) {
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(
-            text = title,
-            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-        )
-        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-            reminders.forEach { reminder ->
-                ReminderListItem(
-                    reminder = reminder,
-                    isSelectionMode = isSelectionMode,
-                    isSelected = reminder.id in selectedIds,
-                    onClick = { onReminderClick(reminder) },
-                    onLongPress = { onReminderLongPress(reminder) },
-                    onToggleSelection = { onReminderToggleSelection(reminder) }
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ReminderListItem(
