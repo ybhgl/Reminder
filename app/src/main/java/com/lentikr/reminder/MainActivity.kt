@@ -193,20 +193,20 @@ fun ReminderApp() {
             exitTransition = {
                 when {
                     targetState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        fadeOut() + scaleOut(transformOrigin = TransformOrigin(0.5f, 0.5f))
+                        fadeOut()
                     targetState.destination.route?.startsWith(Routes.ADD_REMINDER_BASE) == true ||
                     targetState.destination.route?.startsWith("edit_reminder") == true ->
-                        fadeOut() + scaleOut(transformOrigin = TransformOrigin(1f, 1f))
+                        fadeOut()
                     else -> null
                 }
             },
             popEnterTransition = {
                 when {
                     initialState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        fadeIn() + scaleIn(transformOrigin = TransformOrigin(0.5f, 0.5f))
+                        fadeIn()
                     initialState.destination.route?.startsWith(Routes.ADD_REMINDER_BASE) == true ||
                     initialState.destination.route?.startsWith("edit_reminder") == true ->
-                        fadeIn() + scaleIn(transformOrigin = TransformOrigin(1f, 1f))
+                        fadeIn()
                     else -> fadeIn()
                 }
             }
@@ -218,17 +218,17 @@ fun ReminderApp() {
             enterTransition = {
                 when {
                     initialState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        scaleIn(transformOrigin = TransformOrigin(1f, 0f)) + fadeIn()
+                        fadeIn()
                     else ->
-                        scaleIn(transformOrigin = TransformOrigin(1f, 1f)) + fadeIn()
+                        fadeIn()
                 }
             },
             popExitTransition = {
                 when {
                     targetState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        scaleOut(transformOrigin = TransformOrigin(1f, 0f)) + fadeOut()
+                        fadeOut()
                     else ->
-                        scaleOut(transformOrigin = TransformOrigin(1f, 1f)) + fadeOut()
+                        fadeOut()
                 }
             }
         ) {
@@ -240,17 +240,17 @@ fun ReminderApp() {
             enterTransition = {
                 when {
                     initialState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        scaleIn(transformOrigin = TransformOrigin(1f, 0f)) + fadeIn()
+                        fadeIn()
                     else ->
-                        scaleIn(transformOrigin = TransformOrigin(1f, 1f)) + fadeIn()
+                        fadeIn()
                 }
             },
             popExitTransition = {
                 when {
                     targetState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        scaleOut(transformOrigin = TransformOrigin(1f, 0f)) + fadeOut()
+                        fadeOut()
                     else ->
-                        scaleOut(transformOrigin = TransformOrigin(1f, 1f)) + fadeOut()
+                        fadeOut()
                 }
             }
         ) {
@@ -265,10 +265,10 @@ fun ReminderApp() {
             route = Routes.DETAIL_REMINDER_PATTERN,
             arguments = listOf(navArgument("reminderId") { type = NavType.IntType }),
             enterTransition = {
-                scaleIn(transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeIn()
+                fadeIn()
             },
             popExitTransition = {
-                scaleOut(transformOrigin = TransformOrigin(0.5f, 0.5f)) + fadeOut()
+                fadeOut()
             }
         ) {
             DetailScreen(navController = navController)
