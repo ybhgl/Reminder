@@ -349,7 +349,7 @@ private fun DefaultPageSegmentedControl(
         targetValue = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
         label = "DefaultPageSegmentBackground"
     )
-    var isFirstComposition by remember { mutableStateOf(true) }
+    var shouldAnimate by remember { mutableStateOf(false) }
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
@@ -361,10 +361,9 @@ private fun DefaultPageSegmentedControl(
         val selectedIndex = options.indexOf(selectedOption).coerceAtLeast(0)
         val highlightOffset by animateDpAsState(
             targetValue = segmentWidth * selectedIndex,
-            animationSpec = if (isFirstComposition) snap() else spring(),
+            animationSpec = if (shouldAnimate) spring() else snap(),
             label = "DefaultPageHighlightOffset"
         )
-        LaunchedEffect(selectedIndex) { isFirstComposition = false }
         val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
 
         Box(
@@ -398,7 +397,10 @@ private fun DefaultPageSegmentedControl(
                         .clip(RoundedCornerShape(8.dp))
                         .selectable(
                             selected = isSelected,
-                            onClick = { onOptionSelected(option) }
+                            onClick = { 
+                                shouldAnimate = true
+                                onOptionSelected(option) 
+                            }
                         ),
                     contentAlignment = Alignment.Center
                 ) {
@@ -435,7 +437,7 @@ private fun ThemeModeSegmentedControl(
         targetValue = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
         label = "ThemeSegmentBackground"
     )
-    var isFirstComposition by remember { mutableStateOf(true) }
+    var shouldAnimate by remember { mutableStateOf(false) }
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
@@ -447,10 +449,9 @@ private fun ThemeModeSegmentedControl(
         val selectedIndex = options.indexOf(selectedOption).coerceAtLeast(0)
         val highlightOffset by animateDpAsState(
             targetValue = segmentWidth * selectedIndex,
-            animationSpec = if (isFirstComposition) snap() else spring(),
+            animationSpec = if (shouldAnimate) spring() else snap(),
             label = "ThemeHighlightOffset"
         )
-        LaunchedEffect(selectedIndex) { isFirstComposition = false }
         val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
 
         Box(
@@ -484,7 +485,10 @@ private fun ThemeModeSegmentedControl(
                         .clip(RoundedCornerShape(12.dp))
                         .selectable(
                             selected = isSelected,
-                            onClick = { onOptionSelected(option) }
+                            onClick = { 
+                                shouldAnimate = true
+                                onOptionSelected(option) 
+                            }
                         )
                         .padding(vertical = 4.dp, horizontal = 4.dp),
                     horizontalAlignment = Alignment.CenterHorizontally,

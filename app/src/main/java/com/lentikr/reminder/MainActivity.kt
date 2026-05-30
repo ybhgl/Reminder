@@ -505,14 +505,18 @@ fun ReminderListScreen(
     val defaultPage by remember(context) { defaultPageFlow(context) }
         .collectAsState(initial = null)
     val pagerState = rememberPagerState { ReminderTab.entries.size }
+    var hasSetDefaultPage by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(defaultPage) {
-        val page = when (defaultPage) {
-            AppDefaultPage.COUNTDOWN -> 0
-            AppDefaultPage.COUNTUP -> 1
-            AppDefaultPage.BIRTHDAY -> 2
-            else -> return@LaunchedEffect
+        if (!hasSetDefaultPage && defaultPage != null) {
+            val page = when (defaultPage) {
+                AppDefaultPage.COUNTDOWN -> 0
+                AppDefaultPage.COUNTUP -> 1
+                AppDefaultPage.BIRTHDAY -> 2
+                else -> return@LaunchedEffect
+            }
+            pagerState.scrollToPage(page)
+            hasSetDefaultPage = true
         }
-        pagerState.scrollToPage(page)
     }
     val coroutineScope = rememberCoroutineScope()
     val tabs = ReminderTab.entries.toTypedArray()
@@ -1092,15 +1096,23 @@ private fun FloatingSegmentedTabs(
 ) {
     val density = LocalDensity.current
     var containerWidthPx by remember { mutableIntStateOf(0) }
-    var isFirstComposition by remember { mutableStateOf(true) }
+    var skipNextAnimation by remember { mutableStateOf(true) }
     val segmentCount = tabs.size.coerceAtLeast(1)
     val indicatorWidthPx = if (containerWidthPx > 0) containerWidthPx / segmentCount else 0
+
+    LaunchedEffect(containerWidthPx) {
+        if (containerWidthPx > 0) {
+            // Give it a tiny bit of time to snap to the correct position before allowing animations
+            kotlinx.coroutines.delay(100)
+            skipNextAnimation = false
+        }
+    }
+
     val indicatorOffsetPx by animateIntAsState(
         targetValue = indicatorWidthPx * selectedIndex,
-        animationSpec = if (isFirstComposition) snap() else tween(durationMillis = 250),
+        animationSpec = if (skipNextAnimation) snap() else tween(durationMillis = 250),
         label = "indicatorOffset"
     )
-    LaunchedEffect(selectedIndex) { isFirstComposition = false }
 
     Surface(
         modifier = modifier,
