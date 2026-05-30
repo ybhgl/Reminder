@@ -60,11 +60,15 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.snap
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.lentikr.reminder.BuildConfig
 import com.lentikr.reminder.data.AppThemeOption
+import com.lentikr.reminder.data.AppDefaultPage
 import com.lentikr.reminder.ui.common.AppViewModelProvider
 import kotlinx.coroutines.launch
 import android.content.Intent
@@ -87,6 +91,8 @@ fun SettingsScreen(
     val selectedTheme by themePreferenceFlow.collectAsState(initial = AppThemeOption.SYSTEM)
     val pureBlackPreferenceFlow = remember(context) { viewModel.pureBlackPreferenceFlow(context) }
     val usePureBlack by pureBlackPreferenceFlow.collectAsState(initial = false)
+    val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
+    val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val scrollState = rememberScrollState()
     val backupLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/json")
@@ -160,6 +166,14 @@ fun SettingsScreen(
                 onPureBlackToggle = { enabled ->
                     coroutineScope.launch {
                         viewModel.updatePureBlackPreference(context, enabled)
+                    }
+                }
+            )
+            DefaultPageSelectionCard(
+                selectedPage = selectedDefaultPage,
+                onPageSelected = { page ->
+                    coroutineScope.launch {
+                        viewModel.updateDefaultPage(context, page)
                     }
                 }
             )
@@ -283,6 +297,122 @@ private fun ThemeSelectionCard(
     }
 }
 
+@Composable
+private fun DefaultPageSelectionCard(
+    selectedPage: AppDefaultPage,
+    onPageSelected: (AppDefaultPage) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "默认起始页面",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "选择启动应用后默认显示的页面",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            DefaultPageSegmentedControl(
+                options = listOf(AppDefaultPage.COUNTDOWN, AppDefaultPage.COUNTUP, AppDefaultPage.BIRTHDAY),
+                selectedOption = selectedPage,
+                onOptionSelected = onPageSelected
+            )
+        }
+    }
+}
+
+@Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
+@Composable
+private fun DefaultPageSegmentedControl(
+    options: List<AppDefaultPage>,
+    selectedOption: AppDefaultPage,
+    onOptionSelected: (AppDefaultPage) -> Unit
+) {
+    val optionLabels = mapOf(
+        AppDefaultPage.COUNTDOWN to "倒数",
+        AppDefaultPage.COUNTUP to "正数",
+        AppDefaultPage.BIRTHDAY to "生日"
+    )
+    val segmentCount = options.size.coerceAtLeast(1)
+    val backgroundColor by animateColorAsState(
+        targetValue = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
+        label = "DefaultPageSegmentBackground"
+    )
+    var isFirstComposition by remember { mutableStateOf(true) }
+    BoxWithConstraints(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(48.dp)
+            .clip(RoundedCornerShape(12.dp))
+            .background(backgroundColor)
+    ) {
+        val segmentWidth = maxWidth / segmentCount
+        val selectedIndex = options.indexOf(selectedOption).coerceAtLeast(0)
+        val highlightOffset by animateDpAsState(
+            targetValue = segmentWidth * selectedIndex,
+            animationSpec = if (isFirstComposition) snap() else spring(),
+            label = "DefaultPageHighlightOffset"
+        )
+        LaunchedEffect(selectedIndex) { isFirstComposition = false }
+        val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+
+        Box(
+            modifier = Modifier
+                .offset(x = highlightOffset)
+                .width(segmentWidth)
+                .fillMaxHeight()
+                .padding(4.dp)
+                .clip(RoundedCornerShape(8.dp))
+                .background(highlightColor)
+        )
+
+        Row(
+            modifier = Modifier.matchParentSize(),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            options.forEachIndexed { index, option ->
+                val isSelected = option == selectedOption
+                val textColor by animateColorAsState(
+                    targetValue = if (isSelected) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    label = "DefaultPageOptionColor$index"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clip(RoundedCornerShape(8.dp))
+                        .selectable(
+                            selected = isSelected,
+                            onClick = { onOptionSelected(option) }
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = optionLabels[option].orEmpty(),
+                        style = MaterialTheme.typography.labelLarge,
+                        color = textColor
+                    )
+                }
+            }
+        }
+    }
+}
+
 @Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
 @Composable
 private fun ThemeModeSegmentedControl(
@@ -305,6 +435,7 @@ private fun ThemeModeSegmentedControl(
         targetValue = MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp),
         label = "ThemeSegmentBackground"
     )
+    var isFirstComposition by remember { mutableStateOf(true) }
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
@@ -316,8 +447,10 @@ private fun ThemeModeSegmentedControl(
         val selectedIndex = options.indexOf(selectedOption).coerceAtLeast(0)
         val highlightOffset by animateDpAsState(
             targetValue = segmentWidth * selectedIndex,
+            animationSpec = if (isFirstComposition) snap() else spring(),
             label = "ThemeHighlightOffset"
         )
+        LaunchedEffect(selectedIndex) { isFirstComposition = false }
         val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
 
         Box(

@@ -35,10 +35,13 @@ import com.lentikr.reminder.Routes
 import com.lentikr.reminder.data.ReminderItem
 import com.lentikr.reminder.data.ReminderType
 import com.lentikr.reminder.reminderDisplayInfo
+import com.lentikr.reminder.data.AppThemeOption
 import com.lentikr.reminder.ui.common.AppViewModelProvider
 import com.lentikr.reminder.ui.common.AutoResizeText
 import com.lentikr.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.lentikr.reminder.ui.theme.ReminderTheme
+import com.lentikr.reminder.util.BirthdayCalculator
+import com.lentikr.reminder.util.BirthdayInfo
 import dev.shreyaspatil.capturable.capturable
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.coroutines.launch
@@ -133,17 +136,33 @@ fun DetailScreen(
                 .fillMaxSize()
                 .padding(paddingValues)
                 .padding(16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
+            Spacer(modifier = Modifier.weight(0.1f))
             if (reminderItem != null) {
                 ReminderDetailCard(
                     reminderItem = reminderItem
                 )
+                
+                // 生日额外信息
+                if (reminderItem.type == ReminderType.BIRTHDAY) {
+                    val birthdayInfo: BirthdayInfo = remember(reminderItem.date, reminderItem.isLunar) {
+                        BirthdayCalculator.calculate(reminderItem.date, reminderItem.isLunar)
+                    }
+                    Spacer(modifier = Modifier.height(16.dp))
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.SpaceEvenly
+                    ) {
+                        BirthdayInfoChip(label = "年龄", value = "${birthdayInfo.age}岁")
+                        BirthdayInfoChip(label = "生肖", value = birthdayInfo.chineseZodiac)
+                        BirthdayInfoChip(label = "星座", value = birthdayInfo.zodiac)
+                    }
+                }
             } else {
                 CircularProgressIndicator()
             }
-            Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.weight(0.1f))
             ActionButtonsRow(
                 onShareClick = {
                     captureAction = CaptureAction.SHARE
@@ -159,8 +178,12 @@ fun DetailScreen(
                         pendingPermissionAction = CaptureAction.SAVE
                         storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                     }
-                }
+                },
+                onBirthdayListClick = if (reminderItem?.type == ReminderType.BIRTHDAY) {
+                    { navController.navigate(Routes.birthdayList(reminderItem.id)) }
+                } else null
             )
+            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
@@ -194,55 +217,58 @@ fun ShareableReminderImage(
     reminderItem: ReminderItem,
     modifier: Modifier = Modifier
 ) {
-    Box(modifier = modifier) {
-        Image(
-            painter = painterResource(id = R.drawable.background),
-            contentDescription = null,
-            contentScale = ContentScale.Crop,
-            modifier = Modifier.matchParentSize()
-        )
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
+    ReminderTheme(
+        themeOption = AppThemeOption.LIGHT,
+        dynamicColor = false
+    ) {
+        Box(modifier = modifier) {
             Image(
-                painter = painterResource(id = R.drawable.reminder),
-                contentDescription = "Reminder",
-                modifier = Modifier.padding(vertical = 16.dp)
+                painter = painterResource(id = R.drawable.background),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.matchParentSize()
             )
-            ReminderDetailCard(
-                reminderItem = reminderItem,
-                modifier = Modifier.padding(horizontal = 32.dp)
-            )
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                horizontalArrangement = Arrangement.Center,
-                verticalAlignment = Alignment.CenterVertically
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_app_logo),
-                    contentDescription = "App Logo",
-                    modifier = Modifier.size(24.dp),
-                    tint = Color.Unspecified
-                )
-                Spacer(modifier = Modifier.width(8.dp))
                 Image(
-                    painter = painterResource(
-                        id = if (reminderItem.type == ReminderType.COUNT_UP) {
-                            R.drawable.count_up
-                        } else {
-                            R.drawable.annual
-                        }
-                    ),
-                    contentDescription = null
+                    painter = painterResource(id = R.drawable.reminder),
+                    contentDescription = "Reminder",
+                    modifier = Modifier.padding(vertical = 16.dp)
                 )
+                ReminderDetailCard(
+                    reminderItem = reminderItem,
+                    modifier = Modifier.padding(horizontal = 32.dp)
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Icon(
+                        painter = painterResource(id = R.drawable.ic_app_logo),
+                        contentDescription = "App Logo",
+                        modifier = Modifier.size(24.dp),
+                        tint = Color.Unspecified
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Image(
+                        painter = painterResource(
+                            id = if (reminderItem.type == ReminderType.COUNT_UP) {
+                                R.drawable.count_up
+                            } else {
+                                R.drawable.annual
+                            }
+                        ),
+                        contentDescription = null
+                    )
+                }
             }
         }
     }
 }
-
-
 @Composable
 private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
     Row(
@@ -361,18 +387,52 @@ fun ReminderDetailCard(
 }
 
 @Composable
-fun ActionButtonsRow(onShareClick: () -> Unit, onSaveClick: () -> Unit) {
+fun ActionButtonsRow(
+    onShareClick: () -> Unit,
+    onSaveClick: () -> Unit,
+    onBirthdayListClick: (() -> Unit)? = null
+) {
     Row(
         modifier = Modifier.fillMaxWidth(),
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.CenterVertically
     ) {
+        if (onBirthdayListClick != null) {
+            OutlinedButton(onClick = onBirthdayListClick) {
+                Text("生日列表")
+            }
+            Spacer(modifier = Modifier.width(16.dp))
+        }
         OutlinedButton(onClick = onShareClick) {
             Text("分享")
         }
         Spacer(modifier = Modifier.width(16.dp))
         OutlinedButton(onClick = onSaveClick) {
             Text("存为图片")
+        }
+    }
+}
+
+@Composable
+fun BirthdayInfoChip(label: String, value: String) {
+    Surface(
+        shape = MaterialTheme.shapes.small,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Text(
+                text = value,
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.Bold
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodySmall
+            )
         }
     }
 }

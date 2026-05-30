@@ -12,6 +12,7 @@ import com.lentikr.reminder.data.ReminderItem
 import com.lentikr.reminder.data.ReminderRepository
 import com.lentikr.reminder.data.ReminderType
 import com.lentikr.reminder.data.RepeatInfo
+import com.lentikr.reminder.data.RepeatUnit
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
@@ -103,6 +104,17 @@ class AddReminderViewModel(
             isLunar = isLunar,
             repeatInfo = null
         )
+    }
+
+    fun onTypeChange(type: ReminderType) {
+        reminderUiState = if (type == ReminderType.BIRTHDAY) {
+            reminderUiState.copy(
+                type = type,
+                repeatInfo = RepeatInfo(interval = 1, unit = RepeatUnit.YEAR)
+            )
+        } else {
+            reminderUiState.copy(type = type)
+        }
     }
 }
 

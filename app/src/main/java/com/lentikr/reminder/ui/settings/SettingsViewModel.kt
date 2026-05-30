@@ -12,6 +12,9 @@ import com.lentikr.reminder.data.themeOptionFlow
 import com.lentikr.reminder.data.saveThemeOption
 import com.lentikr.reminder.data.pureBlackFlow
 import com.lentikr.reminder.data.savePureBlack
+import com.lentikr.reminder.data.AppDefaultPage
+import com.lentikr.reminder.data.defaultPageFlow
+import com.lentikr.reminder.data.saveDefaultPage
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -40,6 +43,12 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     suspend fun updatePureBlackPreference(context: Context, enabled: Boolean) {
         savePureBlack(context, enabled)
+    }
+
+    fun defaultPageFlow(context: Context): Flow<AppDefaultPage> = com.lentikr.reminder.data.defaultPageFlow(context)
+
+    suspend fun updateDefaultPage(context: Context, page: AppDefaultPage) {
+        saveDefaultPage(context, page)
     }
 
     suspend fun backupToUri(context: Context, targetUri: Uri): String = withContext(Dispatchers.IO) {

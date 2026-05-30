@@ -5,6 +5,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
@@ -120,7 +121,7 @@ fun AddReminderScreen(
             OutlinedTextField(
                 value = uiState.title,
                 onValueChange = { viewModel.updateUiState(uiState.copy(title = it)) },
-                label = { Text("标题") },
+                label = { Text(if (uiState.type == ReminderType.BIRTHDAY) "寿星名字" else "标题") },
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true
             )
@@ -199,27 +200,31 @@ fun AddReminderScreen(
             )
 
             // 5. 类型
-            Row(
-                verticalAlignment = Alignment.CenterVertically
-            ) {
+            Column(modifier = Modifier.fillMaxWidth()) {
                 Text("类型", style = MaterialTheme.typography.bodyLarge)
-                Spacer(Modifier.width(16.dp))
-                ReminderType.entries.forEach { type ->
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .clickable { viewModel.updateUiState(uiState.copy(type = type)) }
-                            .padding(horizontal = 8.dp, vertical = 4.dp)
-                    ) {
-                        RadioButton(
-                            selected = uiState.type == type,
-                            onClick = { viewModel.updateUiState(uiState.copy(type = type)) }
-                        )
-                        val text = when (type) {
-                            ReminderType.ANNUAL -> "倒数日"
-                            ReminderType.COUNT_UP -> "正数日"
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                    verticalArrangement = Arrangement.spacedBy(0.dp)
+                ) {
+                    ReminderType.entries.forEach { type ->
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            modifier = Modifier
+                                .clickable { viewModel.onTypeChange(type) }
+                                .padding(horizontal = 4.dp, vertical = 4.dp)
+                        ) {
+                            RadioButton(
+                                selected = uiState.type == type,
+                                onClick = { viewModel.onTypeChange(type) }
+                            )
+                            val text = when (type) {
+                                ReminderType.ANNUAL -> "倒数日"
+                                ReminderType.COUNT_UP -> "正数日"
+                                ReminderType.BIRTHDAY -> "生日"
+                            }
+                            Text(text)
                         }
-                        Text(text)
                     }
                 }
             }

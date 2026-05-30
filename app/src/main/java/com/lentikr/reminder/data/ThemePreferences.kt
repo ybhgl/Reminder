@@ -19,9 +19,16 @@ enum class AppThemeOption {
     DARK
 }
 
+enum class AppDefaultPage {
+    COUNTDOWN,
+    COUNTUP,
+    BIRTHDAY
+}
+
 private const val THEME_DATA_STORE_NAME = "theme_preferences"
 private val THEME_PREFERENCE_KEY = stringPreferencesKey("theme_option")
 private val PURE_BLACK_KEY = booleanPreferencesKey("pure_black_enabled")
+private val DEFAULT_PAGE_KEY = stringPreferencesKey("default_page")
 
 private val Context.themeDataStore: DataStore<Preferences> by preferencesDataStore(
     name = THEME_DATA_STORE_NAME
@@ -64,5 +71,26 @@ fun pureBlackFlow(context: Context): Flow<Boolean> =
 suspend fun savePureBlack(context: Context, enabled: Boolean) {
     context.themeDataStore.edit { preferences ->
         preferences[PURE_BLACK_KEY] = enabled
+    }
+}
+
+fun defaultPageFlow(context: Context): Flow<AppDefaultPage> =
+    context.themeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            val stored = preferences[DEFAULT_PAGE_KEY]
+            stored?.let { runCatching { AppDefaultPage.valueOf(it) }.getOrNull() }
+                ?: AppDefaultPage.COUNTDOWN
+        }
+
+suspend fun saveDefaultPage(context: Context, page: AppDefaultPage) {
+    context.themeDataStore.edit { preferences ->
+        preferences[DEFAULT_PAGE_KEY] = page.name
     }
 }

@@ -8,6 +8,7 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.FastOutSlowInEasing
+import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
@@ -126,8 +127,11 @@ import com.lentikr.reminder.util.CalendarUtil
 import com.lentikr.reminder.data.viewModeFlow
 import com.lentikr.reminder.data.saveViewMode
 import com.lentikr.reminder.data.AppThemeOption
+import com.lentikr.reminder.data.AppDefaultPage
+import com.lentikr.reminder.data.defaultPageFlow
 import com.lentikr.reminder.data.pureBlackFlow
 import com.lentikr.reminder.data.themeOptionFlow
+import com.lentikr.reminder.ui.detail.BirthdayListScreen
 import com.lentikr.reminder.ui.detail.DetailScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -168,9 +172,12 @@ object Routes {
     const val SETTINGS = "settings"
     const val DETAIL_REMINDER_BASE = "detail_reminder"
     const val DETAIL_REMINDER_PATTERN = "$DETAIL_REMINDER_BASE/{reminderId}"
+    const val BIRTHDAY_LIST_BASE = "birthday_list"
+    const val BIRTHDAY_LIST_PATTERN = "$BIRTHDAY_LIST_BASE/{reminderId}"
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
+    fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -267,6 +274,18 @@ fun ReminderApp() {
             DetailScreen(navController = navController)
         }
         composable(
+            route = Routes.BIRTHDAY_LIST_PATTERN,
+            arguments = listOf(navArgument("reminderId") { type = NavType.IntType }),
+            enterTransition = {
+                slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it })
+            },
+            popExitTransition = {
+                slideOutHorizontally(animationSpec = tween(400), targetOffsetX = { it })
+            }
+        ) {
+            BirthdayListScreen(navController = navController)
+        }
+        composable(
             Routes.SETTINGS,
             enterTransition = {
                 slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it })
@@ -295,8 +314,9 @@ data class ReminderCardVisuals(
 )
 
 private enum class ReminderTab(val title: String, val filter: (ReminderItem) -> Boolean) {
-    COUNTDOWN("倒数日", { it.type == ReminderType.ANNUAL }),
-    COUNTUP("正数日", { it.type == ReminderType.COUNT_UP })
+    COUNTDOWN("倒数", { it.type == ReminderType.ANNUAL }),
+    COUNTUP("正数", { it.type == ReminderType.COUNT_UP }),
+    BIRTHDAY("生日", { it.type == ReminderType.BIRTHDAY })
 }
 
 data class ReminderDisplayInfo(
@@ -335,6 +355,23 @@ internal fun reminderDisplayInfo(reminder: ReminderItem): ReminderDisplayInfo {
             val formattedDate = reminder.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
             Triple("第", daysElapsed, formattedDate)
         }
+
+        ReminderType.BIRTHDAY -> {
+            val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
+            if (nextDate == null) {
+                val formattedDate = reminder.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
+                return ReminderDisplayInfo(
+                    headerTitle = buildHeaderTitle(reminder.title, "生日已过"),
+                    dayCount = 0,
+                    referenceText = formattedDate,
+                    visuals = visuals
+                )
+            }
+
+            val daysRemaining = ChronoUnit.DAYS.between(today, nextDate).toInt()
+            val formattedDate = nextDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
+            Triple("生日还有", daysRemaining.coerceAtLeast(0), formattedDate)
+        }
     }
 
     val headerTitle = buildHeaderTitle(reminder.title, headerLabelSuffix)
@@ -358,7 +395,9 @@ private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
     val headerColor = when {
         !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
         !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
+        !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
         isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
+        isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
         else -> Color(0xFFF7A03A) // isDark && COUNT_UP
     }
 
@@ -463,7 +502,18 @@ fun ReminderListScreen(
             saveViewMode(context, viewMode.name)
         }
     }
+    val defaultPage by remember(context) { defaultPageFlow(context) }
+        .collectAsState(initial = null)
     val pagerState = rememberPagerState { ReminderTab.entries.size }
+    LaunchedEffect(defaultPage) {
+        val page = when (defaultPage) {
+            AppDefaultPage.COUNTDOWN -> 0
+            AppDefaultPage.COUNTUP -> 1
+            AppDefaultPage.BIRTHDAY -> 2
+            else -> return@LaunchedEffect
+        }
+        pagerState.scrollToPage(page)
+    }
     val coroutineScope = rememberCoroutineScope()
     val tabs = ReminderTab.entries.toTypedArray()
     val tabCounts = tabs.map { tab -> reminderListUiState.itemList.count(tab.filter) }
@@ -808,6 +858,15 @@ private fun reminderSortValue(reminder: ReminderItem): Int {
         ReminderType.COUNT_UP -> {
             ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
         }
+
+        ReminderType.BIRTHDAY -> {
+            val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
+            if (nextDate != null) {
+                ChronoUnit.DAYS.between(today, nextDate).toInt()
+            } else {
+                Int.MAX_VALUE
+            }
+        }
     }
 }
 
@@ -1033,13 +1092,15 @@ private fun FloatingSegmentedTabs(
 ) {
     val density = LocalDensity.current
     var containerWidthPx by remember { mutableIntStateOf(0) }
+    var isFirstComposition by remember { mutableStateOf(true) }
     val segmentCount = tabs.size.coerceAtLeast(1)
     val indicatorWidthPx = if (containerWidthPx > 0) containerWidthPx / segmentCount else 0
     val indicatorOffsetPx by animateIntAsState(
         targetValue = indicatorWidthPx * selectedIndex,
-        animationSpec = tween(durationMillis = 250),
+        animationSpec = if (isFirstComposition) snap() else tween(durationMillis = 250),
         label = "indicatorOffset"
     )
+    LaunchedEffect(selectedIndex) { isFirstComposition = false }
 
     Surface(
         modifier = modifier,
