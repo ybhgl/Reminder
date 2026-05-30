@@ -445,7 +445,7 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
     BoxWithConstraints(
         modifier = Modifier
             .fillMaxWidth()
-            .height(56.dp),
+            .height(64.dp),
         contentAlignment = Alignment.Center
     ) {
         val suffixWidth = with(density) {
@@ -465,7 +465,8 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
                 modifier = Modifier
                     .alignByBaseline()
                     .widthIn(max = availableNumberWidth),
-                color = visuals.numberColor
+                color = visuals.numberColor,
+                checkHeight = true
             )
             Spacer(modifier = Modifier.width(spacing))
             Text(
