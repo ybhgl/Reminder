@@ -20,6 +20,7 @@ kotlinxSerializationJson = "1.9.0"
 capturable = "3.0.1"
 composeM3Picker = "0.1.6"
 kotlinxCollectionsImmutable = "0.4.0"
+coreSplashscreen = "1.0.1"
 
 [libraries]
 capturable = { module = "dev.shreyaspatil:capturable", version.ref = "capturable" }
@@ -51,6 +52,7 @@ tyme4kt = { module = "cn.6tail:tyme4kt", version.ref = "tyme4kt" }
 kotlinx-serialization-json = { group = "org.jetbrains.kotlinx", name = "kotlinx-serialization-json", version.ref = "kotlinxSerializationJson" }
 compose-m3-picker = { module = "com.seo4d696b75.compose:material3-picker", version.ref = "composeM3Picker" }
 kotlinx-collections-immutable = { module = "org.jetbrains.kotlinx:kotlinx-collections-immutable", version.ref = "kotlinxCollectionsImmutable" }
+androidx-core-splashscreen = { group = "androidx.core", name = "core-splashscreen", version.ref = "coreSplashscreen" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

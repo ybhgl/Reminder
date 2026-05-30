@@ -40,7 +40,7 @@ class ReminderListViewModel(private val reminderRepository: ReminderRepository) 
             )
         }.stateIn(
             scope = viewModelScope,
-            started = SharingStarted.WhileSubscribed(TIMEOUT_MILLIS),
+            started = SharingStarted.Eagerly,
             initialValue = ReminderListUiState()
         )
 

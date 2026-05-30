@@ -4,6 +4,8 @@ package com.lentikr.reminder
 
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
+import androidx.lifecycle.ViewModelProvider
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
@@ -144,7 +146,14 @@ import java.util.Locale
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
+        val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
+        
+        val viewModel = ViewModelProvider(this, AppViewModelProvider.Factory)[ReminderListViewModel::class.java]
+        splashScreen.setKeepOnScreenCondition {
+            viewModel.reminderListUiState.value.isLoading
+        }
+
         enableEdgeToEdge()
         setContent {
             val context = LocalContext.current
@@ -529,9 +538,8 @@ fun ReminderListScreen(
     val bottomRowVerticalPadding = 12.dp
     val listBottomPadding = segmentedHeight + segmentedBottomSpacing + bottomRowVerticalPadding + 16.dp
 
-    Box(modifier = Modifier.fillMaxSize()) {
-        Scaffold(
-            topBar = {
+    Scaffold(
+        topBar = {
                 if (isSelectionMode) {
                     TopAppBar(
                         title = { Text("已选择 ${selectedIds.size} 项") },
@@ -831,20 +839,7 @@ fun ReminderListScreen(
             }
         }
 
-        androidx.compose.animation.AnimatedVisibility(
-            visible = reminderListUiState.isLoading,
-            enter = androidx.compose.animation.fadeIn(),
-            exit = androidx.compose.animation.fadeOut(
-                animationSpec = androidx.compose.animation.core.tween(durationMillis = 400)
-            )
-        ) {
-            Surface(
-                modifier = Modifier.fillMaxSize(),
-                color = MaterialTheme.colorScheme.background
-            ) { }
-        }
     }
-}
 
 
 
