@@ -277,6 +277,8 @@ fun ShareableReminderImage(
 }
 @Composable
 private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
+    val isToday = dayCount == 0
+    val textToShow = if (isToday) "今" else dayCount.toString()
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -285,7 +287,7 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
         verticalAlignment = Alignment.Bottom,
     ) {
         AutoResizeText(
-            text = dayCount.toString(),
+            text = textToShow,
             style = MaterialTheme.typography.displayLarge.copy(
                 fontSize = 140.sp,
                 fontWeight = FontWeight.Bold,

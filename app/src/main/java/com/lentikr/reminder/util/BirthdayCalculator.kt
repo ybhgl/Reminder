@@ -50,13 +50,20 @@ object BirthdayCalculator {
             val todaySolar = SolarDay.fromYmd(today.year, today.monthValue, today.dayOfMonth)
             val todayLunar = todaySolar.getLunarDay()
             val lunarYearDiff = todayLunar.getYear() - birthLunar.getYear()
-            // 检查今年农历生日是否已过
+            // 检查今年农历生日是否已过（不包含今天）
             val hasPassedThisYear = todayLunar.getMonth() > birthLunar.getMonth() ||
-                (todayLunar.getMonth() == birthLunar.getMonth() && todayLunar.getDay() >= birthLunar.getDay())
-            (lunarYearDiff + if (hasPassedThisYear) 1 else 0).coerceAtLeast(1)
+                (todayLunar.getMonth() == birthLunar.getMonth() && todayLunar.getDay() > birthLunar.getDay())
+            lunarYearDiff + if (hasPassedThisYear) 1 else 0
         } else {
             // 公历：计算公历年份差
-            (Period.between(birthDate, today).years + 1).coerceAtLeast(1)
+            val birthThisYear = try {
+                birthDate.withYear(today.year)
+            } catch (e: Exception) {
+                // 处理 2月29日
+                birthDate.plusYears((today.year - birthDate.year).toLong())
+            }
+            val baseAge = today.year - birthDate.year
+            if (today.isAfter(birthThisYear)) baseAge + 1 else baseAge
         }
 
         val zodiac = getZodiacSign(birthDate.monthValue, birthDate.dayOfMonth)

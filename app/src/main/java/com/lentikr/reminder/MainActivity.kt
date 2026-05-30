@@ -346,10 +346,11 @@ internal fun reminderDisplayInfo(reminder: ReminderItem): ReminderDisplayInfo {
             val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
             if (nextDate == null) {
                 // This is a past, non-repeating event.
+                val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
                 val formattedDate = reminder.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
                 return ReminderDisplayInfo(
-                    headerTitle = buildHeaderTitle(reminder.title, "已结束"),
-                    dayCount = 0,
+                    headerTitle = buildHeaderTitle(reminder.title, "已过"),
+                    dayCount = daysPassed,
                     referenceText = formattedDate,
                     visuals = visuals
                 )
@@ -357,7 +358,11 @@ internal fun reminderDisplayInfo(reminder: ReminderItem): ReminderDisplayInfo {
 
             val daysRemaining = ChronoUnit.DAYS.between(today, nextDate).toInt()
             val formattedDate = nextDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
-            Triple("还有", daysRemaining.coerceAtLeast(0), formattedDate)
+            if (daysRemaining == 0) {
+                Triple("就是", 0, formattedDate)
+            } else {
+                Triple("还有", daysRemaining.coerceAtLeast(0), formattedDate)
+            }
         }
 
         ReminderType.COUNT_UP -> {
@@ -369,10 +374,11 @@ internal fun reminderDisplayInfo(reminder: ReminderItem): ReminderDisplayInfo {
         ReminderType.BIRTHDAY -> {
             val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
             if (nextDate == null) {
+                val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
                 val formattedDate = reminder.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
                 return ReminderDisplayInfo(
                     headerTitle = buildHeaderTitle(reminder.title, "生日已过"),
-                    dayCount = 0,
+                    dayCount = daysPassed,
                     referenceText = formattedDate,
                     visuals = visuals
                 )
@@ -380,7 +386,11 @@ internal fun reminderDisplayInfo(reminder: ReminderItem): ReminderDisplayInfo {
 
             val daysRemaining = ChronoUnit.DAYS.between(today, nextDate).toInt()
             val formattedDate = nextDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
-            Triple("生日还有", daysRemaining.coerceAtLeast(0), formattedDate)
+            if (daysRemaining == 0) {
+                Triple("生日就是", 0, formattedDate)
+            } else {
+                Triple("生日还有", daysRemaining.coerceAtLeast(0), formattedDate)
+            }
         }
     }
 
@@ -439,6 +449,8 @@ private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
 private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
+    val isToday = dayCount == 0
+    val textToShow = if (isToday) "今" else dayCount.toString()
     val suffixText = "天"
     val suffixStyle = MaterialTheme.typography.bodyLarge
     val spacing = 6.dp
@@ -457,7 +469,7 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
             horizontalArrangement = Arrangement.Center
         ) {
             AutoResizeText(
-                text = dayCount.toString(),
+                text = textToShow,
                 style = MaterialTheme.typography.displayLarge.copy(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = (-1).sp
