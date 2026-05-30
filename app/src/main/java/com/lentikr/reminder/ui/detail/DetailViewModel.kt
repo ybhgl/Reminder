@@ -16,6 +16,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.lentikr.reminder.data.ReminderItem
 import com.lentikr.reminder.data.ReminderRepository
+import com.lentikr.reminder.data.ReminderType
+import com.lentikr.reminder.util.BirthdayListItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -36,6 +38,9 @@ class DetailViewModel(
 
     private val _saveResult = MutableSharedFlow<SaveResult>()
     val saveResult = _saveResult.asSharedFlow()
+
+    private val _snackbarMessage = MutableSharedFlow<String>()
+    val snackbarMessage = _snackbarMessage.asSharedFlow()
 
     init {
         viewModelScope.launch {
@@ -118,10 +123,34 @@ class DetailViewModel(
             _saveResult.emit(if (success) SaveResult.Success else SaveResult.Failure)
         }
     }
+
+    fun addBirthdayReminder(item: BirthdayListItem) {
+        val currentReminder = _uiState.value.reminderItem ?: return
+        val label = if (item.age == 0) "出生" else "${item.age}岁生日"
+        val newReminder = ReminderItem(
+            title = "${currentReminder.title}$label",
+            date = item.targetDate,
+            type = ReminderType.ANNUAL,
+            isLunar = false,
+            category = currentReminder.category,
+            isPinned = false,
+            repeatInfo = null
+        )
+        viewModelScope.launch {
+            reminderRepository.insertReminder(newReminder)
+            _snackbarMessage.emit("已添加倒数日：${newReminder.title}")
+            showAddBirthdayDialog(null)
+        }
+    }
+
+    fun showAddBirthdayDialog(item: BirthdayListItem?) {
+        _uiState.update { it.copy(pendingBirthdayItem = item) }
+    }
 }
 
 data class DetailUiState(
-    val reminderItem: ReminderItem? = null
+    val reminderItem: ReminderItem? = null,
+    val pendingBirthdayItem: BirthdayListItem? = null
 )
 
 sealed class SaveResult {

@@ -1,5 +1,6 @@
 package com.lentikr.reminder.ui.detail
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -24,6 +25,7 @@ import com.lentikr.reminder.util.BirthdayListItem
 import java.time.format.DateTimeFormatter
 import androidx.compose.ui.tooling.preview.Preview
 import java.time.LocalDate
+import java.util.Locale
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -75,23 +77,50 @@ fun BirthdayListScreen(
             items(birthdayItems) { item ->
                 BirthdayListItemCard(
                     item = item,
-                    title = reminderItem.title
+                    title = reminderItem.title,
+                    onClick = { viewModel.showAddBirthdayDialog(item) }
                 )
             }
+        }
+
+        uiState.pendingBirthdayItem?.let { item ->
+            val label = if (item.age == 0) "出生" else "${item.age}岁生日"
+            val targetTitle = "${reminderItem.title}$label"
+            AlertDialog(
+                onDismissRequest = { viewModel.showAddBirthdayDialog(null) },
+                title = { Text("添加倒数日") },
+                text = { Text("是否添加“$targetTitle”的倒数日事件？") },
+                confirmButton = {
+                    TextButton(onClick = { viewModel.addBirthdayReminder(item) }) {
+                        Text("添加")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { viewModel.showAddBirthdayDialog(null) }) {
+                        Text("取消")
+                    }
+                }
+            )
         }
     }
 }
 
 @Composable
-private fun BirthdayListItemCard(item: BirthdayListItem, title: String) {
-    val formattedDate = item.targetDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd"))
-    val labelPrefix = if (item.age == 0) "出生" else "${item.age}岁生日"
+private fun BirthdayListItemCard(
+    item: BirthdayListItem,
+    title: String,
+    onClick: () -> Unit
+) {
+    val formattedDate = item.targetDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
+    val labelPrefix = if (item.age == 0) "出生" else "${item.age} 岁生日"
     val statusText = if (item.isPast) "已经" else "还有"
-    val dayCountText = "${kotlin.math.abs(item.dayCount)}天"
-    val displayText = "$title $labelPrefix $statusText $dayCountText"
+    val dayCountText = "${kotlin.math.abs(item.dayCount)} 天"
+    val displayText = "$title $labelPrefix\n$statusText $dayCountText"
 
     Card(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(onClick = onClick),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
     ) {
         Row(

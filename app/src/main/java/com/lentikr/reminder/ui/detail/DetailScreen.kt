@@ -89,6 +89,12 @@ fun DetailScreen(
         }
     }
 
+    LaunchedEffect(Unit) {
+        viewModel.snackbarMessage.collect { message ->
+            snackbarHostState.showSnackbar(message)
+        }
+    }
+
     LaunchedEffect(captureAction) {
         val pendingAction = captureAction ?: return@LaunchedEffect
         try {
