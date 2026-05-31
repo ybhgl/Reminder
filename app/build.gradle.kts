@@ -77,6 +77,20 @@ android {
         compose = true
         buildConfig = true
     }
+    // 自定义生成的 APK 文件名
+    applicationVariants.all {
+        val variant = this
+        variant.outputs.forEach { output ->
+            // 将输出强转为 ApkVariantOutputImpl 以便修改文件名
+            val apkOutput = output as? com.android.build.gradle.internal.api.ApkVariantOutputImpl
+            if (apkOutput != null) {
+                // 获取当前正在打包的 ABI（如 arm64-v8a），如果取不到则默认为 universal
+                val abi = apkOutput.filters.find { it.filterType == "ABI" }?.identifier ?: "universal"
+                // 拼接成你想要的文件名：Reminder-v2.0.0-arm64-v8a-release.apk
+                apkOutput.outputFileName = "Reminder-v${variant.versionName}-$abi-${variant.buildType.name}.apk"
+            }
+        }
+    }
 }
 
 dependencies {
