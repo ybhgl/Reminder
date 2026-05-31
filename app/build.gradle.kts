@@ -10,7 +10,7 @@ plugins {
 }
 
 android {
-    namespace = "com.lentikr.reminder"
+    namespace = "com.ybhgl.reminder"
     compileSdk {
         version = release(36)
     }
@@ -41,11 +41,11 @@ android {
     }
 
     defaultConfig {
-        applicationId = "com.lentikr.reminder"
+        applicationId = "com.ybhgl.reminder"
         minSdk = 28
         targetSdk = 36
-        versionCode = 16
-        versionName = "1.7.2"// 修复卡片日期显示不全
+        versionCode = 20
+        versionName = "2.0.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
