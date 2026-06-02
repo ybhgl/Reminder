@@ -73,6 +73,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -88,6 +89,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -99,6 +101,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.ui.ExperimentalComposeUiApi
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
@@ -500,6 +503,7 @@ fun ReminderListScreen(
     var viewMode by rememberSaveable { mutableStateOf(ReminderViewMode.CARD) }
     var hasLoaded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
 
     val isSelectionMode = reminderListUiState.isSelectionMode
     val selectedIds = reminderListUiState.selectedIds
@@ -553,6 +557,7 @@ fun ReminderListScreen(
                 if (isSelectionMode) {
                     TopAppBar(
                         title = { Text("已选择 ${selectedIds.size} 项") },
+                        scrollBehavior = scrollBehavior,
                         actions = {
                             Button(
                                 onClick = { viewModel.exitSelectionMode() },
@@ -570,7 +575,15 @@ fun ReminderListScreen(
                     )
                 } else {
                     TopAppBar(
-                        title = { Text("Reminder") },
+                        title = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.reminder),
+                                contentDescription = "Reminder",
+                                modifier = Modifier.height(28.dp),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        scrollBehavior = scrollBehavior,
                         actions = {
                             IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
                                 Icon(
@@ -583,7 +596,7 @@ fun ReminderListScreen(
                 }
             },
             floatingActionButton = {},
-            modifier = modifier
+            modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
         ) { innerPadding ->
             Box(
                 modifier = Modifier
