@@ -51,14 +51,25 @@ class AddReminderViewModel(
     var reminderUiState by mutableStateOf(ReminderUiState())
         private set
 
+    private var initialUiState: ReminderUiState = ReminderUiState()
+
     init {
         reminderId?.let { id ->
             viewModelScope.launch {
                 reminderRepository.getReminderStream(id).firstOrNull()?.let { reminder ->
-                    reminderUiState = reminder.toReminderUiState()
+                    val state = reminder.toReminderUiState()
+                    reminderUiState = state
+                    initialUiState = state
                 }
             }
         }
+    }
+
+    fun hasUnsavedChanges(): Boolean {
+        // 排除掉 UI 相关的状态，只比较数据
+        val currentData = reminderUiState.copy(showRepeatDialog = false)
+        val initialData = initialUiState.copy(showRepeatDialog = false)
+        return currentData != initialData
     }
 
     /**

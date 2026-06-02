@@ -1,7 +1,10 @@
 package com.ybhgl.reminder.ui.add
 
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -80,6 +83,7 @@ fun AddReminderScreen(
     val uiState = viewModel.reminderUiState
     val isEditing = uiState.id != 0
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
+    var showUnsavedChangesDialog by remember { mutableStateOf(false) }
     val categoryOptions by viewModel.categorySuggestions.collectAsState()
     var isCategoryMenuExpanded by remember { mutableStateOf(false) }
     val density = LocalDensity.current
@@ -94,12 +98,22 @@ fun AddReminderScreen(
         disabledPlaceholderColor = MaterialTheme.colorScheme.onSurfaceVariant
     )
 
+    val handleBack = {
+        if (viewModel.hasUnsavedChanges()) {
+            showUnsavedChangesDialog = true
+        } else {
+            onNavigateUp()
+        }
+    }
+
+    BackHandler(enabled = true, onBack = handleBack)
+
     Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(if (isEditing) "编辑提醒" else "新增提醒") },
                 navigationIcon = {
-                    IconButton(onClick = onNavigateUp) {
+                    IconButton(onClick = handleBack) {
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回"
@@ -114,7 +128,8 @@ fun AddReminderScreen(
             modifier = Modifier
                 .padding(innerPadding)
                 .padding(16.dp)
-                .fillMaxSize(),
+                .fillMaxSize()
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 1. 标题
@@ -347,8 +362,6 @@ fun AddReminderScreen(
                 )
             }
 
-            Spacer(Modifier.weight(1f))
-
             if (isEditing) {
                 OutlinedButton(
                     onClick = { showDeleteConfirmDialog = true },
@@ -424,6 +437,29 @@ fun AddReminderScreen(
             ) {
                 Text(if (isEditing) "保存修改" else "保存")
             }
+        }
+
+        if (showUnsavedChangesDialog) {
+            AlertDialog(
+                onDismissRequest = { showUnsavedChangesDialog = false },
+                title = { Text("未保存的更改") },
+                text = { Text("您有未保存的更改，确定要退出吗？") },
+                confirmButton = {
+                    TextButton(
+                        onClick = {
+                            showUnsavedChangesDialog = false
+                            onNavigateUp()
+                        }
+                    ) {
+                        Text("确定退出")
+                    }
+                },
+                dismissButton = {
+                    TextButton(onClick = { showUnsavedChangesDialog = false }) {
+                        Text("取消")
+                    }
+                }
+            )
         }
 
         }
