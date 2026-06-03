@@ -120,9 +120,14 @@ fun ReminderSettingScreen(
     ) { padding ->
         LazyColumn(
             modifier = Modifier
-                .padding(padding)
-                .fillMaxSize()
-                .padding(16.dp),
+                .padding(top = padding.calculateTopPadding())
+                .fillMaxSize(),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 16.dp,
+                bottom = 16.dp + padding.calculateBottomPadding()
+            ),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             item {

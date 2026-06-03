@@ -12,6 +12,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.*
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
@@ -140,8 +141,8 @@ fun DetailScreen(
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues)
-                .padding(16.dp),
+                .padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding() + 16.dp)
+                .padding(horizontal = 16.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
             Spacer(modifier = Modifier.weight(0.1f))
@@ -199,6 +200,7 @@ fun DetailScreen(
 fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
     CenterAlignedTopAppBar(
         title = { Text("详情") },
+        windowInsets = TopAppBarDefaults.windowInsets,
         navigationIcon = {
             IconButton(onClick = onBackClick) {
                 Icon(

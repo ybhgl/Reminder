@@ -100,6 +100,10 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
@@ -154,6 +158,15 @@ import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.activity.SystemBarStyle
+import androidx.compose.ui.graphics.toArgb
 
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -165,7 +178,10 @@ class MainActivity : ComponentActivity() {
             viewModel.reminderListUiState.value.isLoading
         }
 
-        enableEdgeToEdge()
+        enableEdgeToEdge(
+            statusBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT),
+            navigationBarStyle = SystemBarStyle.auto(android.graphics.Color.TRANSPARENT, android.graphics.Color.TRANSPARENT)
+        )
         setContent {
             val context = LocalContext.current
             val themeFlow = remember(context) { themeOptionFlow(context) }
@@ -660,6 +676,77 @@ fun ReminderListScreen(
     var hasLoaded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
+    
+    var topBarHeightPx by remember { mutableStateOf(0f) }
+    LaunchedEffect(topBarHeightPx) {
+        if (topBarHeightPx > 0f) {
+            scrollBehavior.state.heightOffsetLimit = -topBarHeightPx
+        }
+    }
+
+    val customNestedScrollConnection = remember(scrollBehavior) {
+        object : NestedScrollConnection {
+            private var accumulativeDrag = 0f
+            private var isThresholdPassed = false
+
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    accumulativeDrag += available.y
+                    if (!isThresholdPassed) {
+                        val thresholdPx = 18f
+                        if (kotlin.math.abs(accumulativeDrag) > thresholdPx) {
+                            isThresholdPassed = true
+                        } else {
+                            return Offset.Zero
+                        }
+                    }
+                    val dampingFactor = 0.5f
+                    val dampedAvailable = available.copy(y = available.y * dampingFactor)
+                    val consumed = scrollBehavior.nestedScrollConnection.onPreScroll(dampedAvailable, source)
+                    return consumed.copy(y = consumed.y / dampingFactor)
+                }
+                return scrollBehavior.nestedScrollConnection.onPreScroll(available, source)
+            }
+
+            override fun onPostScroll(
+                consumed: Offset,
+                available: Offset,
+                source: NestedScrollSource
+            ): Offset {
+                if (source == NestedScrollSource.UserInput) {
+                    if (!isThresholdPassed) return Offset.Zero
+                    val dampingFactor = 0.5f
+                    val dampedAvailable = available.copy(y = available.y * dampingFactor)
+                    val consumedByTopBar = scrollBehavior.nestedScrollConnection.onPostScroll(
+                        consumed.copy(y = consumed.y * dampingFactor),
+                        dampedAvailable,
+                        source
+                    )
+                    return consumedByTopBar.copy(y = consumedByTopBar.y / dampingFactor)
+                }
+                return scrollBehavior.nestedScrollConnection.onPostScroll(consumed, available, source)
+            }
+
+            override suspend fun onPreFling(available: Velocity): Velocity {
+                accumulativeDrag = 0f
+                isThresholdPassed = false
+                val dampingFactor = 0.5f
+                val dampedVelocity = available.copy(y = available.y * dampingFactor)
+                val consumed = scrollBehavior.nestedScrollConnection.onPreFling(dampedVelocity)
+                return consumed.copy(y = consumed.y / dampingFactor)
+            }
+
+            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+                val dampingFactor = 0.5f
+                val dampedAvailable = available.copy(y = available.y * dampingFactor)
+                val consumedByTopBar = scrollBehavior.nestedScrollConnection.onPostFling(
+                    consumed.copy(y = consumed.y * dampingFactor),
+                    dampedAvailable
+                )
+                return consumedByTopBar.copy(y = consumedByTopBar.y / dampingFactor)
+            }
+        }
+    }
 
     val isSelectionMode = reminderListUiState.isSelectionMode
     val selectedIds = reminderListUiState.selectedIds
@@ -710,10 +797,38 @@ fun ReminderListScreen(
 
     Scaffold(
         topBar = {
+            val topAppBarColors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                actionIconContentColor = MaterialTheme.colorScheme.onSurface
+            )
+            val topAppBarModifier = Modifier.background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                        Color.Transparent
+                    )
+                )
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged {
+                        topBarHeightPx = it.height.toFloat()
+                    }
+                    .graphicsLayer {
+                        translationY = scrollBehavior.state.heightOffset
+                    }
+                    .then(topAppBarModifier)
+            ) {
                 if (isSelectionMode) {
                     TopAppBar(
                         title = { Text("已选择 ${selectedIds.size} 项") },
-                        scrollBehavior = scrollBehavior,
+                        windowInsets = TopAppBarDefaults.windowInsets,
+                        colors = topAppBarColors,
                         actions = {
                             Button(
                                 onClick = { viewModel.exitSelectionMode() },
@@ -739,7 +854,8 @@ fun ReminderListScreen(
                                 tint = MaterialTheme.colorScheme.onSurface
                             )
                         },
-                        scrollBehavior = scrollBehavior,
+                        windowInsets = TopAppBarDefaults.windowInsets,
+                        colors = topAppBarColors,
                         actions = {
                             IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
                                 Icon(
@@ -750,137 +866,151 @@ fun ReminderListScreen(
                         }
                     )
                 }
-            },
-            floatingActionButton = {},
-            modifier = modifier.nestedScroll(scrollBehavior.nestedScrollConnection)
-        ) { innerPadding ->
-            Box(
+            }
+        },
+        floatingActionButton = {},
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = modifier.nestedScroll(customNestedScrollConnection)
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+        ) {
+            HorizontalPager(
+                state = pagerState,
                 modifier = Modifier
-                    .padding(innerPadding)
-                    .fillMaxSize()
-            ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier.fillMaxSize(),
-                    beyondViewportPageCount = 1
-                ) { page ->
-                    val filteredItems = remember(reminderListUiState.itemList, page) {
-                        reminderListUiState.itemList.filter(tabs[page].filter)
-                    }
-                    val sections = remember(filteredItems) {
-                        buildReminderSections(filteredItems)
-                    }
-                    val handleItemClick = remember(isSelectionMode) {
-                        { item: ReminderItem ->
-                            if (isSelectionMode) {
-                                viewModel.toggleSelection(item.id)
-                            } else {
-                                navController.navigate(Routes.detailReminder(item.id))
-                            }
+                    .fillMaxSize(),
+                beyondViewportPageCount = 1
+            ) { page ->
+                val filteredItems = remember(reminderListUiState.itemList, page) {
+                    reminderListUiState.itemList.filter(tabs[page].filter)
+                }
+                val sections = remember(filteredItems) {
+                    buildReminderSections(filteredItems)
+                }
+                val handleItemClick = remember(isSelectionMode) {
+                    { item: ReminderItem ->
+                        if (isSelectionMode) {
+                            viewModel.toggleSelection(item.id)
+                        } else {
+                            navController.navigate(Routes.detailReminder(item.id))
                         }
                     }
-                    val handleItemLongPress = remember(isSelectionMode) {
-                        { item: ReminderItem ->
-                            if (isSelectionMode) {
-                                viewModel.toggleSelection(item.id)
-                            } else {
-                                viewModel.startSelection(item.id)
-                            }
-                        }
-                    }
-
-                    if (reminderListUiState.isLoading) {
-                        // 正在加载时不显示 EmptyStateCard，避免闪屏
-                        Box(modifier = Modifier.fillMaxSize())
-                    } else if (sections.isEmpty()) {
-                        EmptyStateCard(
-                            modifier = Modifier
-                                .padding(horizontal = 24.dp, vertical = 32.dp)
-                                .padding(bottom = listBottomPadding)
-                                .fillMaxWidth()
-                        )
-                    } else {
-                        LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = 16.dp,
-                                end = 16.dp,
-                                top = 16.dp,
-                                bottom = listBottomPadding
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
-                        ) {
-                            sections.forEach { section ->
-                                item(key = "header_${section.key}_${viewMode.name}") {
-                                    Text(
-                                        text = section.title,
-                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                        modifier = Modifier.padding(bottom = 8.dp)
-                                    )
-                                }
-
-                                if (viewMode == ReminderViewMode.CARD) {
-                                    val rows = section.items.chunked(2)
-                                    items(
-                                        count = rows.size,
-                                        key = { index -> "row_${section.key}_${index}_${viewMode.name}" }
-                                    ) { rowIndex ->
-                                        val rowItems = rows[rowIndex]
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                        ) {
-                                            rowItems.forEach { reminder ->
-                                                Box(modifier = Modifier.weight(1f)) {
-                                                    ReminderSummaryCard(
-                                                        reminder = reminder,
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .heightIn(min = 180.dp),
-                                                        isSelectionMode = isSelectionMode,
-                                                        isSelected = reminder.id in selectedIds,
-                                                        onClick = { handleItemClick(reminder) },
-                                                        onLongPress = { handleItemLongPress(reminder) },
-                                                        onToggleSelection = { viewModel.toggleSelection(reminder.id) }
-                                                    )
-                                                }
-                                            }
-                                            if (rowItems.size < 2) {
-                                                Spacer(modifier = Modifier.weight(1f))
-                                            }
-                                        }
-                                    }
-                                } else {
-                                    items(
-                                        items = section.items,
-                                        key = { it.id }
-                                    ) { reminder ->
-                                        ReminderListItem(
-                                            reminder = reminder,
-                                            isSelectionMode = isSelectionMode,
-                                            isSelected = reminder.id in selectedIds,
-                                            onClick = { handleItemClick(reminder) },
-                                            onLongPress = { handleItemLongPress(reminder) },
-                                            onToggleSelection = { viewModel.toggleSelection(reminder.id) }
-                                        )
-                                    }
-                                }
-
-                                // 节之间留出一些间距
-                                item {
-                                    Spacer(modifier = Modifier.height(8.dp))
-                                }
-                            }
+                }
+                val handleItemLongPress = remember(isSelectionMode) {
+                    { item: ReminderItem ->
+                        if (isSelectionMode) {
+                            viewModel.toggleSelection(item.id)
+                        } else {
+                            viewModel.startSelection(item.id)
                         }
                     }
                 }
 
-                Box(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .fillMaxWidth()
-                        .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
-                ) {
+                if (reminderListUiState.isLoading) {
+                    // 正在加载时不显示 EmptyStateCard，避免闪屏
+                    Box(modifier = Modifier.fillMaxSize())
+                } else if (sections.isEmpty()) {
+                    EmptyStateCard(
+                        modifier = Modifier
+                            .padding(horizontal = 24.dp, vertical = 32.dp)
+                            .padding(top = innerPadding.calculateTopPadding(), bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                            .fillMaxWidth()
+                            .graphicsLayer {
+                                translationY = scrollBehavior.state.heightOffset
+                            }
+                    )
+                } else {
+                    LazyColumn(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .graphicsLayer {
+                                translationY = scrollBehavior.state.heightOffset
+                            },
+                        contentPadding = PaddingValues(
+                            start = 16.dp,
+                            end = 16.dp,
+                            top = innerPadding.calculateTopPadding(),
+                            bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+                        ),
+                        verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
+                    ) {
+                        sections.forEach { section ->
+                            item(key = "header_${section.key}_${viewMode.name}") {
+                                Text(
+                                    text = section.title,
+                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                                    modifier = Modifier.padding(bottom = 8.dp)
+                                )
+                            }
+
+                            if (viewMode == ReminderViewMode.CARD) {
+                                val rows = section.items.chunked(2)
+                                items(
+                                    count = rows.size,
+                                    key = { index -> "row_${section.key}_${index}_${viewMode.name}" }
+                                ) { rowIndex ->
+                                    val rowItems = rows[rowIndex]
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                    ) {
+                                        rowItems.forEach { reminder ->
+                                            Box(modifier = Modifier.weight(1f)) {
+                                                ReminderSummaryCard(
+                                                    reminder = reminder,
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .heightIn(min = 180.dp),
+                                                    isSelectionMode = isSelectionMode,
+                                                    isSelected = reminder.id in selectedIds,
+                                                    onClick = { handleItemClick(reminder) },
+                                                    onLongPress = { handleItemLongPress(reminder) },
+                                                    onToggleSelection = { viewModel.toggleSelection(reminder.id) }
+                                                )
+                                            }
+                                        }
+                                        if (rowItems.size < 2) {
+                                            Spacer(modifier = Modifier.weight(1f))
+                                        }
+                                    }
+                                }
+                            } else {
+                                items(
+                                    items = section.items,
+                                    key = { it.id }
+                                ) { reminder ->
+                                    ReminderListItem(
+                                        reminder = reminder,
+                                        isSelectionMode = isSelectionMode,
+                                        isSelected = reminder.id in selectedIds,
+                                        onClick = { handleItemClick(reminder) },
+                                        onLongPress = { handleItemLongPress(reminder) },
+                                        onToggleSelection = { viewModel.toggleSelection(reminder.id) }
+                                    )
+                                }
+                            }
+
+                            // 节之间留出一些间距
+                            item {
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
+                        }
+                    }
+                }
+            }
+
+            StatusBarScrim(
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+
+            Box(
+                modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .fillMaxWidth()
+                    .padding(bottom = segmentedBottomSpacing + innerPadding.calculateBottomPadding(), start = 24.dp, end = 24.dp)
+            ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -1544,4 +1674,25 @@ private fun EmptyStateCard(modifier: Modifier = Modifier) {
             )
         }
     }
+}
+
+@Composable
+private fun StatusBarScrim(modifier: Modifier = Modifier) {
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val scrimHeight = statusBarHeight + 32.dp
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(scrimHeight)
+            .background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.45f),
+                        Color.Black.copy(alpha = 0.3f),
+                        Color.Black.copy(alpha = 0.15f),
+                        Color.Transparent
+                    )
+                )
+            )
+    )
 }

@@ -63,6 +63,8 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.BuildConfig
@@ -128,6 +130,7 @@ fun SettingsScreen(
         topBar = {
             TopAppBar(
                 title = { Text("设置") },
+                windowInsets = TopAppBarDefaults.windowInsets,
                 navigationIcon = {
                     IconButton(onClick = onNavigateBack) {
                         Icon(
@@ -143,10 +146,10 @@ fun SettingsScreen(
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .padding(innerPadding)
                 .fillMaxSize()
                 .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp, vertical = 12.dp),
+                .padding(horizontal = 16.dp)
+                .padding(top = innerPadding.calculateTopPadding() + 12.dp, bottom = innerPadding.calculateBottomPadding() + 12.dp),
             verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
     Text(

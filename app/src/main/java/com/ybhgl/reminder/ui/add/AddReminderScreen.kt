@@ -43,6 +43,8 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -133,6 +135,7 @@ fun AddReminderScreen(
         topBar = {
             TopAppBar(
                 title = { Text(if (isEditing) "编辑提醒" else "新增提醒") },
+                windowInsets = TopAppBarDefaults.windowInsets,
                 navigationIcon = {
                     IconButton(onClick = handleBack) {
                         Icon(
@@ -161,10 +164,10 @@ fun AddReminderScreen(
     ) { innerPadding ->
         Column(
             modifier = Modifier
-                .padding(innerPadding)
-                .padding(16.dp)
                 .fillMaxSize()
-                .verticalScroll(rememberScrollState()),
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp)
+                .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding() + 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             // 1. 标题

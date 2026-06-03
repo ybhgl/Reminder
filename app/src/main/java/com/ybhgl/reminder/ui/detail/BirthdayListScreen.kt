@@ -7,6 +7,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,6 +34,7 @@ fun BirthdayListScreen(
         topBar = {
             TopAppBar(
                 title = { Text("生日列表") },
+                windowInsets = TopAppBarDefaults.windowInsets,
                 navigationIcon = {
                     IconButton(onClick = { navController.navigateUp() }) {
                         Icon(
@@ -48,7 +50,8 @@ fun BirthdayListScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(paddingValues),
+                    .padding(top = paddingValues.calculateTopPadding())
+                    .padding(bottom = paddingValues.calculateBottomPadding()),
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
@@ -63,8 +66,13 @@ fun BirthdayListScreen(
         LazyColumn(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(paddingValues),
-            contentPadding = PaddingValues(16.dp),
+                .padding(top = paddingValues.calculateTopPadding()),
+            contentPadding = PaddingValues(
+                start = 16.dp,
+                end = 16.dp,
+                top = 16.dp,
+                bottom = 16.dp + paddingValues.calculateBottomPadding()
+            ),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(birthdayItems) { item ->
