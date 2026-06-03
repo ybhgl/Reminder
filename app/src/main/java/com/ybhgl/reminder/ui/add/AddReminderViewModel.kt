@@ -56,6 +56,9 @@ class AddReminderViewModel(
     var reminderUiState by mutableStateOf(ReminderUiState())
         private set
 
+    var isInitialized by mutableStateOf(reminderId == null)
+        private set
+
     private var initialUiState: ReminderUiState = ReminderUiState()
 
     init {
@@ -65,6 +68,7 @@ class AddReminderViewModel(
                     val state = reminder.toReminderUiState()
                     reminderUiState = state
                     initialUiState = state
+                    isInitialized = true
                 }
             }
         }
@@ -113,8 +117,16 @@ class AddReminderViewModel(
         }
     }
 
-    suspend fun deleteReminder(): Boolean {
+    suspend fun deleteReminder(context: Context): Boolean {
         val id = reminderId ?: return false
+        // Fetch item to cancel reminders
+        val item = reminderRepository.getReminderStream(id).firstOrNull()
+        
+        if (item != null) {
+            ReminderScheduler.cancelReminder(context, item)
+            CalendarManager.deleteEvent(context, item)
+        }
+        
         reminderRepository.deleteReminderById(id)
         return true
     }

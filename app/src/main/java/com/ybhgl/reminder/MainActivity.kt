@@ -279,16 +279,23 @@ fun ReminderApp() {
     }
 
     val permissionState = rememberMultiplePermissionsState(permissions = permissionsToRequest)
+    var showPermissionRationale by rememberSaveable { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
         if (!permissionState.allPermissionsGranted) {
+            showPermissionRationale = true
             permissionState.launchMultiplePermissionRequest()
         }
     }
 
+    if (permissionState.allPermissionsGranted) {
+        showPermissionRationale = false
+    }
+
     val navController = rememberNavController()
-    NavHost(
-        navController = navController,
+    Box(modifier = Modifier.fillMaxSize()) {
+        NavHost(
+            navController = navController,
         startDestination = Routes.REMINDER_LIST
     ) {
         composable(
@@ -426,7 +433,7 @@ fun ReminderApp() {
             BirthdayListScreen(navController = navController)
         }
         composable(
-            Routes.SETTINGS,
+            route = Routes.SETTINGS,
             enterTransition = {
                 slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it })
             },
@@ -437,6 +444,25 @@ fun ReminderApp() {
             SettingsScreen(onNavigateBack = { navController.navigateUp() })
         }
     }
+
+    if (showPermissionRationale && !permissionState.allPermissionsGranted) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(16.dp)
+                .align(Alignment.TopCenter)
+                .offset(y = 32.dp),
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.secondaryContainer),
+            elevation = CardDefaults.cardElevation(defaultElevation = 8.dp)
+        ) {
+            Text(
+                text = "为保证日程提醒和通知功能正常使用，应用需申请日历及通知权限。本应用不会收集您的隐私数据。",
+                modifier = Modifier.padding(16.dp),
+                style = MaterialTheme.typography.bodyMedium
+            )
+        }
+    }
+}
 }
 
 private val ReminderCardShape = RoundedCornerShape(16.dp)
@@ -959,6 +985,11 @@ fun ReminderListScreen(
                             Button(
                                 onClick = {
                                     showDeleteDialog = false
+                                    val itemsToDelete = reminderListUiState.itemList.filter { it.id in reminderListUiState.selectedIds }
+                                    itemsToDelete.forEach { itemToDelete ->
+                                        com.ybhgl.reminder.util.ReminderScheduler.cancelReminder(context, itemToDelete)
+                                        com.ybhgl.reminder.util.CalendarManager.deleteEvent(context, itemToDelete)
+                                    }
                                     viewModel.deleteSelected()
                                 },
                                 shape = RoundedCornerShape(12.dp),

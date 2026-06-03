@@ -32,6 +32,9 @@ class ReminderSettingViewModel(
     var uiState by mutableStateOf(ReminderSettingUiState())
         private set
 
+    var isInitialized by mutableStateOf(false)
+        private set
+
     private var originalConfig: ReminderNotificationConfig = ReminderNotificationConfig()
 
     init {
@@ -48,6 +51,7 @@ class ReminderSettingViewModel(
                     // Use default
                 }
             }
+            isInitialized = true
         }
     }
 

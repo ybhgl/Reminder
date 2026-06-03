@@ -63,8 +63,12 @@ fun ReminderSettingScreen(
     )
 
     BackHandler {
-        if (viewModel.hasChanges()) {
-            showExitDialog = true
+        if (viewModel.isInitialized) {
+            if (viewModel.hasChanges()) {
+                showExitDialog = true
+            } else {
+                onNavigateBack()
+            }
         } else {
             onNavigateBack()
         }
@@ -76,8 +80,12 @@ fun ReminderSettingScreen(
                 title = { Text("提醒设置") },
                 navigationIcon = {
                     IconButton(onClick = {
-                        if (viewModel.hasChanges()) {
-                            showExitDialog = true
+                        if (viewModel.isInitialized) {
+                            if (viewModel.hasChanges()) {
+                                showExitDialog = true
+                            } else {
+                                onNavigateBack()
+                            }
                         } else {
                             onNavigateBack()
                         }
@@ -86,7 +94,9 @@ fun ReminderSettingScreen(
                     }
                 },
                 actions = {
-                    IconButton(onClick = {
+                    IconButton(
+                        enabled = viewModel.isInitialized,
+                        onClick = {
                         val missingPermissions = mutableListOf<String>()
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && notificationPermissionState?.status?.isGranted == false) {
                             missingPermissions.add("通知权限")

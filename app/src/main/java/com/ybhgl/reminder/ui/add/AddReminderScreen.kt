@@ -96,6 +96,7 @@ fun AddReminderScreen(
     var textFieldWidth by remember { mutableStateOf(0.dp) }
     val zoneId = ZoneId.systemDefault()
     val currentLunarLabel = remember(uiState.date) { CalendarUtil.getLunarMonthDayLabel(uiState.date) }
+    val context = LocalContext.current
 
     // Observe result from ReminderSettingScreen
     val navBackStackEntry = navController.currentBackStackEntry
@@ -115,8 +116,12 @@ fun AddReminderScreen(
     )
 
     val handleBack = {
-        if (viewModel.hasUnsavedChanges()) {
-            showUnsavedChangesDialog = true
+        if (viewModel.isInitialized) {
+            if (viewModel.hasUnsavedChanges()) {
+                showUnsavedChangesDialog = true
+            } else {
+                onNavigateUp()
+            }
         } else {
             onNavigateUp()
         }
@@ -137,13 +142,12 @@ fun AddReminderScreen(
                     }
                 },
                 actions = {
-                    val context = LocalContext.current
                     IconButton(
                         onClick = {
                             viewModel.saveReminder(context)
                             onNavigateUp()
                         },
-                        enabled = uiState.title.isNotBlank()
+                        enabled = viewModel.isInitialized && uiState.title.isNotBlank()
                     ) {
                         Icon(
                             imageVector = Icons.Default.Save,
@@ -442,7 +446,7 @@ fun AddReminderScreen(
                                 onClick = {
                                     showDeleteConfirmDialog = false
                                     coroutineScope.launch {
-                                        if (viewModel.deleteReminder()) {
+                                        if (viewModel.deleteReminder(context)) {
                                             onDeleted()
                                         }
                                     }
