@@ -119,6 +119,7 @@ import androidx.navigation.navArgument
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.AddReminderScreen
+import com.ybhgl.reminder.ui.add.ReminderSettingScreen
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
@@ -184,10 +185,19 @@ object Routes {
     const val DETAIL_REMINDER_PATTERN = "$DETAIL_REMINDER_BASE/{reminderId}"
     const val BIRTHDAY_LIST_BASE = "birthday_list"
     const val BIRTHDAY_LIST_PATTERN = "$BIRTHDAY_LIST_BASE/{reminderId}"
+    const val REMINDER_SETTING_BASE = "reminder_setting"
+    const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}"
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
+    fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null): String {
+        val base = "$REMINDER_SETTING_BASE?"
+        val idPart = if (reminderId != null) "reminderId=$reminderId" else ""
+        val configPart = if (initialConfig != null) "initialConfig=$initialConfig" else ""
+        val typePart = if (reminderType != null) "reminderType=$reminderType" else ""
+        return base + listOf(idPart, configPart, typePart).filter { it.isNotEmpty() }.joinToString("&")
+    }
 }
 
 @OptIn(ExperimentalComposeUiApi::class)
@@ -242,7 +252,10 @@ fun ReminderApp() {
                 }
             }
         ) {
-            AddReminderScreen(onNavigateUp = { navController.navigateUp() })
+            AddReminderScreen(
+                onNavigateUp = { navController.navigateUp() },
+                navController = navController
+            )
         }
         composable(
             route = Routes.EDIT_REMINDER_PATTERN,
@@ -266,8 +279,37 @@ fun ReminderApp() {
         ) {
             AddReminderScreen(
                 onNavigateUp = { navController.navigateUp() },
+                navController = navController,
                 onDeleted = {
                     navController.popBackStack(Routes.REMINDER_LIST, inclusive = false)
+                }
+            )
+        }
+        composable(
+            route = Routes.REMINDER_SETTING_PATTERN,
+            arguments = listOf(
+                navArgument("reminderId") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("initialConfig") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("reminderType") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                }
+            )
+        ) {
+            ReminderSettingScreen(
+                onNavigateBack = { navController.popBackStack() },
+                onSave = { configJson ->
+                    navController.previousBackStackEntry?.savedStateHandle?.set("notificationConfig", configJson)
+                    navController.popBackStack()
                 }
             )
         }

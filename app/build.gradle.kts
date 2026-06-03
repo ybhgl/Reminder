@@ -110,6 +110,7 @@ dependencies {
     implementation(libs.androidx.room.ktx)
     ksp(libs.androidx.room.compiler)
     implementation(libs.androidx.lifecycle.viewmodel.compose)
+    implementation("com.google.accompanist:accompanist-permissions:0.36.0")
     implementation(libs.tyme4kt)
     implementation(libs.kotlinx.serialization.json)
     implementation(libs.accompanist.pager)

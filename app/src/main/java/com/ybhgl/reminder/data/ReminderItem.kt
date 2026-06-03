@@ -9,6 +9,29 @@ import kotlinx.serialization.encoding.Decoder
 import kotlinx.serialization.encoding.Encoder
 import kotlinx.serialization.ExperimentalSerializationApi
 import java.time.LocalDate
+import java.time.LocalTime
+
+@Serializable
+enum class ReminderMethod {
+    APP_NOTIFICATION,
+    SYSTEM_CALENDAR,
+    BOTH
+}
+
+@Serializable
+data class NotificationTime(
+    val daysBefore: Int, // For COUNT_UP, this could mean "days after" or "days reached"
+    val time: @Serializable(with = LocalTimeSerializer::class) LocalTime
+)
+
+@Serializable
+data class ReminderNotificationConfig(
+    val isEnabled: Boolean = false,
+    val useAppNotification: Boolean = true,
+    val useSystemCalendar: Boolean = false,
+    val isContinuous: Boolean = false,
+    val notificationTimes: List<NotificationTime> = emptyList()
+)
 
 @Serializable
 enum class RepeatUnit {
@@ -43,7 +66,8 @@ data class ReminderItem(
     val isLunar: Boolean,
     val category: String,
     val isPinned: Boolean,
-    val repeatInfo: RepeatInfo? = null
+    val repeatInfo: RepeatInfo? = null,
+    val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig()
 )
 
 @Serializer(forClass = LocalDate::class)
@@ -54,5 +78,16 @@ object LocalDateSerializer {
 
     override fun deserialize(decoder: Decoder): LocalDate {
         return LocalDate.parse(decoder.decodeString())
+    }
+}
+
+@Serializer(forClass = LocalTime::class)
+object LocalTimeSerializer {
+    override fun serialize(encoder: Encoder, value: LocalTime) {
+        encoder.encodeString(value.toString())
+    }
+
+    override fun deserialize(decoder: Decoder): LocalTime {
+        return LocalTime.parse(decoder.decodeString())
     }
 }

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.ybhgl.reminder.ReminderApplication
 import com.ybhgl.reminder.ui.add.AddReminderViewModel
+import com.ybhgl.reminder.ui.add.ReminderSettingViewModel
 import com.ybhgl.reminder.ui.detail.DetailViewModel
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.SettingsViewModel
@@ -16,6 +17,15 @@ import com.ybhgl.reminder.ui.settings.SettingsViewModel
  */
 object AppViewModelProvider {
     val Factory = viewModelFactory {
+        // Initializer for ReminderSettingViewModel
+        initializer {
+            val application = reminderApplication()
+            ReminderSettingViewModel(
+                savedStateHandle = createSavedStateHandle(),
+                reminderRepository = application.container.reminderRepository
+            )
+        }
+
         // Initializer for AddReminderViewModel
         initializer {
             val application = reminderApplication()

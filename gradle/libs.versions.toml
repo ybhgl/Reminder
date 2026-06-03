@@ -1,5 +1,6 @@
 [versions]
 accompanistPager = "0.36.0"
+accompanistPermissions = "0.36.0"
 agp = "9.2.1"
 kotlin = "2.2.21"
 coreKtx = "1.17.0"

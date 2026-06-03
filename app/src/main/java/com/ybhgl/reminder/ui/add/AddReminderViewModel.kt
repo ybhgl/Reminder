@@ -9,6 +9,7 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.ReminderItem
+import com.ybhgl.reminder.data.ReminderNotificationConfig
 import com.ybhgl.reminder.data.ReminderRepository
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.RepeatInfo
@@ -19,6 +20,7 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import kotlinx.serialization.ExperimentalSerializationApi
+import kotlinx.serialization.json.Json
 import java.time.LocalDate
 import java.util.Locale
 
@@ -77,6 +79,19 @@ class AddReminderViewModel(
      */
     fun updateUiState(newReminderUiState: ReminderUiState) {
         reminderUiState = newReminderUiState
+    }
+
+    fun updateNotificationConfig(configJson: String) {
+        try {
+            val config = Json.decodeFromString<ReminderNotificationConfig>(configJson)
+            reminderUiState = reminderUiState.copy(notificationConfig = config)
+        } catch (e: Exception) {
+            // Log error
+        }
+    }
+
+    fun getNotificationConfigJson(): String {
+        return Json.encodeToString(reminderUiState.notificationConfig)
     }
 
     suspend fun saveReminder() {
@@ -141,6 +156,7 @@ data class ReminderUiState(
     val category: String = "",
     val isPinned: Boolean = false,
     val repeatInfo: RepeatInfo? = null,
+    val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig(),
     val showRepeatDialog: Boolean = false
 )
 
@@ -152,7 +168,8 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     isLunar = isLunar,
     category = category,
     isPinned = isPinned,
-    repeatInfo = repeatInfo
+    repeatInfo = repeatInfo,
+    notificationConfig = notificationConfig
 )
 
 fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
@@ -163,5 +180,6 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     isLunar = isLunar,
     category = category,
     isPinned = isPinned,
-    repeatInfo = repeatInfo
+    repeatInfo = repeatInfo,
+    notificationConfig = notificationConfig
 )

@@ -30,4 +30,18 @@ class TypeConverters {
     fun toRepeatInfo(json: String?): RepeatInfo? {
         return json?.let { Json.decodeFromString<RepeatInfo>(it) }
     }
+
+    @TypeConverter
+    fun fromReminderNotificationConfig(config: ReminderNotificationConfig): String {
+        return Json.encodeToString(config)
+    }
+
+    @TypeConverter
+    fun toReminderNotificationConfig(json: String): ReminderNotificationConfig {
+        return try {
+            Json.decodeFromString<ReminderNotificationConfig>(json)
+        } catch (e: Exception) {
+            ReminderNotificationConfig()
+        }
+    }
 }

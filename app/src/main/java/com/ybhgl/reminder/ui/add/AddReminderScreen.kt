@@ -59,6 +59,9 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavController
+import androidx.navigation.compose.rememberNavController
+import com.ybhgl.reminder.Routes
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.RepeatInfo
 import com.ybhgl.reminder.data.RepeatUnit
@@ -74,6 +77,7 @@ import java.time.format.DateTimeFormatter
 @Composable
 fun AddReminderScreen(
     onNavigateUp: () -> Unit,
+    navController: NavController = rememberNavController(),
     onDeleted: () -> Unit = onNavigateUp,
     modifier: Modifier = Modifier,
     viewModel: AddReminderViewModel = viewModel(factory = AppViewModelProvider.Factory)
@@ -90,6 +94,16 @@ fun AddReminderScreen(
     var textFieldWidth by remember { mutableStateOf(0.dp) }
     val zoneId = ZoneId.systemDefault()
     val currentLunarLabel = remember(uiState.date) { CalendarUtil.getLunarMonthDayLabel(uiState.date) }
+
+    // Observe result from ReminderSettingScreen
+    val navBackStackEntry = navController.currentBackStackEntry
+    val result = navBackStackEntry?.savedStateHandle?.getStateFlow<String?>("notificationConfig", null)?.collectAsState()
+    LaunchedEffect(result?.value) {
+        result?.value?.let { configJson ->
+            viewModel.updateNotificationConfig(configJson)
+            navBackStackEntry.savedStateHandle.remove<String>("notificationConfig")
+        }
+    }
 
     val disabledTextFieldColors = OutlinedTextFieldDefaults.colors(
         disabledTextColor = MaterialTheme.colorScheme.onSurface,
@@ -362,6 +376,23 @@ fun AddReminderScreen(
                 )
             }
 
+            // 8. 提醒设置入口
+            SettingItem(
+                title = "提醒设置",
+                value = if (uiState.notificationConfig.isEnabled) {
+                    val count = uiState.notificationConfig.notificationTimes.size
+                    if (count > 0) "已开启(${count}个时间)" else "已开启"
+                } else "未开启",
+                onClick = {
+                    val configJson = viewModel.getNotificationConfigJson()
+                    navController.navigate(Routes.reminderSetting(
+                        reminderId = if (isEditing) uiState.id else null,
+                        initialConfig = configJson,
+                        reminderType = uiState.type.name
+                    ))
+                }
+            )
+
             if (isEditing) {
                 OutlinedButton(
                     onClick = { showDeleteConfirmDialog = true },
@@ -490,6 +521,29 @@ private fun SettingItem(title: String, value: String, onClick: () -> Unit) {
     }
 }
 
+@Composable
+fun SettingSwitch(
+    title: @Composable () -> Unit,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable { onCheckedChange(!checked) }
+            .padding(vertical = 4.dp)
+    ) {
+        Box(modifier = Modifier.weight(1f)) {
+            title()
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange
+        )
+    }
+}
+
 private fun repeatInfoToString(repeatInfo: RepeatInfo?): String {
     return when (repeatInfo) {
         null -> "不重复"
@@ -500,27 +554,7 @@ private fun repeatInfoToString(repeatInfo: RepeatInfo?): String {
                 RepeatUnit.MONTH -> "个月"
                 RepeatUnit.YEAR -> "年"
             }
-            if (repeatInfo.interval == 1) "每${unitString.removePrefix("个")}" else "每 ${repeatInfo.interval} $unitString"
+            "每 ${repeatInfo.interval} $unitString"
         }
-    }
-}
-
-@Composable
-private fun SettingSwitch(title: @Composable () -> Unit, checked: Boolean, onCheckedChange: (Boolean) -> Unit) {
-    Row(
-        verticalAlignment = Alignment.CenterVertically,
-        modifier = Modifier.fillMaxWidth()
-    ) {
-        title()
-        Spacer(Modifier.weight(1f))
-        Switch(checked = checked, onCheckedChange = onCheckedChange)
-    }
-}
-
-@Preview(showBackground = true)
-@Composable
-private fun AddReminderScreenPreview() {
-    ReminderTheme {
-        AddReminderScreen(onNavigateUp = {})
     }
 }
