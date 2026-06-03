@@ -1,9 +1,18 @@
-@file:OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class)
+@file:OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class, ExperimentalPermissionsApi::class, ExperimentalComposeUiApi::class)
 
 package com.ybhgl.reminder
 
+import com.google.accompanist.permissions.ExperimentalPermissionsApi
+import com.google.accompanist.permissions.rememberMultiplePermissionsState
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
+import android.net.Uri
+import android.os.Build
 import android.os.Bundle
+import android.provider.Settings
 import androidx.activity.ComponentActivity
+import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.ViewModelProvider
 import androidx.activity.compose.BackHandler
@@ -72,6 +81,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.contentColorFor
@@ -162,12 +172,64 @@ class MainActivity : ComponentActivity() {
             val themeOption by themeFlow.collectAsState(initial = AppThemeOption.SYSTEM)
             val pureBlackModeFlow = remember(context) { pureBlackFlow(context) }
             val usePureBlack by pureBlackModeFlow.collectAsState(initial = false)
+
+            val reminderListState by viewModel.reminderListUiState.collectAsState()
+            var showPermissionDialog by remember { mutableStateOf(false) }
+            var permissionDialogText by remember { mutableStateOf("") }
+
+            LaunchedEffect(reminderListState.itemList) {
+                if (reminderListState.itemList.any { it.notificationConfig.isEnabled }) {
+                    val missingPermissions = mutableListOf<String>()
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        missingPermissions.add("通知权限")
+                    }
+                    if (ContextCompat.checkSelfPermission(context, Manifest.permission.READ_CALENDAR) != PackageManager.PERMISSION_GRANTED ||
+                        ContextCompat.checkSelfPermission(context, Manifest.permission.WRITE_CALENDAR) != PackageManager.PERMISSION_GRANTED
+                    ) {
+                        missingPermissions.add("日历权限")
+                    }
+
+                    if (missingPermissions.isNotEmpty()) {
+                        permissionDialogText = "检测到您已开启提醒功能，但缺少以下权限：${missingPermissions.joinToString("、")}。请在设置中开启以确保提醒功能正常工作。"
+                        showPermissionDialog = true
+                    }
+                }
+            }
+
             ReminderTheme(themeOption = themeOption, usePureBlack = usePureBlack) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
                 ) {
-                    ReminderApp()
+                    Box {
+                        ReminderApp()
+
+                        if (showPermissionDialog) {
+                            AlertDialog(
+                                onDismissRequest = { showPermissionDialog = false },
+                                title = { Text("权限提醒") },
+                                text = { Text(permissionDialogText) },
+                                confirmButton = {
+                                    TextButton(onClick = {
+                                        showPermissionDialog = false
+                                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                            data = Uri.fromParts("package", context.packageName, null)
+                                        }
+                                        context.startActivity(intent)
+                                    }) {
+                                        Text("前往设置")
+                                    }
+                                },
+                                dismissButton = {
+                                    TextButton(onClick = { showPermissionDialog = false }) {
+                                        Text("取消")
+                                    }
+                                }
+                            )
+                        }
+                    }
                 }
             }
         }
@@ -186,23 +248,44 @@ object Routes {
     const val BIRTHDAY_LIST_BASE = "birthday_list"
     const val BIRTHDAY_LIST_PATTERN = "$BIRTHDAY_LIST_BASE/{reminderId}"
     const val REMINDER_SETTING_BASE = "reminder_setting"
-    const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}"
+    const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}"
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
-    fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null): String {
+    fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null, eventDate: String? = null): String {
         val base = "$REMINDER_SETTING_BASE?"
         val idPart = if (reminderId != null) "reminderId=$reminderId" else ""
         val configPart = if (initialConfig != null) "initialConfig=$initialConfig" else ""
         val typePart = if (reminderType != null) "reminderType=$reminderType" else ""
-        return base + listOf(idPart, configPart, typePart).filter { it.isNotEmpty() }.joinToString("&")
+        val datePart = if (eventDate != null) "eventDate=$eventDate" else ""
+        return base + listOf(idPart, configPart, typePart, datePart).filter { it.isNotEmpty() }.joinToString("&")
     }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReminderApp() {
+    val context = LocalContext.current
+    val permissionsToRequest = remember {
+        val list = mutableListOf(
+            Manifest.permission.READ_CALENDAR,
+            Manifest.permission.WRITE_CALENDAR
+        )
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            list.add(Manifest.permission.POST_NOTIFICATIONS)
+        }
+        list
+    }
+
+    val permissionState = rememberMultiplePermissionsState(permissions = permissionsToRequest)
+    
+    LaunchedEffect(Unit) {
+        if (!permissionState.allPermissionsGranted) {
+            permissionState.launchMultiplePermissionRequest()
+        }
+    }
+
     val navController = rememberNavController()
     NavHost(
         navController = navController,
@@ -299,6 +382,11 @@ fun ReminderApp() {
                     defaultValue = null
                 },
                 navArgument("reminderType") {
+                    type = NavType.StringType
+                    nullable = true
+                    defaultValue = null
+                },
+                navArgument("eventDate") {
                     type = NavType.StringType
                     nullable = true
                     defaultValue = null

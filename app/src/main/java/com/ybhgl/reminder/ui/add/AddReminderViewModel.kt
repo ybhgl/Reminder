@@ -14,6 +14,9 @@ import com.ybhgl.reminder.data.ReminderRepository
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.RepeatInfo
 import com.ybhgl.reminder.data.RepeatUnit
+import com.ybhgl.reminder.util.ReminderScheduler
+import com.ybhgl.reminder.util.CalendarManager
+import android.content.Context
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.firstOrNull
 import kotlinx.coroutines.flow.map
@@ -94,14 +97,19 @@ class AddReminderViewModel(
         return Json.encodeToString(reminderUiState.notificationConfig)
     }
 
-    suspend fun saveReminder() {
+    fun saveReminder(context: Context) {
         if (!validateInput()) return
 
-        val reminder = reminderUiState.toReminderItem()
-        if (reminder.id == 0) {
-            reminderRepository.insertReminder(reminder)
-        } else {
-            reminderRepository.updateReminder(reminder)
+        viewModelScope.launch {
+            val reminder = reminderUiState.toReminderItem()
+            if (reminder.id == 0) {
+                reminderRepository.insertReminder(reminder)
+            } else {
+                reminderRepository.updateReminder(reminder)
+            }
+            // Trigger scheduling and calendar update
+            ReminderScheduler.scheduleReminder(context, reminder)
+            CalendarManager.addOrUpdateEvent(context, reminder)
         }
     }
 

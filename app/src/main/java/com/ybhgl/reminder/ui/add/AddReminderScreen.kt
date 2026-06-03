@@ -1,5 +1,7 @@
 package com.ybhgl.reminder.ui.add
 
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.material.icons.filled.Save
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
@@ -131,6 +133,21 @@ fun AddReminderScreen(
                         Icon(
                             imageVector = Icons.AutoMirrored.Filled.ArrowBack,
                             contentDescription = "返回"
+                        )
+                    }
+                },
+                actions = {
+                    val context = LocalContext.current
+                    IconButton(
+                        onClick = {
+                            viewModel.saveReminder(context)
+                            onNavigateUp()
+                        },
+                        enabled = uiState.title.isNotBlank()
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Save,
+                            contentDescription = "保存"
                         )
                     }
                 }
@@ -380,15 +397,20 @@ fun AddReminderScreen(
             SettingItem(
                 title = "提醒设置",
                 value = if (uiState.notificationConfig.isEnabled) {
-                    val count = uiState.notificationConfig.notificationTimes.size
-                    if (count > 0) "已开启(${count}个时间)" else "已开启"
+                    if (uiState.notificationConfig.isContinuous) {
+                        "已开启(连续提醒)"
+                    } else {
+                        val count = uiState.notificationConfig.notificationTimes.size
+                        if (count > 0) "已开启(${count}个时间)" else "已开启"
+                    }
                 } else "未开启",
                 onClick = {
                     val configJson = viewModel.getNotificationConfigJson()
                     navController.navigate(Routes.reminderSetting(
                         reminderId = if (isEditing) uiState.id else null,
                         initialConfig = configJson,
-                        reminderType = uiState.type.name
+                        reminderType = uiState.type.name,
+                        eventDate = uiState.date.toString()
                     ))
                 }
             )
@@ -454,19 +476,6 @@ fun AddReminderScreen(
                         dismissButton = {}
                     )
                 }
-            }
-
-            Button(
-                onClick = {
-                    coroutineScope.launch {
-                        viewModel.saveReminder()
-                        onNavigateUp()
-                    }
-                },
-                modifier = Modifier.fillMaxWidth(),
-                enabled = uiState.title.isNotBlank()
-            ) {
-                Text(if (isEditing) "保存修改" else "保存")
             }
         }
 
