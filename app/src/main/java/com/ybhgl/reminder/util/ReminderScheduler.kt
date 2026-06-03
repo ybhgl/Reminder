@@ -36,6 +36,9 @@ object ReminderScheduler {
                 val intent = Intent(context, ReminderReceiver::class.java).apply {
                     putExtra("REMINDER_ID", item.id)
                     putExtra("REMINDER_TITLE", item.title)
+                    putExtra("REMINDER_TYPE", item.type.name)
+                    putExtra("REMINDER_START_DATE", item.date.toString())
+                    putExtra("REMINDER_TARGET_DATE", targetDate.toString())
                 }
                 
                 val requestCode = item.id * 100 + index

@@ -47,7 +47,7 @@ fun ReminderSettingScreen(
     
     val context = LocalContext.current
     val isCountUp = viewModel.reminderType == ReminderType.COUNT_UP
-    val dayLabel = if (isCountUp) "满" else "提前"
+    val dayLabel = if (isCountUp) "第" else "提前"
     val daySuffix = if (isCountUp) "天提醒" else "天提醒"
 
     // Permissions
