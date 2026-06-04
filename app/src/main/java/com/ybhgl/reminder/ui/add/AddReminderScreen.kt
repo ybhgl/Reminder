@@ -1,6 +1,18 @@
 package com.ybhgl.reminder.ui.add
 
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.background
+import com.ybhgl.reminder.ui.common.StatusBarScrim
 import androidx.compose.material.icons.filled.Save
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
@@ -131,386 +143,450 @@ fun AddReminderScreen(
 
     BackHandler(enabled = true, onBack = handleBack)
 
+    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
+    var topBarHeightPx by remember { mutableStateOf(0f) }
+
+    val customNestedScrollConnection = remember(topBarHeightPx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (topBarHeightPx > 0f) {
+                    val delta = available.y
+                    val oldOffset = titleOffsetPx
+                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
+                    val consumed = newOffset - oldOffset
+                    titleOffsetPx = newOffset
+                    return Offset(0f, consumed)
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text(if (isEditing) "编辑提醒" else "新增提醒") },
-                windowInsets = TopAppBarDefaults.windowInsets,
-                navigationIcon = {
-                    IconButton(onClick = handleBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = {
-                            viewModel.saveReminder(context)
-                            onNavigateUp()
-                        },
-                        enabled = viewModel.isInitialized && uiState.title.isNotBlank()
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Save,
-                            contentDescription = "保存"
-                        )
-                    }
-                }
-            )
-        },
-        modifier = modifier
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = modifier.nestedScroll(customNestedScrollConnection)
     ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
-                .padding(top = innerPadding.calculateTopPadding(), bottom = innerPadding.calculateBottomPadding() + 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Box(
+            modifier = Modifier.fillMaxSize()
         ) {
-            // 1. 标题
-            OutlinedTextField(
-                value = uiState.title,
-                onValueChange = { viewModel.updateUiState(uiState.copy(title = it)) },
-                label = { Text(if (uiState.type == ReminderType.BIRTHDAY) "寿星名字" else "标题") },
-                modifier = Modifier.fillMaxWidth(),
-                singleLine = true
-            )
+            val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
 
-            // 2. 日期
-            Box(
+            Column(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { showDatePicker = true }
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .graphicsLayer {
+                        translationY = titleOffsetPx
+                    }
+                    .padding(horizontal = 16.dp)
+                    .padding(top = topBarHeightDp, bottom = innerPadding.calculateBottomPadding() + 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                // 1. 标题
                 OutlinedTextField(
-                    value = uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE),
-                    onValueChange = { },
-                    label = { Text("日期") },
+                    value = uiState.title,
+                    onValueChange = { viewModel.updateUiState(uiState.copy(title = it)) },
+                    label = { Text(if (uiState.type == ReminderType.BIRTHDAY) "寿星名字" else "标题") },
                     modifier = Modifier.fillMaxWidth(),
-                    readOnly = true,
-                    enabled = false,
-                    colors = disabledTextFieldColors
+                    singleLine = true
                 )
-            }
 
-            if (showDatePicker) {
-                val initialMillis = uiState.date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-                val datePickerState = rememberDatePickerState(
-                    initialSelectedDateMillis = initialMillis
-                )
-                DatePickerDialog(
-                    onDismissRequest = { showDatePicker = false },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                datePickerState.selectedDateMillis?.let { millis ->
-                                    val newDate = Instant.ofEpochMilli(millis)
-                                        .atZone(zoneId)
-                                        .toLocalDate()
-                                    viewModel.updateUiState(uiState.copy(date = newDate))
-                                }
-                                showDatePicker = false
-                            }
-                        ) {
-                            Text("确定")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { showDatePicker = false }) {
-                            Text("取消")
-                        }
-                    }
-                ) {
-                    DatePicker(state = datePickerState)
-                }
-            }
-
-            // 3. 农历
-            SettingSwitch(
-                title = {
-                    Row(verticalAlignment = Alignment.CenterVertically) {
-                        Text("农历", style = MaterialTheme.typography.bodyLarge)
-                        if (uiState.isLunar) {
-                            Text(
-                                text = "：$currentLunarLabel",
-                                style = MaterialTheme.typography.bodyLarge
-                            )
-                        }
-                    }
-                },
-                checked = uiState.isLunar,
-                onCheckedChange = { viewModel.onLunarChange(it) }
-            )
-
-            // 4. 置顶
-            SettingSwitch(
-                title = { Text("置顶", style = MaterialTheme.typography.bodyLarge) },
-                checked = uiState.isPinned,
-                onCheckedChange = { viewModel.updateUiState(uiState.copy(isPinned = it)) }
-            )
-
-            // 5. 类型
-            Column(modifier = Modifier.fillMaxWidth()) {
-                Text("类型", style = MaterialTheme.typography.bodyLarge)
-                FlowRow(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                    verticalArrangement = Arrangement.spacedBy(0.dp)
-                ) {
-                    ReminderType.entries.forEach { type ->
-                        Row(
-                            verticalAlignment = Alignment.CenterVertically,
-                            modifier = Modifier
-                                .clickable { viewModel.onTypeChange(type) }
-                                .padding(horizontal = 4.dp, vertical = 4.dp)
-                        ) {
-                            RadioButton(
-                                selected = uiState.type == type,
-                                onClick = { viewModel.onTypeChange(type) }
-                            )
-                            val text = when (type) {
-                                ReminderType.ANNUAL -> "倒数日"
-                                ReminderType.COUNT_UP -> "正数日"
-                                ReminderType.BIRTHDAY -> "生日"
-                            }
-                            Text(text)
-                        }
-                    }
-                }
-            }
-
-            // 6. 分类
-            Column(modifier = Modifier.fillMaxWidth()) {
-                val filteredOptions = remember(uiState.category, categoryOptions) {
-                    val input = uiState.category.trim()
-                    if (input.isEmpty()) categoryOptions else categoryOptions.filter { option ->
-                        option.contains(input, ignoreCase = true)
-                    }
-                }
-                val dropdownOptions = remember(filteredOptions, categoryOptions, uiState.category) {
-                    val input = uiState.category.trim()
-                    when {
-                        input.isEmpty() -> categoryOptions
-                        filteredOptions.isNotEmpty() -> filteredOptions
-                        else -> emptyList()
-                    }
-                }
-                LaunchedEffect(dropdownOptions) {
-                    if (isCategoryMenuExpanded && dropdownOptions.isEmpty()) {
-                        isCategoryMenuExpanded = false
-                    }
-                }
-
-                OutlinedTextField(
-                    value = uiState.category,
-                    onValueChange = { newValue ->
-                        viewModel.updateUiState(uiState.copy(category = newValue))
-                    },
-                    label = { Text("分类（可选）") },
+                // 2. 日期
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .onGloballyPositioned { coordinates ->
-                            textFieldWidth = with(density) { coordinates.size.width.toDp() }
-                        },
-                    singleLine = true,
-                    trailingIcon = {
-                        if (categoryOptions.isNotEmpty()) {
-                            IconButton(onClick = {
-                                val hasOptions = dropdownOptions.isNotEmpty()
-                                isCategoryMenuExpanded = if (isCategoryMenuExpanded) {
-                                    false
-                                } else {
-                                    hasOptions
+                        .clickable { showDatePicker = true }
+                ) {
+                    OutlinedTextField(
+                        value = uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE),
+                        onValueChange = { },
+                        label = { Text("日期") },
+                        modifier = Modifier.fillMaxWidth(),
+                        readOnly = true,
+                        enabled = false,
+                        colors = disabledTextFieldColors
+                    )
+                }
+
+                if (showDatePicker) {
+                    val initialMillis = uiState.date.atStartOfDay(zoneId).toInstant().toEpochMilli()
+                    val datePickerState = rememberDatePickerState(
+                        initialSelectedDateMillis = initialMillis
+                    )
+                    DatePickerDialog(
+                        onDismissRequest = { showDatePicker = false },
+                        confirmButton = {
+                            TextButton(
+                                onClick = {
+                                    datePickerState.selectedDateMillis?.let { millis ->
+                                        val newDate = Instant.ofEpochMilli(millis)
+                                            .atZone(zoneId)
+                                            .toLocalDate()
+                                        viewModel.updateUiState(uiState.copy(date = newDate))
+                                    }
+                                    showDatePicker = false
                                 }
-                            }) {
-                                Icon(
-                                    imageVector = if (isCategoryMenuExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
-                                    contentDescription = if (isCategoryMenuExpanded) "收起分类列表" else "展开分类列表"
+                            ) {
+                                Text("确定")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showDatePicker = false }) {
+                                Text("取消")
+                            }
+                        }
+                    ) {
+                        DatePicker(state = datePickerState)
+                    }
+                }
+
+                // 3. 农历
+                SettingSwitch(
+                    title = {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Text("农历", style = MaterialTheme.typography.bodyLarge)
+                            if (uiState.isLunar) {
+                                Text(
+                                    text = "：$currentLunarLabel",
+                                    style = MaterialTheme.typography.bodyLarge
                                 )
                             }
                         }
-                    }
+                    },
+                    checked = uiState.isLunar,
+                    onCheckedChange = { viewModel.onLunarChange(it) }
                 )
 
-                if (isCategoryMenuExpanded && dropdownOptions.isNotEmpty()) {
-                    val dropdownModifier = if (textFieldWidth > 0.dp) {
-                        Modifier.width(textFieldWidth)
-                    } else {
-                        Modifier.fillMaxWidth()
-                    }
-                    Surface(
-                        modifier = dropdownModifier
-                            .padding(top = 4.dp)
-                            .align(Alignment.Start),
-                        tonalElevation = 4.dp,
-                        shadowElevation = 8.dp,
-                        shape = RoundedCornerShape(12.dp)
+                // 4. 置顶
+                SettingSwitch(
+                    title = { Text("置顶", style = MaterialTheme.typography.bodyLarge) },
+                    checked = uiState.isPinned,
+                    onCheckedChange = { viewModel.updateUiState(uiState.copy(isPinned = it)) }
+                )
+
+                // 5. 类型
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    Text("类型", style = MaterialTheme.typography.bodyLarge)
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                        verticalArrangement = Arrangement.spacedBy(0.dp)
                     ) {
-                        Column {
-                            dropdownOptions.forEachIndexed { index, option ->
-                                Text(
-                                    text = option,
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clickable {
-                                            viewModel.updateUiState(uiState.copy(category = option))
-                                            isCategoryMenuExpanded = false
-                                        }
-                                        .padding(horizontal = 16.dp, vertical = 12.dp),
-                                    style = MaterialTheme.typography.bodyMedium
+                        ReminderType.entries.forEach { type ->
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier
+                                    .clickable { viewModel.onTypeChange(type) }
+                                    .padding(horizontal = 4.dp, vertical = 4.dp)
+                            ) {
+                                RadioButton(
+                                    selected = uiState.type == type,
+                                    onClick = { viewModel.onTypeChange(type) }
                                 )
-                                if (index < dropdownOptions.lastIndex) {
-                                    HorizontalDivider(
-                                        thickness = 0.5.dp,
-                                        color = MaterialTheme.colorScheme.outlineVariant
+                                val text = when (type) {
+                                    ReminderType.ANNUAL -> "倒数日"
+                                    ReminderType.COUNT_UP -> "正数日"
+                                    ReminderType.BIRTHDAY -> "生日"
+                                }
+                                Text(text)
+                            }
+                        }
+                    }
+                }
+
+                // 6. 分类
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    val filteredOptions = remember(uiState.category, categoryOptions) {
+                        val input = uiState.category.trim()
+                        if (input.isEmpty()) categoryOptions else categoryOptions.filter { option ->
+                            option.contains(input, ignoreCase = true)
+                        }
+                    }
+                    val dropdownOptions = remember(filteredOptions, categoryOptions, uiState.category) {
+                        val input = uiState.category.trim()
+                        when {
+                            input.isEmpty() -> categoryOptions
+                            filteredOptions.isNotEmpty() -> filteredOptions
+                            else -> emptyList()
+                        }
+                    }
+                    LaunchedEffect(dropdownOptions) {
+                        if (isCategoryMenuExpanded && dropdownOptions.isEmpty()) {
+                            isCategoryMenuExpanded = false
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = uiState.category,
+                        onValueChange = { newValue ->
+                            viewModel.updateUiState(uiState.copy(category = newValue))
+                        },
+                        label = { Text("分类（可选）") },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .onGloballyPositioned { coordinates ->
+                                textFieldWidth = with(density) { coordinates.size.width.toDp() }
+                            },
+                        singleLine = true,
+                        trailingIcon = {
+                            if (categoryOptions.isNotEmpty()) {
+                                IconButton(onClick = {
+                                    val hasOptions = dropdownOptions.isNotEmpty()
+                                    isCategoryMenuExpanded = if (isCategoryMenuExpanded) {
+                                        false
+                                    } else {
+                                        hasOptions
+                                    }
+                                }) {
+                                    Icon(
+                                        imageVector = if (isCategoryMenuExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
+                                        contentDescription = if (isCategoryMenuExpanded) "收起分类列表" else "展开分类列表"
                                     )
                                 }
                             }
                         }
-                    }
-                }
-            }
+                    )
 
-            // 7. 重复
-            if (uiState.type == ReminderType.ANNUAL) {
-                SettingItem(
-                    title = "重复",
-                    value = repeatInfoToString(uiState.repeatInfo),
-                    onClick = { viewModel.onShowRepeatDialog(true) }
-                )
-            }
-
-            if (uiState.showRepeatDialog) {
-                val availableUnits = if (uiState.isLunar) {
-                    listOf(RepeatUnit.MONTH, RepeatUnit.YEAR)
-                } else {
-                    RepeatUnit.entries.toList()
-                }
-                RepeatSettingDialog(
-                    repeatInfo = uiState.repeatInfo,
-                    availableUnits = availableUnits,
-                    onDismissRequest = { viewModel.onShowRepeatDialog(false) },
-                    onConfirm = {
-                        viewModel.onRepeatInfoChange(it)
-                        viewModel.onShowRepeatDialog(false)
-                    }
-                )
-            }
-
-            // 8. 提醒设置入口
-            SettingItem(
-                title = "提醒设置",
-                value = if (uiState.notificationConfig.isEnabled) {
-                    if (uiState.notificationConfig.isContinuous) {
-                        "已开启(连续提醒)"
-                    } else {
-                        val count = uiState.notificationConfig.notificationTimes.size
-                        if (count > 0) "已开启(${count}个时间)" else "已开启"
-                    }
-                } else "未开启",
-                onClick = {
-                    val configJson = viewModel.getNotificationConfigJson()
-                    navController.navigate(Routes.reminderSetting(
-                        reminderId = if (isEditing) uiState.id else null,
-                        initialConfig = configJson,
-                        reminderType = uiState.type.name,
-                        eventDate = uiState.date.toString()
-                    ))
-                }
-            )
-
-            if (isEditing) {
-                OutlinedButton(
-                    onClick = { showDeleteConfirmDialog = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    colors = ButtonDefaults.outlinedButtonColors(
-                        contentColor = MaterialTheme.colorScheme.error
-                    ),
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
-                ) {
-                    Text("删除提醒")
-                }
-
-                if (showDeleteConfirmDialog) {
-                    AlertDialog(
-                        onDismissRequest = { showDeleteConfirmDialog = false },
-                        title = { Text("确认删除") },
-                        text = { Text("确定要删除此提醒吗？") },
-                        confirmButton = {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                    if (isCategoryMenuExpanded && dropdownOptions.isNotEmpty()) {
+                        val dropdownModifier = if (textFieldWidth > 0.dp) {
+                            Modifier.width(textFieldWidth)
+                        } else {
+                            Modifier.fillMaxWidth()
+                        }
+                        Surface(
+                            modifier = dropdownModifier
+                                .padding(top = 4.dp)
+                                .align(Alignment.Start),
+                            tonalElevation = 4.dp,
+                            shadowElevation = 8.dp,
+                            shape = RoundedCornerShape(12.dp)
                         ) {
-                            Button(
-                                onClick = {
-                                    showDeleteConfirmDialog = false
-                                    coroutineScope.launch {
-                                        if (viewModel.deleteReminder(context)) {
-                                            onDeleted()
-                                        }
+                            Column {
+                                dropdownOptions.forEachIndexed { index, option ->
+                                    Text(
+                                        text = option,
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clickable {
+                                                viewModel.updateUiState(uiState.copy(category = option))
+                                                isCategoryMenuExpanded = false
+                                            }
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                                        style = MaterialTheme.typography.bodyMedium
+                                    )
+                                    if (index < dropdownOptions.lastIndex) {
+                                        HorizontalDivider(
+                                            thickness = 0.5.dp,
+                                            color = MaterialTheme.colorScheme.outlineVariant
+                                        )
                                     }
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                    colors = ButtonDefaults.buttonColors(
-                                        containerColor = MaterialTheme.colorScheme.error,
-                                        contentColor = MaterialTheme.colorScheme.onError
-                                    ),
-                                    modifier = modifier
-                                        .defaultMinSize(minWidth = 1.dp)
-                                        .requiredWidth(88.dp)
-                                ) {
-                                    Text("删除")
                                 }
-                            Button(
-                                onClick = { showDeleteConfirmDialog = false },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                modifier = Modifier
-                                    .defaultMinSize(minWidth = 1.dp)
-                                    .requiredWidth(88.dp)
-                            ) {
-                                Text("取消")
                             }
                         }
-                        },
-                        dismissButton = {}
+                    }
+                }
+
+                // 7. 重复
+                if (uiState.type == ReminderType.ANNUAL) {
+                    SettingItem(
+                        title = "重复",
+                        value = repeatInfoToString(uiState.repeatInfo),
+                        onClick = { viewModel.onShowRepeatDialog(true) }
                     )
                 }
-            }
-        }
 
-        if (showUnsavedChangesDialog) {
-            AlertDialog(
-                onDismissRequest = { showUnsavedChangesDialog = false },
-                title = { Text("未保存的更改") },
-                text = { Text("您有未保存的更改，确定要退出吗？") },
-                confirmButton = {
-                    TextButton(
-                        onClick = {
-                            showUnsavedChangesDialog = false
-                            onNavigateUp()
-                        }
-                    ) {
-                        Text("确定退出")
+                if (uiState.showRepeatDialog) {
+                    val availableUnits = if (uiState.isLunar) {
+                        listOf(RepeatUnit.MONTH, RepeatUnit.YEAR)
+                    } else {
+                        RepeatUnit.entries.toList()
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { showUnsavedChangesDialog = false }) {
-                        Text("取消")
+                    RepeatSettingDialog(
+                        repeatInfo = uiState.repeatInfo,
+                        availableUnits = availableUnits,
+                        onDismissRequest = { viewModel.onShowRepeatDialog(false) },
+                        onConfirm = {
+                            viewModel.onRepeatInfoChange(it)
+                            viewModel.onShowRepeatDialog(false)
+                        }
+                    )
+                }
+
+                // 8. 提醒设置入口
+                SettingItem(
+                    title = "提醒设置",
+                    value = if (uiState.notificationConfig.isEnabled) {
+                        if (uiState.notificationConfig.isContinuous) {
+                            "已开启(连续提醒)"
+                        } else {
+                            val count = uiState.notificationConfig.notificationTimes.size
+                            if (count > 0) "已开启(${count}个时间)" else "已开启"
+                        }
+                    } else "未开启",
+                    onClick = {
+                        val configJson = viewModel.getNotificationConfigJson()
+                        navController.navigate(Routes.reminderSetting(
+                            reminderId = if (isEditing) uiState.id else null,
+                            initialConfig = configJson,
+                            reminderType = uiState.type.name,
+                            eventDate = uiState.date.toString()
+                        ))
+                    }
+                )
+
+                if (isEditing) {
+                    OutlinedButton(
+                        onClick = { showDeleteConfirmDialog = true },
+                        modifier = Modifier.fillMaxWidth(),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("删除提醒")
+                    }
+
+                    if (showDeleteConfirmDialog) {
+                        AlertDialog(
+                            onDismissRequest = { showDeleteConfirmDialog = false },
+                            title = { Text("确认删除") },
+                            text = { Text("确定要删除此提醒吗？") },
+                            confirmButton = {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
+                                ) {
+                                    Button(
+                                        onClick = {
+                                            showDeleteConfirmDialog = false
+                                            coroutineScope.launch {
+                                                if (viewModel.deleteReminder(context)) {
+                                                    onDeleted()
+                                                }
+                                            }
+                                        },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.error,
+                                            contentColor = MaterialTheme.colorScheme.onError
+                                        ),
+                                        modifier = modifier
+                                            .defaultMinSize(minWidth = 1.dp)
+                                            .requiredWidth(88.dp)
+                                    ) {
+                                        Text("删除")
+                                    }
+                                    Button(
+                                        onClick = { showDeleteConfirmDialog = false },
+                                        shape = RoundedCornerShape(12.dp),
+                                        colors = ButtonDefaults.buttonColors(
+                                            containerColor = MaterialTheme.colorScheme.primary,
+                                            contentColor = MaterialTheme.colorScheme.onPrimary
+                                        ),
+                                        modifier = Modifier
+                                            .defaultMinSize(minWidth = 1.dp)
+                                            .requiredWidth(88.dp)
+                                    ) {
+                                        Text("取消")
+                                    }
+                                }
+                            },
+                            dismissButton = {}
+                        )
                     }
                 }
-            )
-        }
+            }
 
+            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
+            StatusBarScrim(
+                modifier = Modifier.align(Alignment.TopCenter)
+            )
+
+            // 标题栏 (Top Bar)
+            val topAppBarColors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                actionIconContentColor = MaterialTheme.colorScheme.onSurface
+            )
+            val topAppBarModifier = Modifier.background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                        Color.Transparent
+                    )
+                )
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged {
+                        topBarHeightPx = it.height.toFloat()
+                    }
+                    .graphicsLayer {
+                        translationY = titleOffsetPx
+                    }
+                    .then(topAppBarModifier)
+            ) {
+                TopAppBar(
+                    title = { Text(if (isEditing) "编辑提醒" else "新增提醒") },
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = topAppBarColors,
+                    navigationIcon = {
+                        IconButton(onClick = handleBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = {
+                                viewModel.saveReminder(context)
+                                onNavigateUp()
+                            },
+                            enabled = viewModel.isInitialized && uiState.title.isNotBlank()
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Save,
+                                contentDescription = "保存"
+                            )
+                        }
+                    }
+                )
+            }
+
+            if (showUnsavedChangesDialog) {
+                AlertDialog(
+                    onDismissRequest = { showUnsavedChangesDialog = false },
+                    title = { Text("未保存的更改") },
+                    text = { Text("您有未保存的更改，确定要退出吗？") },
+                    confirmButton = {
+                        TextButton(
+                            onClick = {
+                                showUnsavedChangesDialog = false
+                                onNavigateUp()
+                            }
+                        ) {
+                            Text("确定退出")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { showUnsavedChangesDialog = false }) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
         }
     }
+}
 
 @Composable
 private fun SettingItem(title: String, value: String, onClick: () -> Unit) {

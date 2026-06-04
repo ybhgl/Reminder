@@ -137,6 +137,7 @@ import com.ybhgl.reminder.ui.add.ReminderSettingScreen
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
+import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.SettingsScreen
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
@@ -1625,23 +1626,4 @@ private fun EmptyStateCard(modifier: Modifier = Modifier) {
             )
         }
     }
-}
-
-@Composable
-private fun StatusBarScrim(modifier: Modifier = Modifier) {
-    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val scrimHeight = statusBarHeight + 16.dp
-    Box(
-        modifier = modifier
-            .fillMaxWidth()
-            .height(scrimHeight)
-            .background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        Color.Black.copy(alpha = 0.4f),
-                        Color.Transparent
-                    )
-                )
-            )
-    )
 }

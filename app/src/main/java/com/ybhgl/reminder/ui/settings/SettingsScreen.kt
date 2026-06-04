@@ -68,6 +68,16 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.BuildConfig
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
@@ -126,102 +136,167 @@ fun SettingsScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("设置") },
-                windowInsets = TopAppBarDefaults.windowInsets,
-                navigationIcon = {
-                    IconButton(onClick = onNavigateBack) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
+    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
+    var topBarHeightPx by remember { mutableStateOf(0f) }
+
+    val customNestedScrollConnection = remember(topBarHeightPx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (topBarHeightPx > 0f) {
+                    val delta = available.y
+                    val oldOffset = titleOffsetPx
+                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
+                    val consumed = newOffset - oldOffset
+                    titleOffsetPx = newOffset
+                    return Offset(0f, consumed)
                 }
-            )
-        },
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        modifier = modifier
-    ) { innerPadding ->
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .verticalScroll(scrollState)
-                .padding(horizontal = 16.dp)
-                .padding(top = innerPadding.calculateTopPadding() + 12.dp, bottom = innerPadding.calculateBottomPadding() + 12.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-    Text(
-        text = "外观",
-        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-    )
-    HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
-    ThemeSelectionCard(
-        selectedOption = selectedTheme,
-        usePureBlack = usePureBlack,
-                onOptionSelected = { option ->
-                    coroutineScope.launch {
-                        viewModel.updateThemePreference(context, option)
-                    }
-                },
-                onPureBlackToggle = { enabled ->
-                    coroutineScope.launch {
-                        viewModel.updatePureBlackPreference(context, enabled)
-                    }
-                }
-            )
-            DefaultPageSelectionCard(
-                selectedPage = selectedDefaultPage,
-                onPageSelected = { page ->
-                    coroutineScope.launch {
-                        viewModel.updateDefaultPage(context, page)
-                    }
-                }
-            )
-            Text(
-                text = "备份与恢复",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-            )
-            HorizontalDivider()
-            SettingsActionItem(
-                title = "备份到本地",
-                description = "导出所有提醒数据为 JSON 文件",
-                icon = Icons.Filled.Backup,
-                enabled = !isProcessing
-            ) {
-                if (!isProcessing) {
-                    backupLauncher.launch(viewModel.generateBackupFileName())
-                }
+                return Offset.Zero
             }
-            SettingsActionItem(
-                title = "从备份恢复",
-                description = "从 JSON 备份文件恢复数据",
-                icon = Icons.Filled.Restore,
-                enabled = !isProcessing
+        }
+    }
+
+    Scaffold(
+        snackbarHost = { SnackbarHost(snackbarHostState) },
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = modifier.nestedScroll(customNestedScrollConnection)
+    ) { innerPadding ->
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(scrollState)
+                    .graphicsLayer {
+                        translationY = titleOffsetPx
+                    }
+                    .padding(horizontal = 16.dp)
+                    .padding(top = topBarHeightDp + 12.dp, bottom = innerPadding.calculateBottomPadding() + 12.dp),
+                verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                if (!isProcessing) {
-                    restoreLauncher.launch(arrayOf("application/json"))
+                Text(
+                    text = "外观",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
+                ThemeSelectionCard(
+                    selectedOption = selectedTheme,
+                    usePureBlack = usePureBlack,
+                    onOptionSelected = { option ->
+                        coroutineScope.launch {
+                            viewModel.updateThemePreference(context, option)
+                        }
+                    },
+                    onPureBlackToggle = { enabled ->
+                        coroutineScope.launch {
+                            viewModel.updatePureBlackPreference(context, enabled)
+                        }
+                    }
+                )
+                DefaultPageSelectionCard(
+                    selectedPage = selectedDefaultPage,
+                    onPageSelected = { page ->
+                        coroutineScope.launch {
+                            viewModel.updateDefaultPage(context, page)
+                        }
+                    }
+                )
+                Text(
+                    text = "备份与恢复",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider()
+                SettingsActionItem(
+                    title = "备份到本地",
+                    description = "导出所有提醒数据为 JSON 文件",
+                    icon = Icons.Filled.Backup,
+                    enabled = !isProcessing
+                ) {
+                    if (!isProcessing) {
+                        backupLauncher.launch(viewModel.generateBackupFileName())
+                    }
+                }
+                SettingsActionItem(
+                    title = "从备份恢复",
+                    description = "从 JSON 备份文件恢复数据",
+                    icon = Icons.Filled.Restore,
+                    enabled = !isProcessing
+                ) {
+                    if (!isProcessing) {
+                        restoreLauncher.launch(arrayOf("application/json"))
+                    }
+                }
+
+                Text(
+                    text = "关于",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider()
+                AppInfoCard(
+                    modifier = Modifier.fillMaxWidth()
+                )
+                SettingsActionItem(
+                    title = "ybhgl/Reminder",
+                    description = "在 GitHub 查看项目源码",
+                    icon = ImageVector.vectorResource(id = R.drawable.ic_github),
+                    enabled = true
+                ) {
+                    val intent = Intent(Intent.ACTION_VIEW,
+                        "https://github.com/ybhgl/Reminder".toUri())
+                    context.startActivity(intent)
                 }
             }
 
-            Text(
-                text = "关于",
-                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
+            StatusBarScrim(
+                modifier = Modifier.align(Alignment.TopCenter)
             )
-            HorizontalDivider()
-            AppInfoCard(
-                modifier = Modifier.fillMaxWidth()
+
+            // 标题栏 (Top Bar)
+            val topAppBarColors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                actionIconContentColor = MaterialTheme.colorScheme.onSurface
             )
-            SettingsActionItem(
-                title = "ybhgl/Reminder",
-                description = "在 GitHub 查看项目源码",
-                icon = ImageVector.vectorResource(id = R.drawable.ic_github),
-                enabled = true
+            val topAppBarModifier = Modifier.background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                        Color.Transparent
+                    )
+                )
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged {
+                        topBarHeightPx = it.height.toFloat()
+                    }
+                    .graphicsLayer {
+                        translationY = titleOffsetPx
+                    }
+                    .then(topAppBarModifier)
             ) {
-                val intent = Intent(Intent.ACTION_VIEW,
-                    "https://github.com/ybhgl/Reminder".toUri())
-                context.startActivity(intent)
+                TopAppBar(
+                    title = { Text("设置") },
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = topAppBarColors,
+                    navigationIcon = {
+                        IconButton(onClick = onNavigateBack) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
+                            )
+                        }
+                    }
+                )
             }
         }
     }

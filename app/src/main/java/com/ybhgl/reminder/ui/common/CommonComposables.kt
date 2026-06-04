@@ -3,6 +3,11 @@ package com.ybhgl.reminder.ui.common
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.background
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
@@ -229,4 +234,23 @@ fun AutoResizeText(
             )
         }
     }
+}
+
+@Composable
+fun StatusBarScrim(modifier: Modifier = Modifier) {
+    val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
+    val scrimHeight = statusBarHeight + 16.dp
+    androidx.compose.foundation.layout.Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(scrimHeight)
+            .background(
+                androidx.compose.ui.graphics.Brush.verticalGradient(
+                    colors = listOf(
+                        Color.Black.copy(alpha = 0.4f),
+                        Color.Transparent
+                    )
+                )
+            )
+    )
 }

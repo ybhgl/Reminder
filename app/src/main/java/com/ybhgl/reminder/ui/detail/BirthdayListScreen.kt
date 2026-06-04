@@ -15,6 +15,18 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.foundation.background
+import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayListItem
@@ -30,78 +42,143 @@ fun BirthdayListScreen(
     val uiState by viewModel.uiState.collectAsState()
     val reminderItem = uiState.reminderItem
 
+    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
+    var topBarHeightPx by remember { mutableStateOf(0f) }
+
+    val customNestedScrollConnection = remember(topBarHeightPx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (topBarHeightPx > 0f) {
+                    val delta = available.y
+                    val oldOffset = titleOffsetPx
+                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
+                    val consumed = newOffset - oldOffset
+                    titleOffsetPx = newOffset
+                    return Offset(0f, consumed)
+                }
+                return Offset.Zero
+            }
+        }
+    }
+
     Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("生日列表") },
-                windowInsets = TopAppBarDefaults.windowInsets,
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
+        containerColor = Color.Transparent,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = Modifier.nestedScroll(customNestedScrollConnection)
+    ) { paddingValues ->
+        Box(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+
+            if (reminderItem == null) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(top = topBarHeightDp)
+                        .padding(bottom = paddingValues.calculateBottomPadding()),
+                    contentAlignment = Alignment.Center
+                ) {
+                    CircularProgressIndicator()
+                }
+            } else {
+                val birthdayItems = remember(reminderItem) {
+                    BirthdayCalculator.generateBirthdayList(reminderItem.date, reminderItem.isLunar)
+                }
+
+                LazyColumn(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .graphicsLayer {
+                            translationY = titleOffsetPx
+                        },
+                    contentPadding = PaddingValues(
+                        start = 16.dp,
+                        end = 16.dp,
+                        top = topBarHeightDp + 16.dp,
+                        bottom = 16.dp + paddingValues.calculateBottomPadding()
+                    ),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    items(birthdayItems) { item ->
+                        BirthdayListItemCard(
+                            item = item,
+                            title = reminderItem.title,
+                            onClick = { viewModel.showAddBirthdayDialog(item) }
                         )
                     }
                 }
+            }
+
+            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
+            StatusBarScrim(
+                modifier = Modifier.align(Alignment.TopCenter)
             )
-        }
-    ) { paddingValues ->
-        if (reminderItem == null) {
+
+            // 标题栏 (Top Bar)
+            val topAppBarColors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                actionIconContentColor = MaterialTheme.colorScheme.onSurface
+            )
+            val topAppBarModifier = Modifier.background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                        Color.Transparent
+                    )
+                )
+            )
+
             Box(
                 modifier = Modifier
-                    .fillMaxSize()
-                    .padding(top = paddingValues.calculateTopPadding())
-                    .padding(bottom = paddingValues.calculateBottomPadding()),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .onSizeChanged {
+                        topBarHeightPx = it.height.toFloat()
+                    }
+                    .graphicsLayer {
+                        translationY = titleOffsetPx
+                    }
+                    .then(topAppBarModifier)
             ) {
-                CircularProgressIndicator()
-            }
-            return@Scaffold
-        }
-
-        val birthdayItems = remember(reminderItem) {
-            BirthdayCalculator.generateBirthdayList(reminderItem.date, reminderItem.isLunar)
-        }
-
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = paddingValues.calculateTopPadding()),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 16.dp,
-                bottom = 16.dp + paddingValues.calculateBottomPadding()
-            ),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
-        ) {
-            items(birthdayItems) { item ->
-                BirthdayListItemCard(
-                    item = item,
-                    title = reminderItem.title,
-                    onClick = { viewModel.showAddBirthdayDialog(item) }
+                TopAppBar(
+                    title = { Text("生日列表") },
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = topAppBarColors,
+                    navigationIcon = {
+                        IconButton(onClick = { navController.navigateUp() }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
+                            )
+                        }
+                    }
                 )
             }
-        }
 
-        uiState.pendingBirthdayItem?.let { item ->
-            val label = if (item.age == 0) "出生" else "${item.age}岁生日"
-            val targetTitle = "${reminderItem.title}$label"
-            AlertDialog(
-                onDismissRequest = { viewModel.showAddBirthdayDialog(null) },
-                title = { Text("添加倒数日") },
-                text = { Text("是否添加“$targetTitle”的倒数日事件？") },
-                confirmButton = {
-                    TextButton(onClick = { viewModel.addBirthdayReminder(item) }) {
-                        Text("添加")
+            // 弹窗
+            uiState.pendingBirthdayItem?.let { item ->
+                val label = if (item.age == 0) "出生" else "${item.age}岁生日"
+                val targetTitle = "${reminderItem?.title ?: ""}$label"
+                AlertDialog(
+                    onDismissRequest = { viewModel.showAddBirthdayDialog(null) },
+                    title = { Text("添加倒数日") },
+                    text = { Text("是否添加“$targetTitle”的倒数日事件？") },
+                    confirmButton = {
+                        TextButton(onClick = { viewModel.addBirthdayReminder(item) }) {
+                            Text("添加")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(onClick = { viewModel.showAddBirthdayDialog(null) }) {
+                            Text("取消")
+                        }
                     }
-                },
-                dismissButton = {
-                    TextButton(onClick = { viewModel.showAddBirthdayDialog(null) }) {
-                        Text("取消")
-                    }
-                }
-            )
+                )
+            }
         }
     }
 }
