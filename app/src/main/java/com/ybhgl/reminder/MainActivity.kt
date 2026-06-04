@@ -675,75 +675,22 @@ fun ReminderListScreen(
     var viewMode by rememberSaveable { mutableStateOf(ReminderViewMode.CARD) }
     var hasLoaded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
-    val scrollBehavior = TopAppBarDefaults.enterAlwaysScrollBehavior()
     
+    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
-    LaunchedEffect(topBarHeightPx) {
-        if (topBarHeightPx > 0f) {
-            scrollBehavior.state.heightOffsetLimit = -topBarHeightPx
-        }
-    }
 
-    val customNestedScrollConnection = remember(scrollBehavior) {
+    val customNestedScrollConnection = remember(topBarHeightPx) {
         object : NestedScrollConnection {
-            private var accumulativeDrag = 0f
-            private var isThresholdPassed = false
-
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (source == NestedScrollSource.UserInput) {
-                    accumulativeDrag += available.y
-                    if (!isThresholdPassed) {
-                        val thresholdPx = 18f
-                        if (kotlin.math.abs(accumulativeDrag) > thresholdPx) {
-                            isThresholdPassed = true
-                        } else {
-                            return Offset.Zero
-                        }
-                    }
-                    val dampingFactor = 0.5f
-                    val dampedAvailable = available.copy(y = available.y * dampingFactor)
-                    val consumed = scrollBehavior.nestedScrollConnection.onPreScroll(dampedAvailable, source)
-                    return consumed.copy(y = consumed.y / dampingFactor)
+                if (topBarHeightPx > 0f) {
+                    val delta = available.y
+                    val oldOffset = titleOffsetPx
+                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
+                    val consumed = newOffset - oldOffset
+                    titleOffsetPx = newOffset
+                    return Offset(0f, consumed)
                 }
-                return scrollBehavior.nestedScrollConnection.onPreScroll(available, source)
-            }
-
-            override fun onPostScroll(
-                consumed: Offset,
-                available: Offset,
-                source: NestedScrollSource
-            ): Offset {
-                if (source == NestedScrollSource.UserInput) {
-                    if (!isThresholdPassed) return Offset.Zero
-                    val dampingFactor = 0.5f
-                    val dampedAvailable = available.copy(y = available.y * dampingFactor)
-                    val consumedByTopBar = scrollBehavior.nestedScrollConnection.onPostScroll(
-                        consumed.copy(y = consumed.y * dampingFactor),
-                        dampedAvailable,
-                        source
-                    )
-                    return consumedByTopBar.copy(y = consumedByTopBar.y / dampingFactor)
-                }
-                return scrollBehavior.nestedScrollConnection.onPostScroll(consumed, available, source)
-            }
-
-            override suspend fun onPreFling(available: Velocity): Velocity {
-                accumulativeDrag = 0f
-                isThresholdPassed = false
-                val dampingFactor = 0.5f
-                val dampedVelocity = available.copy(y = available.y * dampingFactor)
-                val consumed = scrollBehavior.nestedScrollConnection.onPreFling(dampedVelocity)
-                return consumed.copy(y = consumed.y / dampingFactor)
-            }
-
-            override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-                val dampingFactor = 0.5f
-                val dampedAvailable = available.copy(y = available.y * dampingFactor)
-                val consumedByTopBar = scrollBehavior.nestedScrollConnection.onPostFling(
-                    consumed.copy(y = consumed.y * dampingFactor),
-                    dampedAvailable
-                )
-                return consumedByTopBar.copy(y = consumedByTopBar.y / dampingFactor)
+                return Offset.Zero
             }
         }
     }
@@ -796,78 +743,6 @@ fun ReminderListScreen(
     val listBottomPadding = segmentedHeight + segmentedBottomSpacing + bottomRowVerticalPadding + 16.dp
 
     Scaffold(
-        topBar = {
-            val topAppBarColors = TopAppBarDefaults.topAppBarColors(
-                containerColor = Color.Transparent,
-                scrolledContainerColor = Color.Transparent,
-                navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
-                titleContentColor = MaterialTheme.colorScheme.onSurface,
-                actionIconContentColor = MaterialTheme.colorScheme.onSurface
-            )
-            val topAppBarModifier = Modifier.background(
-                Brush.verticalGradient(
-                    colors = listOf(
-                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
-                        Color.Transparent
-                    )
-                )
-            )
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .onSizeChanged {
-                        topBarHeightPx = it.height.toFloat()
-                    }
-                    .graphicsLayer {
-                        translationY = scrollBehavior.state.heightOffset
-                    }
-                    .then(topAppBarModifier)
-            ) {
-                if (isSelectionMode) {
-                    TopAppBar(
-                        title = { Text("已选择 ${selectedIds.size} 项") },
-                        windowInsets = TopAppBarDefaults.windowInsets,
-                        colors = topAppBarColors,
-                        actions = {
-                            Button(
-                                onClick = { viewModel.exitSelectionMode() },
-                                shape = RoundedCornerShape(12.dp),
-                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                modifier = Modifier.padding(end = 12.dp)
-                            ) {
-                                Text("取消")
-                            }
-                        }
-                    )
-                } else {
-                    TopAppBar(
-                        title = {
-                            Icon(
-                                painter = painterResource(id = R.drawable.reminder),
-                                contentDescription = "Reminder",
-                                modifier = Modifier.height(28.dp),
-                                tint = MaterialTheme.colorScheme.onSurface
-                            )
-                        },
-                        windowInsets = TopAppBarDefaults.windowInsets,
-                        colors = topAppBarColors,
-                        actions = {
-                            IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "设置"
-                                )
-                            }
-                        }
-                    )
-                }
-            }
-        },
         floatingActionButton = {},
         containerColor = Color.Transparent,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -912,26 +787,28 @@ fun ReminderListScreen(
                     // 正在加载时不显示 EmptyStateCard，避免闪屏
                     Box(modifier = Modifier.fillMaxSize())
                 } else if (sections.isEmpty()) {
+                    val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
                     EmptyStateCard(
                         modifier = Modifier
                             .padding(horizontal = 24.dp, vertical = 32.dp)
-                            .padding(top = innerPadding.calculateTopPadding(), bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                            .padding(top = topBarHeightDp, bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
                             .fillMaxWidth()
                             .graphicsLayer {
-                                translationY = scrollBehavior.state.heightOffset
+                                translationY = titleOffsetPx
                             }
                     )
                 } else {
+                    val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize()
                             .graphicsLayer {
-                                translationY = scrollBehavior.state.heightOffset
+                                translationY = titleOffsetPx
                             },
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
-                            top = innerPadding.calculateTopPadding(),
+                            top = topBarHeightDp,
                             bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                         ),
                         verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
@@ -1001,9 +878,83 @@ fun ReminderListScreen(
                 }
             }
 
+            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
             StatusBarScrim(
                 modifier = Modifier.align(Alignment.TopCenter)
             )
+
+            // 标题栏 (Top Bar)
+            val topAppBarColors = TopAppBarDefaults.topAppBarColors(
+                containerColor = Color.Transparent,
+                scrolledContainerColor = Color.Transparent,
+                navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                titleContentColor = MaterialTheme.colorScheme.onSurface,
+                actionIconContentColor = MaterialTheme.colorScheme.onSurface
+            )
+            val topAppBarModifier = Modifier.background(
+                Brush.verticalGradient(
+                    colors = listOf(
+                        MaterialTheme.colorScheme.surface,
+                        MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                        Color.Transparent
+                    )
+                )
+            )
+
+            Box(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .onSizeChanged {
+                        topBarHeightPx = it.height.toFloat()
+                    }
+                    .graphicsLayer {
+                        translationY = titleOffsetPx
+                    }
+                    .then(topAppBarModifier)
+            ) {
+                if (isSelectionMode) {
+                    TopAppBar(
+                        title = { Text("已选择 ${selectedIds.size} 项") },
+                        windowInsets = TopAppBarDefaults.windowInsets,
+                        colors = topAppBarColors,
+                        actions = {
+                            Button(
+                                onClick = { viewModel.exitSelectionMode() },
+                                shape = RoundedCornerShape(12.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                                colors = ButtonDefaults.buttonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary
+                                ),
+                                modifier = Modifier.padding(end = 12.dp)
+                            ) {
+                                Text("取消")
+                            }
+                        }
+                    )
+                } else {
+                    TopAppBar(
+                        title = {
+                            Icon(
+                                painter = painterResource(id = R.drawable.reminder),
+                                contentDescription = "Reminder",
+                                modifier = Modifier.height(28.dp),
+                                tint = MaterialTheme.colorScheme.onSurface
+                            )
+                        },
+                        windowInsets = TopAppBarDefaults.windowInsets,
+                        colors = topAppBarColors,
+                        actions = {
+                            IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "设置"
+                                )
+                            }
+                        }
+                    )
+                }
+            }
 
             Box(
                 modifier = Modifier
@@ -1679,7 +1630,7 @@ private fun EmptyStateCard(modifier: Modifier = Modifier) {
 @Composable
 private fun StatusBarScrim(modifier: Modifier = Modifier) {
     val statusBarHeight = WindowInsets.statusBars.asPaddingValues().calculateTopPadding()
-    val scrimHeight = statusBarHeight + 32.dp
+    val scrimHeight = statusBarHeight + 16.dp
     Box(
         modifier = modifier
             .fillMaxWidth()
@@ -1687,9 +1638,7 @@ private fun StatusBarScrim(modifier: Modifier = Modifier) {
             .background(
                 Brush.verticalGradient(
                     colors = listOf(
-                        Color.Black.copy(alpha = 0.45f),
-                        Color.Black.copy(alpha = 0.3f),
-                        Color.Black.copy(alpha = 0.15f),
+                        Color.Black.copy(alpha = 0.4f),
                         Color.Transparent
                     )
                 )
