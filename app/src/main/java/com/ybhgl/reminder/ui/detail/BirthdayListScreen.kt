@@ -86,16 +86,14 @@ fun BirthdayListScreen(
                     BirthdayCalculator.generateBirthdayList(reminderItem.date, reminderItem.isLunar)
                 }
 
+                val dynamicTopPadding = topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 16.dp
                 LazyColumn(
                     modifier = Modifier
-                        .fillMaxSize()
-                        .graphicsLayer {
-                            translationY = titleOffsetPx
-                        },
+                        .fillMaxSize(),
                     contentPadding = PaddingValues(
                         start = 16.dp,
                         end = 16.dp,
-                        top = topBarHeightDp + 16.dp,
+                        top = dynamicTopPadding,
                         bottom = 16.dp + paddingValues.calculateBottomPadding()
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)

@@ -170,13 +170,11 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(scrollState)
-                    .graphicsLayer {
-                        translationY = titleOffsetPx
-                    }
                     .padding(horizontal = 16.dp)
-                    .padding(top = topBarHeightDp + 12.dp, bottom = innerPadding.calculateBottomPadding() + 12.dp),
+                    .padding(top = 0.dp, bottom = innerPadding.calculateBottomPadding() + 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                Spacer(modifier = Modifier.height(topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 12.dp))
                 Text(
                     text = "外观",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)

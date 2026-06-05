@@ -30,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -176,13 +177,11 @@ fun AddReminderScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
-                    .graphicsLayer {
-                        translationY = titleOffsetPx
-                    }
                     .padding(horizontal = 16.dp)
-                    .padding(top = topBarHeightDp, bottom = innerPadding.calculateBottomPadding() + 16.dp),
+                    .padding(top = 0.dp, bottom = innerPadding.calculateBottomPadding() + 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                Spacer(modifier = Modifier.height(topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }))
                 // 1. 标题
                 OutlinedTextField(
                     value = uiState.title,

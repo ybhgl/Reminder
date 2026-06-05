@@ -789,27 +789,23 @@ fun ReminderListScreen(
                     Box(modifier = Modifier.fillMaxSize())
                 } else if (sections.isEmpty()) {
                     val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+                    val dynamicTopPadding = topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }
                     EmptyStateCard(
                         modifier = Modifier
                             .padding(horizontal = 24.dp, vertical = 32.dp)
-                            .padding(top = topBarHeightDp, bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                            .padding(top = dynamicTopPadding, bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
                             .fillMaxWidth()
-                            .graphicsLayer {
-                                translationY = titleOffsetPx
-                            }
                     )
                 } else {
                     val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+                    val dynamicTopPadding = topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }
                     LazyColumn(
                         modifier = Modifier
-                            .fillMaxSize()
-                            .graphicsLayer {
-                                translationY = titleOffsetPx
-                            },
+                            .fillMaxSize(),
                         contentPadding = PaddingValues(
                             start = 16.dp,
                             end = 16.dp,
-                            top = topBarHeightDp,
+                            top = dynamicTopPadding,
                             bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                         ),
                         verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
