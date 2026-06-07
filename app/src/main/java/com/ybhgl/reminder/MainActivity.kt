@@ -1311,7 +1311,7 @@ private fun ReminderListItem(
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Text(
-                        text = displayInfo.dayCount.toString(),
+                        text = if (displayInfo.dayCount == 0) "今" else displayInfo.dayCount.toString(),
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                         maxLines = 1,
                         modifier = Modifier.alignByBaseline()
