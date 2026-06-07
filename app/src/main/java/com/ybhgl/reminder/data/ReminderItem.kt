@@ -91,3 +91,12 @@ object LocalTimeSerializer {
         return LocalTime.parse(decoder.decodeString())
     }
 }
+
+@Serializable
+data class BackupData(
+    val reminders: List<ReminderItem>,
+    val themeOption: AppThemeOption? = null,
+    val pureBlackEnabled: Boolean? = null,
+    val defaultPage: AppDefaultPage? = null,
+    val viewMode: String? = null
+)

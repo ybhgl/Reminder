@@ -14,6 +14,9 @@ import com.ybhgl.reminder.data.pureBlackFlow
 import com.ybhgl.reminder.data.savePureBlack
 import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.data.saveDefaultPage
+import com.ybhgl.reminder.data.BackupData
+import com.ybhgl.reminder.data.viewModeFlow
+import com.ybhgl.reminder.data.saveViewMode
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -57,7 +60,20 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
                 return@withContext "没有可备份的数据"
             }
 
-            val json = Json.encodeToString(reminders)
+            val themeOption = themePreferenceFlow(context).first()
+            val pureBlackEnabled = pureBlackPreferenceFlow(context).first()
+            val defaultPage = defaultPageFlow(context).first()
+            val viewMode = viewModeFlow(context).first()
+
+            val backupData = BackupData(
+                reminders = reminders,
+                themeOption = themeOption,
+                pureBlackEnabled = pureBlackEnabled,
+                defaultPage = defaultPage,
+                viewMode = viewMode
+            )
+
+            val json = Json.encodeToString(backupData)
             context.contentResolver.openOutputStream(targetUri)?.use { output ->
                 output.write(json.toByteArray())
                 output.flush()
@@ -75,10 +91,30 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
                 input.readBytes().decodeToString()
             } ?: return@withContext "恢复失败：无法读取文件"
 
-            val reminders = Json.decodeFromString<List<ReminderItem>>(json)
+            val backupData = try {
+                Json.decodeFromString<BackupData>(json)
+            } catch (e: Exception) {
+                try {
+                    val reminders = Json.decodeFromString<List<ReminderItem>>(json)
+                    BackupData(reminders = reminders)
+                } catch (ex: Exception) {
+                    null
+                }
+            }
+
+            if (backupData == null) {
+                return@withContext "恢复失败：文件格式不正确"
+            }
+
             reminderRepository.deleteAllReminders()
-            reminders.forEach { reminderRepository.insertReminder(it.copy(id = 0)) }
-            "恢复完成，共导入 ${reminders.size} 条记录"
+            backupData.reminders.forEach { reminderRepository.insertReminder(it.copy(id = 0)) }
+
+            backupData.themeOption?.let { updateThemePreference(context, it) }
+            backupData.pureBlackEnabled?.let { updatePureBlackPreference(context, it) }
+            backupData.defaultPage?.let { updateDefaultPage(context, it) }
+            backupData.viewMode?.let { saveViewMode(context, it) }
+
+            "恢复完成，共导入 ${backupData.reminders.size} 条记录"
         } catch (e: Exception) {
             "恢复失败：${e.localizedMessage ?: "未知错误"}"
         }
