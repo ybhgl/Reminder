@@ -550,7 +550,7 @@ fun AddReminderScreen(
                                 viewModel.saveReminder(context)
                                 onNavigateUp()
                             },
-                            enabled = viewModel.isInitialized && uiState.title.isNotBlank()
+                            enabled = viewModel.isInitialized && uiState.title.isNotBlank() && viewModel.hasUnsavedChanges()
                         ) {
                             Icon(
                                 imageVector = Icons.Default.Save,

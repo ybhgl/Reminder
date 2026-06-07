@@ -95,7 +95,7 @@ fun ReminderSettingScreen(
                 },
                 actions = {
                     IconButton(
-                        enabled = viewModel.isInitialized,
+                        enabled = viewModel.isInitialized && viewModel.hasChanges(),
                         onClick = {
                         val missingPermissions = mutableListOf<String>()
                         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && notificationPermissionState?.status?.isGranted == false) {
