@@ -396,14 +396,9 @@ fun AddReminderScreen(
                 }
 
                 if (uiState.showRepeatDialog) {
-                    val availableUnits = if (uiState.isLunar) {
-                        listOf(RepeatUnit.MONTH, RepeatUnit.YEAR)
-                    } else {
-                        RepeatUnit.entries.toList()
-                    }
                     RepeatSettingDialog(
                         repeatInfo = uiState.repeatInfo,
-                        availableUnits = availableUnits,
+                        availableUnits = RepeatUnit.entries.toList(),
                         onDismissRequest = { viewModel.onShowRepeatDialog(false) },
                         onConfirm = {
                             viewModel.onRepeatInfoChange(it)

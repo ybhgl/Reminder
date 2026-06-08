@@ -147,8 +147,7 @@ class AddReminderViewModel(
 
     fun onLunarChange(isLunar: Boolean) {
         reminderUiState = reminderUiState.copy(
-            isLunar = isLunar,
-            repeatInfo = null
+            isLunar = isLunar
         )
     }
 
