@@ -56,13 +56,163 @@ jobs:
           name: reminder-arm64-v8a
           path: app/build/outputs/apk/release/*.apk
 
+      # =========================================================================
+      # 步骤 1：解析并统一当前要发布的 Tag 名字，存入环境变量 env.TAG_NAME 中
+      # =========================================================================
+      - name: Set Release Tag
+        id: set_tag
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+        run: |
+          if [ "${{ github.event_name }}" = "workflow_dispatch" ]; then
+            echo "TAG_NAME=${{ github.event.inputs.release_tag }}" >> $GITHUB_ENV
+          else
+            echo "TAG_NAME=${{ github.ref_name }}" >> $GITHUB_ENV
+          fi
+
+      # =========================================================================
+      # 步骤 2：使用 mikepenz 插件基于 Commit 自动提取并分类生成 英文 Changelog
+      # =========================================================================
+      - name: Build Changelog
+        id: build_changelog
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+        uses: mikepenz/release-changelog-builder-action@v6
+        with:
+          mode: 'COMMIT'                   # 开启 Commit 模式，直接读取提交日志
+          toTag: ${{ env.TAG_NAME }}       # 显式指定对比的目标 Tag
+          configurationJson: |
+            {
+              "template": "#{{CHANGELOG}}\n\n*由自动化工作流生成*",
+              "categories": [
+                {
+                  "title": "## 🌟 新增功能 (Features)",
+                  "labels": ["feat", "feature"]
+                },
+                {
+                  "title": "## 🐛 缺陷修复 (Bug Fixes)",
+                  "labels": ["fix", "bug"]
+                },
+                {
+                  "title": "## 📝 文档更新 (Documentation)",
+                  "labels": ["docs"]
+                },
+                {
+                  "title": "## ⚙️ 其它调整 (Chore & Refactor)",
+                  "labels": ["chore", "ci", "style", "refactor"]
+                }
+              ],
+              "label_extractor": [
+                {
+                  "pattern": "^(feat|feature|fix|bug|chore|ci|style|refactor|docs){1}(\\([\\w\\-\\.]+\\))?(!)?: ([\\s\\S]*)",
+                  "target": "$1",
+                  "on_property": "commitMessage"
+                }
+              ]
+            }
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      # =========================================================================
+      # 步骤 3：新增翻译步骤，自动将英文 Commit 翻译成中文，同时保留 Markdown 结构
+      # =========================================================================
+      - name: Translate Changelog to Chinese
+        id: translate_changelog
+        if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
+        env:
+          CHANGELOG_CONTENT: ${{ steps.build_changelog.outputs.changelog }}
+        run: |
+          # 1. 保存生成的英文 Changelog 到临时文件
+          echo "$CHANGELOG_CONTENT" > changelog.md
+
+          # 2. 安装免 key 翻译依赖
+          pip install deep-translator
+
+          # 3. 运行 Python 脚本进行局部智能翻译
+          python - << 'EOF'
+          import re
+          from deep_translator import GoogleTranslator
+
+          # 初始化翻译器
+          translator = GoogleTranslator(source='auto', target='zh-CN')
+
+          def translate_text(text):
+              if not text.strip():
+                  return text
+              try:
+                  return translator.translate(text)
+              except Exception as e:
+                  print(f"Translation failed for '{text}': {e}")
+                  return text
+
+          def process_line(line):
+              stripped = line.strip()
+              # 我们只翻译 Commit 行（通常以 '*' 开头），跳过标题行和空白行
+              if not stripped.startswith('*'):
+                  return line
+              
+              # 1. 提取行首空格
+              leading_spaces = line[:len(line) - len(line.lstrip())]
+              content = stripped[1:].strip()
+              
+              # 2. 提取并保留规范前缀（例如 "feat(auth): " 或 "fix: "）
+              prefix = ""
+              if ": " in content:
+                  parts = content.split(": ", 1)
+                  left = parts[0]
+                  # 简单判断是否属于 conventional commit 前缀（短、无空格）
+                  if len(left) < 30 and ' ' not in left.replace('(', '').replace(')', ''):
+                      prefix = left + ": "
+                      content = parts[1]
+                      
+              # 3. 提取并保留行尾的 PR 链接/作者（例如 " (#123) @user"）
+              suffix = ""
+              pr_match = re.search(r'\s+\(#\d+\)', content)
+              user_match = re.search(r'\s+@[a-zA-Z0-9\-_\/]+', content)
+              
+              suffix_start_idx = len(content)
+              if pr_match and user_match:
+                  suffix_start_idx = min(pr_match.start(), user_match.start())
+              elif pr_match:
+                  suffix_start_idx = pr_match.start()
+              elif user_match:
+                  suffix_start_idx = user_match.start()
+                  
+              if suffix_start_idx < len(content):
+                  suffix = content[suffix_start_idx:]
+                  content = content[:suffix_start_idx]
+                  
+              # 4. 翻译核心英文消息，并重新拼接
+              message = content.strip()
+              if message:
+                  translated = translate_text(message)
+                  return f"{leading_spaces}* {prefix}{translated}{suffix}\n"
+              return line
+
+          # 读取并翻译所有行
+          with open('changelog.md', 'r', encoding='utf-8') as f:
+              lines = f.readlines()
+
+          translated_lines = [process_line(line) for line in lines]
+
+          # 保存翻译后的 Changelog
+          with open('changelog_zh.md', 'w', encoding='utf-8') as f:
+              f.writelines(translated_lines)
+          EOF
+
+          # 4. 采用 safe 多行输出方式将结果写入 GITHUB_OUTPUT
+          echo "changelog_zh<<EOF" >> $GITHUB_OUTPUT
+          cat changelog_zh.md >> $GITHUB_OUTPUT
+          echo "EOF" >> $GITHUB_OUTPUT
+
+      # =========================================================================
+      # 步骤 4：创建 GitHub Release 并写入上面生成的 中文 Changelog 
+      # =========================================================================
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/') || (github.event_name == 'workflow_dispatch' && github.event.inputs.release_tag != '')
         uses: softprops/action-gh-release@v2
         with:
-          tag_name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag }}
-          name: ${{ startsWith(github.ref, 'refs/tags/') && github.ref_name || github.event.inputs.release_tag }}
+          tag_name: ${{ env.TAG_NAME }}
+          name: ${{ env.TAG_NAME }}
           files: app/build/outputs/apk/release/*.apk
           draft: false
           prerelease: false
-          generate_release_notes: true
+          body: ${{ steps.translate_changelog.outputs.changelog_zh }} # 引用翻译后的中文内容
