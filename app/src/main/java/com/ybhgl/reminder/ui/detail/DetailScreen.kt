@@ -111,22 +111,31 @@ fun DetailScreen(
         }
 
         val currentReminder = reminderItems.getOrNull(pagerState.currentPage)
+        val latestReminderItems by rememberUpdatedState(reminderItems)
         var currentId by remember { mutableIntStateOf(viewModel.reminderId) }
 
-        // Sync currentId/viewModel active reminder item when page changes
-        LaunchedEffect(pagerState.currentPage, reminderItems) {
-            val item = reminderItems.getOrNull(pagerState.currentPage)
-            if (item != null) {
-                currentId = item.id
-                viewModel.updateCurrentReminder(item)
+        // Sync currentId/viewModel active reminder item when page changes (via user swipe)
+        LaunchedEffect(pagerState) {
+            snapshotFlow { pagerState.currentPage }.collect { page ->
+                val item = latestReminderItems.getOrNull(page)
+                if (item != null) {
+                    currentId = item.id
+                    viewModel.updateCurrentReminder(item)
+                }
             }
         }
 
-        // Sync page when list updates and current item shifted position
+        // Sync page and content when list updates (due to database edits/re-sorting)
         LaunchedEffect(reminderItems) {
             val newIndex = reminderItems.indexOfFirst { it.id == currentId }
-            if (newIndex != -1 && newIndex != pagerState.currentPage) {
-                pagerState.scrollToPage(newIndex)
+            if (newIndex != -1) {
+                if (newIndex != pagerState.currentPage) {
+                    pagerState.scrollToPage(newIndex)
+                }
+                // Always sync the updated item details to the ViewModel
+                reminderItems.getOrNull(newIndex)?.let {
+                    viewModel.updateCurrentReminder(it)
+                }
             }
         }
 
