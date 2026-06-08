@@ -1,12 +1,18 @@
 package com.ybhgl.reminder.ui.add
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.BasicTextField
+import androidx.compose.foundation.text.selection.LocalTextSelectionColors
+import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.*
 import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -60,6 +66,7 @@ fun UnifiedDatePickerDialog(
     onConfirm: (LocalDate, Boolean) -> Unit
 ) {
     var isLunarSelected by remember { mutableStateOf(initialIsLunar) }
+    var showQuickInputDialog by remember { mutableStateOf(false) }
 
     // ==========================================
     // 1. 公历 (Solar) DatePicker States & Options
@@ -378,16 +385,18 @@ fun UnifiedDatePickerDialog(
                     )
                 }
 
-                // Dynamic live title display below TabRow
+                // Dynamic live title display below TabRow (Clickable for quick input)
                 Spacer(modifier = Modifier.height(8.dp))
                 Text(
                     text = if (!isLunarSelected) solarTitle else lunarTitle,
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 20.sp,
-                        color = MaterialTheme.colorScheme.onSurface
+                        color = MaterialTheme.colorScheme.primary
                     ),
-                    modifier = Modifier.padding(horizontal = 16.dp),
+                    modifier = Modifier
+                        .clickable { showQuickInputDialog = true }
+                        .padding(horizontal = 16.dp, vertical = 4.dp),
                     textAlign = TextAlign.Center
                 )
                 Spacer(modifier = Modifier.height(12.dp))
@@ -515,5 +524,347 @@ fun UnifiedDatePickerDialog(
                 }
             }
         }
+    }
+
+    // ==========================================
+    // 5. Quick Input Dialog (Click Live Title)
+    // ==========================================
+    if (showQuickInputDialog) {
+        var yearInput by remember { mutableStateOf("") }
+        var monthInput by remember { mutableStateOf("") }
+        var dayInput by remember { mutableStateOf("") }
+
+        LaunchedEffect(showQuickInputDialog) {
+            if (showQuickInputDialog) {
+                val baseDate = if (!isLunarSelected) {
+                    LocalDate.of(selectedSolarYear, selectedSolarMonth, selectedSolarDay)
+                } else {
+                    val curMonth = monthOptions.getOrNull(monthPickerState.settledIndex)?.value
+                    if (curMonth != null) {
+                        val lunarDayObj = LunarDay.fromYmd(selectedYear, curMonth.getMonthWithLeap(), activeDay)
+                        val solarDayObj = lunarDayObj.getSolarDay()
+                        LocalDate.of(solarDayObj.getYear(), solarDayObj.getMonth(), solarDayObj.getDay())
+                    } else {
+                        LocalDate.now()
+                    }
+                }
+                yearInput = baseDate.year.toString()
+                monthInput = String.format("%02d", baseDate.monthValue)
+                dayInput = String.format("%02d", baseDate.dayOfMonth)
+            }
+        }
+
+        val validationResult = remember(yearInput, monthInput, dayInput) {
+            val yr = yearInput.toIntOrNull()
+            val m = monthInput.toIntOrNull()
+            val d = dayInput.toIntOrNull()
+
+            if (yr == null || m == null || d == null) {
+                return@remember "请输入完整的数字日期"
+            }
+
+            if (yr !in 1901..2100) {
+                return@remember "年份范围需在 1901 - 2100 之间"
+            }
+
+            if (m !in 1..12) {
+                return@remember "月份范围需在 01 - 12 之间"
+            }
+
+            val maxD = try {
+                java.time.YearMonth.of(yr, m).lengthOfMonth()
+            } catch (e: Exception) {
+                31
+            }
+
+            if (d !in 1..maxD) {
+                return@remember "${m}月天数范围需在 01 - ${maxD} 之间"
+            }
+
+            null
+        }
+
+        val isYearError = remember(yearInput, validationResult) {
+            val yr = yearInput.toIntOrNull()
+            validationResult != null && (yr == null || yr !in 1901..2100)
+        }
+
+        val isMonthError = remember(monthInput, validationResult) {
+            val m = monthInput.toIntOrNull()
+            validationResult != null && (m == null || m !in 1..12)
+        }
+
+        val isDayError = remember(yearInput, monthInput, dayInput, validationResult) {
+            val yr = yearInput.toIntOrNull() ?: 2026
+            val m = monthInput.toIntOrNull() ?: 1
+            val d = dayInput.toIntOrNull()
+            val maxD = try {
+                java.time.YearMonth.of(yr, m).lengthOfMonth()
+            } catch (e: Exception) {
+                31
+            }
+            validationResult != null && (d == null || d !in 1..maxD)
+        }
+
+        AlertDialog(
+            onDismissRequest = { showQuickInputDialog = false },
+            title = {
+                Text(
+                    text = "输入日期",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold
+                )
+            },
+            text = {
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    val customTextSelectionColors = TextSelectionColors(
+                        handleColor = MaterialTheme.colorScheme.primary,
+                        backgroundColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.4f)
+                    )
+                    CompositionLocalProvider(LocalTextSelectionColors provides customTextSelectionColors) {
+                        Row(
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.Center,
+                            modifier = Modifier.fillMaxWidth().padding(vertical = 12.dp)
+                        ) {
+                            // Year BasicTextField
+                            BasicTextField(
+                                value = yearInput,
+                                onValueChange = { newValue ->
+                                    val filtered = newValue.filter { it.isDigit() }
+                                    if (filtered.length <= 4) yearInput = filtered
+                                },
+                                textStyle = LocalTextStyle.current.copy(
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                singleLine = true,
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.width(64.dp),
+                                decorationBox = { innerTextField ->
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                                            if (yearInput.isEmpty()) {
+                                                Text(
+                                                    text = "YYYY",
+                                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                                        textAlign = TextAlign.Center,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 18.sp
+                                                    ),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                            innerTextField()
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        val lineColor = if (isYearError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(2.dp)
+                                                .background(lineColor)
+                                        )
+                                    }
+                                }
+                            )
+                            Text(
+                                text = "/",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                modifier = Modifier.padding(horizontal = 14.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            // Month BasicTextField
+                            BasicTextField(
+                                value = monthInput,
+                                onValueChange = { newValue ->
+                                    val filtered = newValue.filter { it.isDigit() }
+                                    if (filtered.length <= 2) monthInput = filtered
+                                },
+                                textStyle = LocalTextStyle.current.copy(
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                singleLine = true,
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.width(44.dp),
+                                decorationBox = { innerTextField ->
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                                            if (monthInput.isEmpty()) {
+                                                Text(
+                                                    text = "MM",
+                                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                                        textAlign = TextAlign.Center,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 18.sp
+                                                    ),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                            innerTextField()
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        val lineColor = if (isMonthError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(2.dp)
+                                                .background(lineColor)
+                                        )
+                                    }
+                                }
+                            )
+                            Text(
+                                text = "/",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                modifier = Modifier.padding(horizontal = 14.dp),
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            // Day BasicTextField
+                            BasicTextField(
+                                value = dayInput,
+                                onValueChange = { newValue ->
+                                    val filtered = newValue.filter { it.isDigit() }
+                                    if (filtered.length <= 2) dayInput = filtered
+                                },
+                                textStyle = LocalTextStyle.current.copy(
+                                    textAlign = TextAlign.Center,
+                                    fontWeight = FontWeight.Bold,
+                                    fontSize = 18.sp,
+                                    color = MaterialTheme.colorScheme.onSurface
+                                ),
+                                singleLine = true,
+                                keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(
+                                    keyboardType = androidx.compose.ui.text.input.KeyboardType.Number
+                                ),
+                                cursorBrush = SolidColor(MaterialTheme.colorScheme.primary),
+                                modifier = Modifier.width(44.dp),
+                                decorationBox = { innerTextField ->
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally
+                                    ) {
+                                        Box(contentAlignment = Alignment.Center, modifier = Modifier.fillMaxWidth()) {
+                                            if (dayInput.isEmpty()) {
+                                                Text(
+                                                    text = "DD",
+                                                    style = MaterialTheme.typography.bodyLarge.copy(
+                                                        color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.3f),
+                                                        textAlign = TextAlign.Center,
+                                                        fontWeight = FontWeight.Bold,
+                                                        fontSize = 18.sp
+                                                    ),
+                                                    modifier = Modifier.fillMaxWidth()
+                                                )
+                                            }
+                                            innerTextField()
+                                        }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        val lineColor = if (isDayError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
+                                        Box(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .height(2.dp)
+                                                .background(lineColor)
+                                        )
+                                    }
+                                }
+                            )
+                        }
+                    }
+
+                    if (validationResult != null) {
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = validationResult,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                            textAlign = TextAlign.Center,
+                            modifier = Modifier.fillMaxWidth()
+                        )
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        val yr = yearInput.toIntOrNull()
+                        val m = monthInput.toIntOrNull()
+                        val d = dayInput.toIntOrNull()
+                        if (yr != null && m != null && d != null && validationResult == null) {
+                            if (isLunarSelected) {
+                                // Sync back to Lunar states
+                                try {
+                                    val solar = SolarDay.fromYmd(yr, m, d)
+                                    val lunar = solar.getLunarDay()
+                                    val targetYear = lunar.getYear()
+                                    val targetMonthName = lunar.getLunarMonth()!!.getName()
+                                    val targetDay = lunar.getDay()
+
+                                    selectedYear = targetYear
+                                    activeMonthName = targetMonthName
+                                    activeDay = targetDay
+
+                                    val yIdx = yearOptions.indexOfFirst { it.value == targetYear }.coerceAtLeast(0)
+                                    yearPickerState.scrollToIndex(yIdx)
+
+                                    val mOpts = LunarYear.fromYear(targetYear).getMonths()
+                                    val mIdx = mOpts.indexOfFirst { it.getName() == targetMonthName }.coerceAtLeast(0)
+                                    monthPickerState.scrollToIndex(mIdx)
+
+                                    val dIdx = (targetDay - 1).coerceIn(0, (mOpts.getOrNull(mIdx)?.getDayCount() ?: 30) - 1)
+                                    dayPickerState.scrollToIndex(dIdx)
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                            } else {
+                                // Sync back to Solar states
+                                selectedSolarYear = yr
+                                selectedSolarMonth = m
+                                selectedSolarDay = d
+
+                                val yIdx = solarYearOptions.indexOfFirst { it.value == yr }.coerceAtLeast(0)
+                                solarYearPickerState.scrollToIndex(yIdx)
+
+                                val mIdx = solarMonthOptions.indexOfFirst { it.value == m }.coerceAtLeast(0)
+                                solarMonthPickerState.scrollToIndex(mIdx)
+
+                                val maxD = java.time.YearMonth.of(yr, m).lengthOfMonth()
+                                val dIdx = (d - 1).coerceIn(0, maxD - 1)
+                                solarDayPickerState.scrollToIndex(dIdx)
+                            }
+                            showQuickInputDialog = false
+                        }
+                    },
+                    enabled = validationResult == null
+                ) {
+                    Text("确认")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showQuickInputDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
