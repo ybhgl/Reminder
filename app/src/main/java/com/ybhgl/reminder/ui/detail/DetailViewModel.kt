@@ -18,6 +18,9 @@ import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderRepository
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.util.BirthdayListItem
+import com.ybhgl.reminder.util.CalendarUtil
+import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.*
 import kotlinx.coroutines.launch
@@ -31,7 +34,7 @@ class DetailViewModel(
     private val reminderRepository: ReminderRepository
 ) : ViewModel() {
 
-    private val reminderId: Int = checkNotNull(savedStateHandle["reminderId"])
+    val reminderId: Int = checkNotNull(savedStateHandle["reminderId"])
 
     private val _uiState = MutableStateFlow(DetailUiState())
     val uiState: StateFlow<DetailUiState> = _uiState.asStateFlow()
@@ -44,12 +47,61 @@ class DetailViewModel(
 
     init {
         viewModelScope.launch {
-            reminderRepository.getReminderStream(reminderId)
-                .filterNotNull()
-                .collect { reminder ->
-                    _uiState.update { it.copy(reminderItem = reminder) }
+            reminderRepository.getAllRemindersStream()
+                .collect { reminders ->
+                    val today = LocalDate.now()
+
+                    val annualList = reminders.filter { it.type == ReminderType.ANNUAL }.sortedWith(
+                        compareBy<ReminderItem> { if (it.isPinned) 0 else 1 }
+                            .thenBy { reminder ->
+                                val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
+                                if (nextDate != null) {
+                                    ChronoUnit.DAYS.between(today, nextDate).toInt()
+                                } else {
+                                    val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt()
+                                    1000000 - daysPassed
+                                }
+                            }
+                            .thenBy { it.id }
+                    )
+
+                    val countUpList = reminders.filter { it.type == ReminderType.COUNT_UP }.sortedWith(
+                        compareBy<ReminderItem> { if (it.isPinned) 0 else 1 }
+                            .thenBy { reminder ->
+                                ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0) + 1
+                            }
+                            .thenBy { it.id }
+                    )
+
+                    val birthdayList = reminders.filter { it.type == ReminderType.BIRTHDAY }.sortedWith(
+                        compareBy<ReminderItem> { if (it.isPinned) 0 else 1 }
+                            .thenBy { reminder ->
+                                val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
+                                if (nextDate != null) {
+                                    ChronoUnit.DAYS.between(today, nextDate).toInt()
+                                } else {
+                                    val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt()
+                                    1000000 - daysPassed
+                                }
+                            }
+                            .thenBy { it.id }
+                    )
+
+                    val sortedReminders = annualList + countUpList + birthdayList
+
+                    val current = sortedReminders.find { it.id == reminderId }
+                    _uiState.update {
+                        it.copy(
+                            reminderItems = sortedReminders,
+                            reminderItem = current ?: it.reminderItem
+                        )
+                    }
                 }
         }
+    }
+
+    fun updateCurrentReminder(reminder: ReminderItem) {
+        _uiState.update { it.copy(reminderItem = reminder) }
     }
 
     suspend fun shareReminder(bitmap: Bitmap, context: Context) {
@@ -150,6 +202,7 @@ class DetailViewModel(
 
 data class DetailUiState(
     val reminderItem: ReminderItem? = null,
+    val reminderItems: List<ReminderItem> = emptyList(),
     val pendingBirthdayItem: BirthdayListItem? = null
 )
 

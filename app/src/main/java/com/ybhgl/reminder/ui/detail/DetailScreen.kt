@@ -29,6 +29,9 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
+import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.core.content.ContextCompat
 import com.ybhgl.reminder.R
 import com.ybhgl.reminder.ReminderCardVisuals
@@ -51,6 +54,7 @@ import java.time.LocalDate
 
 enum class CaptureAction { SHARE, SAVE }
 
+@OptIn(ExperimentalFoundationApi::class)
 @ExperimentalComposeUiApi
  @Composable
 fun DetailScreen(
@@ -58,7 +62,7 @@ fun DetailScreen(
     viewModel: DetailViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsState()
-    val reminderItem = uiState.reminderItem
+    val reminderItems = uiState.reminderItems
     val captureController = rememberCaptureController()
     val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
@@ -96,101 +100,163 @@ fun DetailScreen(
         }
     }
 
-    LaunchedEffect(captureAction) {
-        val pendingAction = captureAction ?: return@LaunchedEffect
-        try {
-            // 修复数字还渲染就导出导致的数字部分缺失问题
-            repeat(2) { withFrameNanos { } }
-            val imageBitmap = captureController.captureAsync().await()
-            when (pendingAction) {
-                CaptureAction.SHARE -> viewModel.shareReminder(imageBitmap.asAndroidBitmap(), context)
-                CaptureAction.SAVE -> viewModel.saveReminderAsImage(imageBitmap.asAndroidBitmap(), context)
-            }
-        } catch (_: Throwable) {
-            coroutineScope.launch {
-                snackbarHostState.showSnackbar("操作失败，请重试")
-            }
-        } finally {
-            captureAction = null
+    if (reminderItems.isNotEmpty()) {
+        val initialIndex = remember {
+            reminderItems.indexOfFirst { it.id == viewModel.reminderId }.coerceAtLeast(0)
         }
-    }
 
-    Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
-        topBar = {
-            DetailTopAppBar(
-                onBackClick = { navController.navigateUp() },
-                onEditClick = {
-                    reminderItem?.let {
-                        navController.navigate(Routes.editReminder(it.id))
-                    }
-                }
-            )
+        val pagerState = rememberPagerState(initialPage = initialIndex) {
+            reminderItems.size
         }
-    ) { paddingValues ->
-        // The invisible composable for capture
-        if (captureAction != null && reminderItem != null) {
-            Box(modifier = Modifier.offset(y = (10000).dp)) {
-                ShareableReminderImage(
-                    reminderItem = reminderItem,
-                    modifier = Modifier.capturable(captureController)
-                )
+
+        val currentReminder = reminderItems.getOrNull(pagerState.currentPage)
+        var currentId by remember { mutableIntStateOf(viewModel.reminderId) }
+
+        // Sync currentId/viewModel active reminder item when page changes
+        LaunchedEffect(pagerState.currentPage, reminderItems) {
+            val item = reminderItems.getOrNull(pagerState.currentPage)
+            if (item != null) {
+                currentId = item.id
+                viewModel.updateCurrentReminder(item)
             }
         }
 
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding() + 16.dp)
-                .padding(horizontal = 16.dp),
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            Spacer(modifier = Modifier.weight(0.1f))
-            if (reminderItem != null) {
-                ReminderDetailCard(
-                    reminderItem = reminderItem
-                )
-                
-                // 生日额外信息
-                if (reminderItem.type == ReminderType.BIRTHDAY) {
-                    val birthdayInfo: BirthdayInfo = remember(reminderItem.date, reminderItem.isLunar) {
-                        BirthdayCalculator.calculate(reminderItem.date, reminderItem.isLunar)
+        // Sync page when list updates and current item shifted position
+        LaunchedEffect(reminderItems) {
+            val newIndex = reminderItems.indexOfFirst { it.id == currentId }
+            if (newIndex != -1 && newIndex != pagerState.currentPage) {
+                pagerState.scrollToPage(newIndex)
+            }
+        }
+
+        LaunchedEffect(captureAction) {
+            val pendingAction = captureAction ?: return@LaunchedEffect
+            try {
+                // 修复数字还渲染就导出导致的数字部分缺失问题
+                repeat(2) { withFrameNanos { } }
+                val imageBitmap = captureController.captureAsync().await()
+                when (pendingAction) {
+                    CaptureAction.SHARE -> currentReminder?.let { viewModel.shareReminder(imageBitmap.asAndroidBitmap(), context) }
+                    CaptureAction.SAVE -> currentReminder?.let { viewModel.saveReminderAsImage(imageBitmap.asAndroidBitmap(), context) }
+                }
+            } catch (_: Throwable) {
+                coroutineScope.launch {
+                    snackbarHostState.showSnackbar("操作失败，请重试")
+                }
+            } finally {
+                captureAction = null
+            }
+        }
+
+        Scaffold(
+            snackbarHost = { SnackbarHost(snackbarHostState) },
+            topBar = {
+                DetailTopAppBar(
+                    onBackClick = { navController.navigateUp() },
+                    onEditClick = {
+                        currentReminder?.let {
+                            navController.navigate(Routes.editReminder(it.id))
+                        }
                     }
-                    Spacer(modifier = Modifier.height(16.dp))
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.SpaceEvenly
-                    ) {
-                        BirthdayInfoChip(label = "年龄", value = "${birthdayInfo.age}岁")
-                        BirthdayInfoChip(label = "生肖", value = birthdayInfo.chineseZodiac)
-                        BirthdayInfoChip(label = "星座", value = birthdayInfo.zodiac)
+                )
+            }
+        ) { paddingValues ->
+            // The invisible composable for capture
+            if (captureAction != null && currentReminder != null) {
+                Box(modifier = Modifier.offset(y = (10000).dp)) {
+                    ShareableReminderImage(
+                        reminderItem = currentReminder,
+                        modifier = Modifier.capturable(captureController)
+                    )
+                }
+            }
+
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding() + 16.dp),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
+                HorizontalPager(
+                    state = pagerState,
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    beyondViewportPageCount = 1
+                ) { pageIndex ->
+                    val pageItem = reminderItems.getOrNull(pageIndex)
+                    if (pageItem != null) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(horizontal = 16.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
+                            Spacer(modifier = Modifier.weight(0.1f))
+                            ReminderDetailCard(
+                                reminderItem = pageItem
+                            )
+                            
+                            // 生日额外信息
+                            if (pageItem.type == ReminderType.BIRTHDAY) {
+                                val birthdayInfo: BirthdayInfo = remember(pageItem.date, pageItem.isLunar) {
+                                    BirthdayCalculator.calculate(pageItem.date, pageItem.isLunar)
+                                }
+                                Spacer(modifier = Modifier.height(16.dp))
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceEvenly
+                                ) {
+                                    BirthdayInfoChip(label = "年龄", value = "${birthdayInfo.age}岁")
+                                    BirthdayInfoChip(label = "生肖", value = birthdayInfo.chineseZodiac)
+                                    BirthdayInfoChip(label = "星座", value = birthdayInfo.zodiac)
+                                }
+                            }
+                            Spacer(modifier = Modifier.weight(0.1f))
+                        }
                     }
                 }
-            } else {
+
+                ActionButtonsRow(
+                    onShareClick = {
+                        captureAction = CaptureAction.SHARE
+                    },
+                    onSaveClick = {
+                        val hasPermission = !needsLegacyStoragePermission || ContextCompat.checkSelfPermission(
+                            context,
+                            Manifest.permission.WRITE_EXTERNAL_STORAGE
+                        ) == PackageManager.PERMISSION_GRANTED
+                        if (hasPermission) {
+                            captureAction = CaptureAction.SAVE
+                        } else {
+                            pendingPermissionAction = CaptureAction.SAVE
+                            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                        }
+                    },
+                    onBirthdayListClick = if (currentReminder?.type == ReminderType.BIRTHDAY) {
+                        { navController.navigate(Routes.birthdayList(currentReminder.id)) }
+                    } else null
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    } else {
+        Scaffold(
+            topBar = {
+                DetailTopAppBar(
+                    onBackClick = { navController.navigateUp() },
+                    onEditClick = {}
+                )
+            }
+        ) { paddingValues ->
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(paddingValues),
+                contentAlignment = Alignment.Center
+            ) {
                 CircularProgressIndicator()
             }
-            Spacer(modifier = Modifier.weight(0.1f))
-            ActionButtonsRow(
-                onShareClick = {
-                    captureAction = CaptureAction.SHARE
-                },
-                onSaveClick = {
-                    val hasPermission = !needsLegacyStoragePermission || ContextCompat.checkSelfPermission(
-                        context,
-                        Manifest.permission.WRITE_EXTERNAL_STORAGE
-                    ) == PackageManager.PERMISSION_GRANTED
-                    if (hasPermission) {
-                        captureAction = CaptureAction.SAVE
-                    } else {
-                        pendingPermissionAction = CaptureAction.SAVE
-                        storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                    }
-                },
-                onBirthdayListClick = if (reminderItem?.type == ReminderType.BIRTHDAY) {
-                    { navController.navigate(Routes.birthdayList(reminderItem.id)) }
-                } else null
-            )
-            Spacer(modifier = Modifier.height(16.dp))
         }
     }
 }
