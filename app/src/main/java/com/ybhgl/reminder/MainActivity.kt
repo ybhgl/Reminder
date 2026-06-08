@@ -36,6 +36,8 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.basicMarquee
+import androidx.compose.foundation.MarqueeAnimationMode
 import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
@@ -1234,6 +1236,7 @@ private fun ReminderListItem(
             ) {
                 Text(
                     text = displayInfo.headerTitle,
+                    modifier = Modifier.basicMarquee(animationMode = MarqueeAnimationMode.Immediately),
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Medium),
                     maxLines = 1,
                     color = MaterialTheme.colorScheme.onSurface
@@ -1486,8 +1489,11 @@ private fun ReminderSummaryCard(
                         .background(visuals.headerColor)
                         .padding(horizontal = 16.dp, vertical = 14.dp)
                 ) {
-                    AutoSizeMiddleEllipsisText(
+                    Text(
                         text = displayInfo.headerTitle,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .basicMarquee(animationMode = MarqueeAnimationMode.Immediately),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Medium,
                             fontSize = 16.sp,
@@ -1495,8 +1501,7 @@ private fun ReminderSummaryCard(
                         ),
                         color = visuals.headerContentColor,
                         maxLines = 1,
-                        minTextSizeSp = 16f,
-                        modifier = Modifier.fillMaxWidth()
+                        softWrap = false
                     )
                 }
                 Column(

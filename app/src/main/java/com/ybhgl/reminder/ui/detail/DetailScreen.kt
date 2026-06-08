@@ -24,6 +24,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -406,22 +407,22 @@ fun ReminderDetailCard(
                     .background(visuals.headerColor),
                 contentAlignment = Alignment.Center
             ) {
-                AutoSizeMiddleEllipsisText(
-                    text = displayInfo.headerTitle,
+                val title = displayInfo.headerTitle
+                val fontSize = if (title.length > 12) 22.sp else 30.sp
+                Text(
+                    text = title,
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Medium,
-                        fontSize = 32.sp,
+                        fontSize = fontSize,
                         letterSpacing = 0.sp,
                         textAlign = TextAlign.Center
                     ),
                     color = visuals.headerContentColor,
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 24.dp),
-                    maxLines = 1,
-                    minTextSizeSp = 22f,
-                    useFontPadding = true,
-                    verticalPaddingDp = 10f
+                        .padding(horizontal = 20.dp, vertical = 8.dp),
+                    maxLines = 3,
+                    overflow = TextOverflow.Ellipsis
                 )
             }
 
