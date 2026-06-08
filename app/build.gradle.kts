@@ -44,8 +44,8 @@ android {
         applicationId = "com.ybhgl.reminder"
         minSdk = 28
         targetSdk = 36
-        versionCode = 20
-        versionName = "2.0.0"
+        versionCode = 210
+        versionName = "2.1.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
@@ -86,7 +86,6 @@ android {
             if (apkOutput != null) {
                 // 获取当前正在打包的 ABI（如 arm64-v8a），如果取不到则默认为 universal
                 val abi = apkOutput.filters.find { it.filterType == "ABI" }?.identifier ?: "universal"
-                // 拼接成你想要的文件名：Reminder-v2.0.0-arm64-v8a-release.apk
                 apkOutput.outputFileName = "Reminder-v${variant.versionName}-$abi-${variant.buildType.name}.apk"
             }
         }
