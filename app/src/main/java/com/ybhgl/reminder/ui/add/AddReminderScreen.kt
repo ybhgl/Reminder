@@ -197,8 +197,13 @@ fun AddReminderScreen(
                         .fillMaxWidth()
                         .clickable { showDatePicker = true }
                 ) {
+                    val dateValue = if (uiState.isLunar) {
+                        "${uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE)} (农历 $currentLunarLabel)"
+                    } else {
+                        uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE)
+                    }
                     OutlinedTextField(
-                        value = uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE),
+                        value = dateValue,
                         onValueChange = { },
                         label = { Text("日期") },
                         modifier = Modifier.fillMaxWidth(),
@@ -209,53 +214,16 @@ fun AddReminderScreen(
                 }
 
                 if (showDatePicker) {
-                    val initialMillis = uiState.date.atStartOfDay(zoneId).toInstant().toEpochMilli()
-                    val datePickerState = rememberDatePickerState(
-                        initialSelectedDateMillis = initialMillis
-                    )
-                    DatePickerDialog(
+                    UnifiedDatePickerDialog(
+                        initialDate = uiState.date,
+                        initialIsLunar = uiState.isLunar,
                         onDismissRequest = { showDatePicker = false },
-                        confirmButton = {
-                            TextButton(
-                                onClick = {
-                                    datePickerState.selectedDateMillis?.let { millis ->
-                                        val newDate = Instant.ofEpochMilli(millis)
-                                            .atZone(zoneId)
-                                            .toLocalDate()
-                                        viewModel.updateUiState(uiState.copy(date = newDate))
-                                    }
-                                    showDatePicker = false
-                                }
-                            ) {
-                                Text("确定")
-                            }
-                        },
-                        dismissButton = {
-                            TextButton(onClick = { showDatePicker = false }) {
-                                Text("取消")
-                            }
+                        onConfirm = { newDate, newIsLunar ->
+                            viewModel.updateUiState(uiState.copy(date = newDate, isLunar = newIsLunar))
+                            showDatePicker = false
                         }
-                    ) {
-                        DatePicker(state = datePickerState)
-                    }
+                    )
                 }
-
-                // 3. 农历
-                SettingSwitch(
-                    title = {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Text("农历", style = MaterialTheme.typography.bodyLarge)
-                            if (uiState.isLunar) {
-                                Text(
-                                    text = "：$currentLunarLabel",
-                                    style = MaterialTheme.typography.bodyLarge
-                                )
-                            }
-                        }
-                    },
-                    checked = uiState.isLunar,
-                    onCheckedChange = { viewModel.onLunarChange(it) }
-                )
 
                 // 4. 置顶
                 SettingSwitch(

@@ -60,6 +60,11 @@ android {
             )
             signingConfig = signingConfigs.getByName("release")
         }
+        create("releaseNoMinify") {
+            initWith(getByName("release")) 
+            isMinifyEnabled = false      // 关闭混淆
+            isShrinkResources = false    // 关闭资源压缩
+        }
     }
     splits {
         abi {
