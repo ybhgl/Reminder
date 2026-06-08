@@ -606,6 +606,40 @@ fun UnifiedDatePickerDialog(
             validationResult != null && (d == null || d !in 1..maxD)
         }
 
+        val derivedLunarInfo: Triple<String, String, String>? = remember(yearInput, monthInput, dayInput, validationResult) {
+            if (validationResult == null) {
+                try {
+                    val yr = yearInput.toIntOrNull()
+                    val m = monthInput.toIntOrNull()
+                    val d = dayInput.toIntOrNull()
+                    if (yr != null && m != null && d != null) {
+                        val solar = SolarDay.fromYmd(yr, m, d)
+                        val lunar = solar.getLunarDay()
+                        val yearNum = lunar.getYear()
+                        val ganZhi = LunarYear.fromYear(yearNum).getSixtyCycle().toString()
+
+                        val rawMonthName = lunar.getLunarMonth()!!.getName()
+                        val mappedMonthName = when (rawMonthName) {
+                            "十一月" -> "冬月"
+                            "十二月" -> "腊月"
+                            "闰十一月" -> "闰冬月"
+                            "闰十二月" -> "闰腊月"
+                            else -> rawMonthName
+                        }
+                        val dayName = lunar.getName()
+
+                        Triple(ganZhi, mappedMonthName, dayName)
+                    } else {
+                        null
+                    }
+                } catch (e: Exception) {
+                    null
+                }
+            } else {
+                null
+            }
+        }
+
         AlertDialog(
             onDismissRequest = { showQuickInputDialog = false },
             title = {
@@ -676,6 +710,19 @@ fun UnifiedDatePickerDialog(
                                                 .height(2.dp)
                                                 .background(lineColor)
                                         )
+                                        if (isLunarSelected) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = if (derivedLunarInfo != null) derivedLunarInfo.first else "",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    textAlign = TextAlign.Center
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
                                     }
                                 }
                             )
@@ -731,6 +778,19 @@ fun UnifiedDatePickerDialog(
                                                 .height(2.dp)
                                                 .background(lineColor)
                                         )
+                                        if (isLunarSelected) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = if (derivedLunarInfo != null) derivedLunarInfo.second else "",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    textAlign = TextAlign.Center
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
                                     }
                                 }
                             )
@@ -786,6 +846,19 @@ fun UnifiedDatePickerDialog(
                                                 .height(2.dp)
                                                 .background(lineColor)
                                         )
+                                        if (isLunarSelected) {
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            Text(
+                                                text = if (derivedLunarInfo != null) derivedLunarInfo.third else "",
+                                                style = MaterialTheme.typography.bodyMedium.copy(
+                                                    color = MaterialTheme.colorScheme.primary,
+                                                    fontWeight = FontWeight.Bold,
+                                                    fontSize = 12.sp,
+                                                    textAlign = TextAlign.Center
+                                                ),
+                                                modifier = Modifier.fillMaxWidth()
+                                            )
+                                        }
                                     }
                                 }
                             )
