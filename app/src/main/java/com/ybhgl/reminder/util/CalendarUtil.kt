@@ -105,16 +105,25 @@ object CalendarUtil {
             date.dayOfMonth
         )
         val lunar = solar.getLunarDay()
-        val monthValue = lunar.getMonth()
-        val dayValue = lunar.getDay()
-        val isLeapMonth = monthValue < 0
-        val monthIndex = abs(monthValue) - 1
-        val dayIndex = dayValue - 1
-        val monthLabel = buildString {
-            if (isLeapMonth) append("闰")
-            append(LUNAR_MONTH_STRINGS.getOrNull(monthIndex) ?: "${abs(monthValue)}月")
+        
+        // 1. 获取年份天干地支及数字：丙午(2026)年
+        val year = lunar.getYear()
+        val ganZhi = com.tyme.lunar.LunarYear.fromYear(year).getSixtyCycle()
+        val yearLabel = "${ganZhi}(${year})年"
+
+        // 2. 获取月份名称（包含闰月，以及冬月腊月映射）
+        val rawMonthName = lunar.getLunarMonth()!!.getName()
+        val monthLabel = when (rawMonthName) {
+            "十一月" -> "冬月"
+            "十二月" -> "腊月"
+            "闰十一月" -> "闰冬月"
+            "闰十二月" -> "闰腊月"
+            else -> rawMonthName
         }
-        val dayLabel = LUNAR_DAY_STRINGS.getOrNull(dayIndex) ?: dayValue.toString()
-        return "$monthLabel$dayLabel"
+
+        // 3. 获取日期名称（如 廿三）
+        val dayLabel = lunar.getName()
+
+        return "$yearLabel$monthLabel$dayLabel"
     }
 }

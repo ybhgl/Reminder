@@ -1,7 +1,5 @@
 package com.ybhgl.reminder.ui.add
 
-import androidx.compose.foundation.background
-import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.*
@@ -9,7 +7,6 @@ import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -24,9 +21,7 @@ import com.tyme.lunar.LunarYear
 import com.tyme.solar.SolarDay
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.toPersistentList
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneId
 
 private val LUNAR_DAY_STRINGS = arrayOf(
     "初一", "初二", "初三", "初四", "初五",
@@ -42,6 +37,20 @@ private data class DatePickerPickerOption<T>(val label: String, val value: T) {
     override fun toString(): String = label
 }
 
+@Composable
+fun PickerItemText(text: String, isSelected: Boolean) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium.copy(
+            fontSize = if (isSelected) 20.sp else 16.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            textAlign = TextAlign.Center
+        ),
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun UnifiedDatePickerDialog(
@@ -51,17 +60,76 @@ fun UnifiedDatePickerDialog(
     onConfirm: (LocalDate, Boolean) -> Unit
 ) {
     var isLunarSelected by remember { mutableStateOf(initialIsLunar) }
-    val zoneId = ZoneId.systemDefault()
 
-    // 1. 公历 (Solar) DatePicker State
-    val initialMillis = remember(initialDate) {
-        initialDate.atStartOfDay(zoneId).toInstant().toEpochMilli()
+    // ==========================================
+    // 1. 公历 (Solar) DatePicker States & Options
+    // ==========================================
+    var selectedSolarYear by remember { mutableIntStateOf(initialDate.year) }
+    var selectedSolarMonth by remember { mutableIntStateOf(initialDate.monthValue) }
+    var selectedSolarDay by remember { mutableIntStateOf(initialDate.dayOfMonth) }
+
+    val solarYearOptions = remember {
+        (1901..2100).map { DatePickerPickerOption("$it", it) }.toPersistentList()
     }
-    val datePickerState = rememberDatePickerState(
-        initialSelectedDateMillis = initialMillis
-    )
+    val initSolarYearIdx = remember {
+        solarYearOptions.indexOfFirst { it.value == initialDate.year }.coerceAtLeast(0)
+    }
+    val solarYearPickerState = rememberPickerState(values = solarYearOptions, initialIndex = initSolarYearIdx)
 
-    // 2. 农历 (Lunar) Selector States
+    LaunchedEffect(solarYearPickerState.settledIndex) {
+        solarYearOptions.getOrNull(solarYearPickerState.settledIndex)?.value?.let { yr ->
+            selectedSolarYear = yr
+        }
+    }
+
+    val solarMonthOptions = remember {
+        (1..12).map { DatePickerPickerOption("$it", it) }.toPersistentList()
+    }
+    val initSolarMonthIdx = remember {
+        solarMonthOptions.indexOfFirst { it.value == initialDate.monthValue }.coerceAtLeast(0)
+    }
+    val solarMonthPickerState = rememberPickerState(values = solarMonthOptions, initialIndex = initSolarMonthIdx)
+
+    LaunchedEffect(solarMonthPickerState.settledIndex) {
+        solarMonthOptions.getOrNull(solarMonthPickerState.settledIndex)?.value?.let { m ->
+            selectedSolarMonth = m
+        }
+    }
+
+    // Dynamically calculate max solar days for selected year & month
+    val maxSolarDays = remember(selectedSolarYear, selectedSolarMonth) {
+        try {
+            java.time.YearMonth.of(selectedSolarYear, selectedSolarMonth).lengthOfMonth()
+        } catch (e: Exception) {
+            30
+        }
+    }
+    val solarDayOptions = remember(maxSolarDays) {
+        (1..maxSolarDays).map { DatePickerPickerOption("$it", it) }.toPersistentList()
+    }
+    val initSolarDayIdx = remember {
+        (initialDate.dayOfMonth - 1).coerceIn(0, maxSolarDays - 1)
+    }
+    val solarDayPickerState = rememberPickerState(values = solarDayOptions, initialIndex = initSolarDayIdx)
+
+    // Sync solar day when maxSolarDays changes
+    LaunchedEffect(maxSolarDays) {
+        val targetIdx = (selectedSolarDay - 1).coerceIn(0, maxSolarDays - 1)
+        if (solarDayPickerState.settledIndex != targetIdx) {
+            solarDayPickerState.scrollToIndex(targetIdx)
+        }
+    }
+
+    LaunchedEffect(solarDayPickerState.settledIndex) {
+        solarDayOptions.getOrNull(solarDayPickerState.settledIndex)?.value?.let { d ->
+            selectedSolarDay = d
+        }
+    }
+
+
+    // ==========================================
+    // 2. 农历 (Lunar) DatePicker States & Options
+    // ==========================================
     val lunarInit = remember(initialDate) {
         val solar = SolarDay.fromYmd(initialDate.year, initialDate.monthValue, initialDate.dayOfMonth)
         solar.getLunarDay()
@@ -72,26 +140,37 @@ fun UnifiedDatePickerDialog(
     var selectedMonthIndex by remember { mutableIntStateOf(0) }
     var activeDay by remember { mutableIntStateOf(lunarInit.getDay()) }
 
-    // Year options: 1901 - 2100
+    // Year options: 1901 - 2100, labeled as GanZhi(Year)
     val yearOptions = remember {
-        (1901..2100).map { DatePickerPickerOption("${it}年", it) }.toPersistentList()
+        (1901..2100).map { yr ->
+            val ganZhi = LunarYear.fromYear(yr).getSixtyCycle()
+            DatePickerPickerOption("${ganZhi}(${yr})", yr)
+        }.toPersistentList()
     }
     val initYearIdx = remember {
         yearOptions.indexOfFirst { it.value == lunarInit.getYear() }.coerceAtLeast(0)
     }
     val yearPickerState = rememberPickerState(values = yearOptions, initialIndex = initYearIdx)
 
-    // Whenever year settles, update selectedYear
     LaunchedEffect(yearPickerState.settledIndex) {
         yearOptions.getOrNull(yearPickerState.settledIndex)?.value?.let { yr ->
             selectedYear = yr
         }
     }
 
-    // Month options dynamically derived from selectedYear
+    // Month options dynamically derived from selectedYear, labels stripped of "月"
     val monthOptions = remember(selectedYear) {
         LunarYear.fromYear(selectedYear).getMonths().map { m ->
-            DatePickerPickerOption(m.getName(), m)
+            val rawName = m.getName()
+            val mappedName = when (rawName) {
+                "十一月" -> "冬月"
+                "十二月" -> "腊月"
+                "闰十一月" -> "闰冬月"
+                "闰十二月" -> "闰腊月"
+                else -> rawName
+            }
+            val cleanName = if (mappedName.endsWith("月")) mappedName.dropLast(1) else mappedName
+            DatePickerPickerOption(cleanName, m)
         }.toPersistentList()
     }
     val initMonthIdx = remember {
@@ -107,7 +186,6 @@ fun UnifiedDatePickerDialog(
         }
     }
 
-    // When month picker settles, update activeMonthName and selectedMonthIndex
     LaunchedEffect(monthPickerState.settledIndex) {
         monthOptions.getOrNull(monthPickerState.settledIndex)?.let { option ->
             activeMonthName = option.value.getName()
@@ -138,13 +216,63 @@ fun UnifiedDatePickerDialog(
         }
     }
 
-    // When day picker settles, update activeDay
     LaunchedEffect(dayPickerState.settledIndex) {
         dayOptions.getOrNull(dayPickerState.settledIndex)?.let { option ->
             activeDay = option.value
         }
     }
 
+
+    // ==========================================
+    // 3. Live Title Calculation
+    // ==========================================
+    val solarTitle = remember(selectedSolarYear, selectedSolarMonth, selectedSolarDay) {
+        try {
+            val localDate = LocalDate.of(selectedSolarYear, selectedSolarMonth, selectedSolarDay)
+            val dayOfWeekStr = when (localDate.dayOfWeek) {
+                java.time.DayOfWeek.MONDAY -> "周一"
+                java.time.DayOfWeek.TUESDAY -> "周二"
+                java.time.DayOfWeek.WEDNESDAY -> "周三"
+                java.time.DayOfWeek.THURSDAY -> "周四"
+                java.time.DayOfWeek.FRIDAY -> "周五"
+                java.time.DayOfWeek.SATURDAY -> "周六"
+                java.time.DayOfWeek.SUNDAY -> "周日"
+            }
+            "${selectedSolarYear}年${selectedSolarMonth}月${selectedSolarDay}日 $dayOfWeekStr"
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+    val lunarTitle = remember(selectedYear, selectedMonthIndex, monthOptions, activeDay) {
+        try {
+            val curMonth = monthOptions.getOrNull(selectedMonthIndex)?.value
+            if (curMonth != null) {
+                val lunarDayObj = LunarDay.fromYmd(selectedYear, curMonth.getMonthWithLeap(), activeDay)
+                val ganZhi = LunarYear.fromYear(selectedYear).getSixtyCycle()
+                val rawMonthName = curMonth.getName()
+                val monthName = when (rawMonthName) {
+                    "十一月" -> "冬月"
+                    "十二月" -> "腊月"
+                    "闰十一月" -> "闰冬月"
+                    "闰十二月" -> "闰腊月"
+                    else -> rawMonthName
+                }
+                val dayName = lunarDayObj.getName()
+                val weekName = lunarDayObj.getWeek()
+                "${ganZhi}(${selectedYear})年${monthName}${dayName} 周${weekName}"
+            } else {
+                ""
+            }
+        } catch (e: Exception) {
+            ""
+        }
+    }
+
+
+    // ==========================================
+    // 4. Dialog Core Layout
+    // ==========================================
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -165,7 +293,7 @@ fun UnifiedDatePickerDialog(
                     .padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // 1. Selector Tab
+                // Tab Selection (Solar vs. Lunar)
                 TabRow(
                     selectedTabIndex = if (isLunarSelected) 1 else 0,
                     modifier = Modifier
@@ -181,33 +309,98 @@ fun UnifiedDatePickerDialog(
                 ) {
                     Tab(
                         selected = !isLunarSelected,
-                        onClick = { isLunarSelected = false },
+                        onClick = {
+                            if (isLunarSelected) {
+                                // Sync Lunar to Solar on tab switch
+                                val curMonth = monthOptions.getOrNull(monthPickerState.settledIndex)?.value
+                                if (curMonth != null) {
+                                    try {
+                                        val lunarDayObj = LunarDay.fromYmd(selectedYear, curMonth.getMonthWithLeap(), activeDay)
+                                        val solarDayObj = lunarDayObj.getSolarDay()
+                                        val targetSolarYear = solarDayObj.getYear()
+                                        val targetSolarMonth = solarDayObj.getMonth()
+                                        val targetSolarDay = solarDayObj.getDay()
+
+                                        selectedSolarYear = targetSolarYear
+                                        selectedSolarMonth = targetSolarMonth
+                                        selectedSolarDay = targetSolarDay
+
+                                        val yIdx = solarYearOptions.indexOfFirst { it.value == targetSolarYear }.coerceAtLeast(0)
+                                        solarYearPickerState.scrollToIndex(yIdx)
+
+                                        val mIdx = solarMonthOptions.indexOfFirst { it.value == targetSolarMonth }.coerceAtLeast(0)
+                                        solarMonthPickerState.scrollToIndex(mIdx)
+
+                                        val maxD = java.time.YearMonth.of(targetSolarYear, targetSolarMonth).lengthOfMonth()
+                                        val dIdx = (targetSolarDay - 1).coerceIn(0, maxD - 1)
+                                        solarDayPickerState.scrollToIndex(dIdx)
+                                    } catch (e: Exception) {
+                                        e.printStackTrace()
+                                    }
+                                }
+                                isLunarSelected = false
+                            }
+                        },
                         text = { Text("公历", fontWeight = FontWeight.Bold) }
                     )
                     Tab(
                         selected = isLunarSelected,
-                        onClick = { isLunarSelected = true },
+                        onClick = {
+                            if (!isLunarSelected) {
+                                // Sync Solar to Lunar on tab switch
+                                try {
+                                    val solar = SolarDay.fromYmd(selectedSolarYear, selectedSolarMonth, selectedSolarDay)
+                                    val lunar = solar.getLunarDay()
+                                    val targetYear = lunar.getYear()
+                                    val targetMonthName = lunar.getLunarMonth()!!.getName()
+                                    val targetDay = lunar.getDay()
+
+                                    selectedYear = targetYear
+                                    activeMonthName = targetMonthName
+                                    activeDay = targetDay
+
+                                    val yIdx = yearOptions.indexOfFirst { it.value == targetYear }.coerceAtLeast(0)
+                                    yearPickerState.scrollToIndex(yIdx)
+
+                                    val mOpts = LunarYear.fromYear(targetYear).getMonths()
+                                    val mIdx = mOpts.indexOfFirst { it.getName() == targetMonthName }.coerceAtLeast(0)
+                                    monthPickerState.scrollToIndex(mIdx)
+
+                                    val dIdx = (targetDay - 1).coerceIn(0, (mOpts.getOrNull(mIdx)?.getDayCount() ?: 30) - 1)
+                                    dayPickerState.scrollToIndex(dIdx)
+                                } catch (e: Exception) {
+                                    e.printStackTrace()
+                                }
+                                isLunarSelected = true
+                            }
+                        },
                         text = { Text("农历", fontWeight = FontWeight.Bold) }
                     )
                 }
 
-                // 2. Content
-                val contentHeight = if (isLunarSelected) 220.dp else 380.dp
+                // Dynamic live title display below TabRow
+                Spacer(modifier = Modifier.height(8.dp))
+                Text(
+                    text = if (!isLunarSelected) solarTitle else lunarTitle,
+                    style = MaterialTheme.typography.titleLarge.copy(
+                        fontWeight = FontWeight.Bold,
+                        fontSize = 20.sp,
+                        color = MaterialTheme.colorScheme.onSurface
+                    ),
+                    modifier = Modifier.padding(horizontal = 16.dp),
+                    textAlign = TextAlign.Center
+                )
+                Spacer(modifier = Modifier.height(12.dp))
+
+                // Content container (Unified 220dp height)
                 Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .height(contentHeight),
+                        .height(220.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     if (!isLunarSelected) {
-                        DatePicker(
-                            state = datePickerState,
-                            showModeToggle = false,
-                            title = null,
-                            headline = null,
-                            colors = DatePickerDefaults.colors(containerColor = Color.Transparent)
-                        )
-                    } else {
+                        // Solar double roller picker (3 columns: Year, Month, Day)
                         Row(
                             modifier = Modifier
                                 .fillMaxWidth()
@@ -216,59 +409,81 @@ fun UnifiedDatePickerDialog(
                             horizontalArrangement = Arrangement.spacedBy(8.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
-                            // Year Picker
+                            // Solar Year
+                            Picker<DatePickerPickerOption<Int>>(
+                                state = solarYearPickerState,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(180.dp)
+                            ) { option, isSelected ->
+                                val displayLabel = if (isSelected) "${option.label}年" else option.label
+                                PickerItemText(text = displayLabel, isSelected = isSelected)
+                            }
+                            // Solar Month
+                            Picker<DatePickerPickerOption<Int>>(
+                                state = solarMonthPickerState,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(180.dp)
+                            ) { option, isSelected ->
+                                val displayLabel = if (isSelected) "${option.label}月" else option.label
+                                PickerItemText(text = displayLabel, isSelected = isSelected)
+                            }
+                            // Solar Day
+                            Picker<DatePickerPickerOption<Int>>(
+                                state = solarDayPickerState,
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .height(180.dp)
+                            ) { option, isSelected ->
+                                val displayLabel = if (isSelected) "${option.label}日" else option.label
+                                PickerItemText(text = displayLabel, isSelected = isSelected)
+                            }
+                        }
+                    } else {
+                        // Lunar double roller picker (3 columns: Year, Month, Day)
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(220.dp)
+                                .padding(horizontal = 16.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            // Lunar Year
                             Picker<DatePickerPickerOption<Int>>(
                                 state = yearPickerState,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(180.dp)
-                            ) { option, _ ->
-                                Text(
-                                    text = option.label,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        textAlign = TextAlign.Center
-                                    )
-                                )
+                            ) { option, isSelected ->
+                                val displayLabel = if (isSelected) "${option.label}年" else option.label
+                                PickerItemText(text = displayLabel, isSelected = isSelected)
                             }
-                            // Month Picker
+                            // Lunar Month
                             Picker<DatePickerPickerOption<LunarMonth>>(
                                 state = monthPickerState,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(180.dp)
-                            ) { option, _ ->
-                                Text(
-                                    text = option.label,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        textAlign = TextAlign.Center
-                                    )
-                                )
+                            ) { option, isSelected ->
+                                val displayLabel = if (isSelected) "${option.label}月" else option.label
+                                PickerItemText(text = displayLabel, isSelected = isSelected)
                             }
-                            // Day Picker
+                            // Lunar Day (No "日" unit suffix added)
                             Picker<DatePickerPickerOption<Int>>(
                                 state = dayPickerState,
                                 modifier = Modifier
                                     .weight(1f)
                                     .height(180.dp)
-                            ) { option, _ ->
-                                Text(
-                                    text = option.label,
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontSize = 18.sp,
-                                        fontWeight = FontWeight.Medium,
-                                        textAlign = TextAlign.Center
-                                    )
-                                )
+                            ) { option, isSelected ->
+                                PickerItemText(text = option.label, isSelected = isSelected)
                             }
                         }
                     }
                 }
 
-                // 3. Actions
+                // Actions buttons
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -290,12 +505,8 @@ fun UnifiedDatePickerDialog(
                                     onConfirm(resultDate, true)
                                 }
                             } else {
-                                datePickerState.selectedDateMillis?.let { millis ->
-                                    val resultDate = Instant.ofEpochMilli(millis)
-                                        .atZone(zoneId)
-                                        .toLocalDate()
-                                    onConfirm(resultDate, false)
-                                }
+                                val resultDate = LocalDate.of(selectedSolarYear, selectedSolarMonth, selectedSolarDay)
+                                onConfirm(resultDate, false)
                             }
                         }
                     ) {

@@ -198,7 +198,7 @@ fun AddReminderScreen(
                         .clickable { showDatePicker = true }
                 ) {
                     val dateValue = if (uiState.isLunar) {
-                        "${uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE)} (农历 $currentLunarLabel)"
+                        currentLunarLabel
                     } else {
                         uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE)
                     }
