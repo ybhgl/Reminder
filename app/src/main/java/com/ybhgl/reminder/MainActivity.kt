@@ -33,6 +33,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.combinedClickable
@@ -313,154 +314,102 @@ fun ReminderApp() {
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
-        startDestination = Routes.REMINDER_LIST
-    ) {
-        composable(
-            Routes.REMINDER_LIST,
+            startDestination = Routes.REMINDER_LIST,
+            enterTransition = {
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(350))
+            },
             exitTransition = {
-                when {
-                    targetState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        fadeOut()
-                    targetState.destination.route?.startsWith(Routes.ADD_REMINDER_BASE) == true ||
-                    targetState.destination.route?.startsWith("edit_reminder") == true ->
-                        fadeOut()
-                    else -> null
-                }
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
+                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(350))
             },
             popEnterTransition = {
-                when {
-                    initialState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        fadeIn()
-                    initialState.destination.route?.startsWith(Routes.ADD_REMINDER_BASE) == true ||
-                    initialState.destination.route?.startsWith("edit_reminder") == true ->
-                        fadeIn()
-                    else -> fadeIn()
-                }
-            }
-        ) {
-            ReminderListScreen(navController = navController)
-        }
-        composable(
-            Routes.ADD_REMINDER,
-            enterTransition = {
-                when {
-                    initialState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        fadeIn()
-                    else ->
-                        fadeIn()
-                }
+                slideIntoContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+                ) + fadeIn(animationSpec = tween(350))
             },
             popExitTransition = {
-                when {
-                    targetState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        fadeOut()
-                    else ->
-                        fadeOut()
-                }
+                slideOutOfContainer(
+                    towards = AnimatedContentTransitionScope.SlideDirection.End,
+                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
+                ) + fadeOut(animationSpec = tween(350))
             }
         ) {
-            AddReminderScreen(
-                onNavigateUp = { navController.navigateUp() },
-                navController = navController
-            )
-        }
-        composable(
-            route = Routes.EDIT_REMINDER_PATTERN,
-            arguments = listOf(navArgument("reminderId") { type = NavType.IntType }),
-            enterTransition = {
-                when {
-                    initialState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        fadeIn()
-                    else ->
-                        fadeIn()
-                }
-            },
-            popExitTransition = {
-                when {
-                    targetState.destination.route?.startsWith(Routes.DETAIL_REMINDER_BASE) == true ->
-                        fadeOut()
-                    else ->
-                        fadeOut()
-                }
+            composable(Routes.REMINDER_LIST) {
+                ReminderListScreen(navController = navController)
             }
-        ) {
-            AddReminderScreen(
-                onNavigateUp = { navController.navigateUp() },
-                navController = navController,
-                onDeleted = {
-                    navController.popBackStack(Routes.REMINDER_LIST, inclusive = false)
-                }
-            )
-        }
-        composable(
-            route = Routes.REMINDER_SETTING_PATTERN,
-            arguments = listOf(
-                navArgument("reminderId") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument("initialConfig") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument("reminderType") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                },
-                navArgument("eventDate") {
-                    type = NavType.StringType
-                    nullable = true
-                    defaultValue = null
-                }
-            )
-        ) {
-            ReminderSettingScreen(
-                onNavigateBack = { navController.popBackStack() },
-                onSave = { configJson ->
-                    navController.previousBackStackEntry?.savedStateHandle?.set("notificationConfig", configJson)
-                    navController.popBackStack()
-                }
-            )
-        }
-        composable(
-            route = Routes.DETAIL_REMINDER_PATTERN,
-            arguments = listOf(navArgument("reminderId") { type = NavType.IntType }),
-            enterTransition = {
-                fadeIn()
-            },
-            popExitTransition = {
-                fadeOut()
+            composable(Routes.ADD_REMINDER) {
+                AddReminderScreen(
+                    onNavigateUp = { navController.navigateUp() },
+                    navController = navController
+                )
             }
-        ) {
-            DetailScreen(navController = navController)
-        }
-        composable(
-            route = Routes.BIRTHDAY_LIST_PATTERN,
-            arguments = listOf(navArgument("reminderId") { type = NavType.IntType }),
-            enterTransition = {
-                slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it })
-            },
-            popExitTransition = {
-                slideOutHorizontally(animationSpec = tween(400), targetOffsetX = { it })
+            composable(
+                route = Routes.EDIT_REMINDER_PATTERN,
+                arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
+            ) {
+                AddReminderScreen(
+                    onNavigateUp = { navController.navigateUp() },
+                    navController = navController,
+                    onDeleted = {
+                        navController.popBackStack(Routes.REMINDER_LIST, inclusive = false)
+                    }
+                )
             }
-        ) {
-            BirthdayListScreen(navController = navController)
-        }
-        composable(
-            route = Routes.SETTINGS,
-            enterTransition = {
-                slideInHorizontally(animationSpec = tween(400), initialOffsetX = { it })
-            },
-            popExitTransition = {
-                slideOutHorizontally(animationSpec = tween(400), targetOffsetX = { it })
+            composable(
+                route = Routes.REMINDER_SETTING_PATTERN,
+                arguments = listOf(
+                    navArgument("reminderId") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("initialConfig") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("reminderType") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("eventDate") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) {
+                ReminderSettingScreen(
+                    onNavigateBack = { navController.popBackStack() },
+                    onSave = { configJson ->
+                        navController.previousBackStackEntry?.savedStateHandle?.set("notificationConfig", configJson)
+                        navController.popBackStack()
+                    }
+                )
             }
-        ) {
-            SettingsScreen(onNavigateBack = { navController.navigateUp() })
+            composable(
+                route = Routes.DETAIL_REMINDER_PATTERN,
+                arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
+            ) {
+                DetailScreen(navController = navController)
+            }
+            composable(
+                route = Routes.BIRTHDAY_LIST_PATTERN,
+                arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
+            ) {
+                BirthdayListScreen(navController = navController)
+            }
+            composable(route = Routes.SETTINGS) {
+                SettingsScreen(onNavigateBack = { navController.navigateUp() })
+            }
         }
-    }
 
     if (showPermissionRationale && !permissionState.allPermissionsGranted) {
         Card(
@@ -745,7 +694,7 @@ fun ReminderListScreen(
 
     Scaffold(
         floatingActionButton = {},
-        containerColor = Color.Transparent,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier.nestedScroll(customNestedScrollConnection)
     ) { innerPadding ->
@@ -789,7 +738,7 @@ fun ReminderListScreen(
                     Box(modifier = Modifier.fillMaxSize())
                 } else if (sections.isEmpty()) {
                     val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
-                    val dynamicTopPadding = topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }
+                    val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)
                     EmptyStateCard(
                         modifier = Modifier
                             .padding(horizontal = 24.dp, vertical = 32.dp)
@@ -798,7 +747,7 @@ fun ReminderListScreen(
                     )
                 } else {
                     val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
-                    val dynamicTopPadding = topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }
+                    val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize(),

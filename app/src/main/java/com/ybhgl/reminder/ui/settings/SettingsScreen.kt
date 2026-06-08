@@ -157,7 +157,7 @@ fun SettingsScreen(
 
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
-        containerColor = Color.Transparent,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier.nestedScroll(customNestedScrollConnection)
     ) { innerPadding ->
@@ -174,7 +174,7 @@ fun SettingsScreen(
                     .padding(top = 0.dp, bottom = innerPadding.calculateBottomPadding() + 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Spacer(modifier = Modifier.height(topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 12.dp))
+                Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 12.dp).coerceAtLeast(0.dp)))
                 Text(
                     text = "外观",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)

@@ -164,7 +164,7 @@ fun AddReminderScreen(
     }
 
     Scaffold(
-        containerColor = Color.Transparent,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier.nestedScroll(customNestedScrollConnection)
     ) { innerPadding ->
@@ -181,7 +181,7 @@ fun AddReminderScreen(
                     .padding(top = 0.dp, bottom = innerPadding.calculateBottomPadding() + 16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Spacer(modifier = Modifier.height(topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }))
+                Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
                 // 1. 标题
                 OutlinedTextField(
                     value = uiState.title,

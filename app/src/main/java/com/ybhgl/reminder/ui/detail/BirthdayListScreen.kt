@@ -62,7 +62,7 @@ fun BirthdayListScreen(
     }
 
     Scaffold(
-        containerColor = Color.Transparent,
+        containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = Modifier.nestedScroll(customNestedScrollConnection)
     ) { paddingValues ->
@@ -86,7 +86,7 @@ fun BirthdayListScreen(
                     BirthdayCalculator.generateBirthdayList(reminderItem.date, reminderItem.isLunar)
                 }
 
-                val dynamicTopPadding = topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 16.dp
+                val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 16.dp).coerceAtLeast(0.dp)
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize(),
