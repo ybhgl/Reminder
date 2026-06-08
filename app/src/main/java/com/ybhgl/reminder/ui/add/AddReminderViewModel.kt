@@ -71,6 +71,13 @@ class AddReminderViewModel(
                     isInitialized = true
                 }
             }
+        } ?: run {
+            val typeStr = savedStateHandle.get<String>("initialType")
+            val type = typeStr?.let { runCatching { ReminderType.valueOf(it) }.getOrNull() }
+            if (type != null) {
+                onTypeChange(type)
+            }
+            initialUiState = reminderUiState
         }
     }
 

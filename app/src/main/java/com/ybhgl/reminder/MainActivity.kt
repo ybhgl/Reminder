@@ -260,6 +260,7 @@ object Routes {
     const val REMINDER_LIST = "reminder_list"
     const val ADD_REMINDER_BASE = "add_reminder"
     const val ADD_REMINDER = ADD_REMINDER_BASE
+    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}"
     private const val EDIT_REMINDER_BASE = "edit_reminder"
     const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}"
     const val SETTINGS = "settings"
@@ -273,6 +274,9 @@ object Routes {
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
+    fun addReminder(initialType: String? = null): String {
+        return if (initialType != null) "$ADD_REMINDER_BASE?initialType=$initialType" else ADD_REMINDER_BASE
+    }
     fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null, eventDate: String? = null): String {
         val base = "$REMINDER_SETTING_BASE?"
         val idPart = if (reminderId != null) "reminderId=$reminderId" else ""
@@ -345,7 +349,16 @@ fun ReminderApp() {
             composable(Routes.REMINDER_LIST) {
                 ReminderListScreen(navController = navController)
             }
-            composable(Routes.ADD_REMINDER) {
+            composable(
+                route = Routes.ADD_REMINDER_PATTERN,
+                arguments = listOf(
+                    navArgument("initialType") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    }
+                )
+            ) {
                 AddReminderScreen(
                     onNavigateUp = { navController.navigateUp() },
                     navController = navController
@@ -981,7 +994,13 @@ fun ReminderListScreen(
                                         showDeleteDialog = true
                                     }
                                 } else {
-                                    navController.navigate(Routes.ADD_REMINDER)
+                                    val currentTab = tabs[pagerState.currentPage]
+                                    val currentType = when (currentTab) {
+                                        ReminderTab.COUNTDOWN -> ReminderType.ANNUAL
+                                        ReminderTab.COUNTUP -> ReminderType.COUNT_UP
+                                        ReminderTab.BIRTHDAY -> ReminderType.BIRTHDAY
+                                    }
+                                    navController.navigate(Routes.addReminder(currentType.name))
                                 }
                             },
                             modifier = Modifier
