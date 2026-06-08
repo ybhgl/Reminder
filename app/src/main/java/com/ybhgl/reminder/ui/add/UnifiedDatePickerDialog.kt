@@ -154,7 +154,7 @@ fun UnifiedDatePickerDialog(
             color = MaterialTheme.colorScheme.surface,
             tonalElevation = 6.dp,
             modifier = Modifier
-                .padding(horizontal = 24.dp)
+                .padding(horizontal = 8.dp)
                 .widthIn(min = 320.dp, max = 360.dp)
                 .fillMaxWidth()
                 .wrapContentHeight()
