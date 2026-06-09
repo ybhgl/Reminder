@@ -30,6 +30,17 @@ import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.runtime.saveable.rememberSaveable
+import com.ybhgl.reminder.ui.common.StatusBarScrim
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -62,7 +73,7 @@ fun ReminderSettingScreen(
         )
     )
 
-    BackHandler {
+    val handleBack = {
         if (viewModel.isInitialized) {
             if (viewModel.hasChanges()) {
                 showExitDialog = true
@@ -74,63 +85,52 @@ fun ReminderSettingScreen(
         }
     }
 
-    Scaffold(
-        topBar = {
-            TopAppBar(
-                title = { Text("提醒设置") },
-                navigationIcon = {
-                    IconButton(onClick = {
-                        if (viewModel.isInitialized) {
-                            if (viewModel.hasChanges()) {
-                                showExitDialog = true
-                            } else {
-                                onNavigateBack()
-                            }
-                        } else {
-                            onNavigateBack()
-                        }
-                    }) {
-                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
-                    }
-                },
-                actions = {
-                    IconButton(
-                        enabled = viewModel.isInitialized && viewModel.hasChanges(),
-                        onClick = {
-                        val missingPermissions = mutableListOf<String>()
-                        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && notificationPermissionState?.status?.isGranted == false) {
-                            missingPermissions.add("通知权限")
-                        }
-                        if (!calendarPermissionState.allPermissionsGranted) {
-                            missingPermissions.add("日历权限")
-                        }
-                        
-                        if (uiState.config.isEnabled && missingPermissions.isNotEmpty()) {
-                            permissionDialogText = "开启提醒需要以下权限：${missingPermissions.joinToString("、")}。请在设置中开启以确保提醒功能正常工作。"
-                            showPermissionDialog = true
-                        } else {
-                            onSave(viewModel.getConfigJson())
-                        }
-                    }) {
-                        Icon(Icons.Default.Save, contentDescription = "保存")
-                    }
+    BackHandler(enabled = true, onBack = handleBack)
+
+    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
+    var topBarHeightPx by remember { mutableStateOf(0f) }
+
+    val customNestedScrollConnection = remember(topBarHeightPx) {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (topBarHeightPx > 0f) {
+                    val delta = available.y
+                    val oldOffset = titleOffsetPx
+                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
+                    val consumed = newOffset - oldOffset
+                    titleOffsetPx = newOffset
+                    return Offset(0f, consumed)
                 }
-            )
+                return Offset.Zero
+            }
         }
+    }
+
+    Scaffold(
+        containerColor = MaterialTheme.colorScheme.background,
+        contentWindowInsets = WindowInsets(0, 0, 0, 0),
+        modifier = Modifier.nestedScroll(customNestedScrollConnection)
     ) { padding ->
-        LazyColumn(
-            modifier = Modifier
-                .padding(top = padding.calculateTopPadding())
-                .fillMaxSize(),
-            contentPadding = PaddingValues(
-                start = 16.dp,
-                end = 16.dp,
-                top = 16.dp,
-                bottom = 16.dp + padding.calculateBottomPadding()
-            ),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+        Box(
+            modifier = Modifier.fillMaxSize()
         ) {
-            item {
+            val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 0.dp,
+                    bottom = 16.dp + padding.calculateBottomPadding()
+                ),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                item {
+                    Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
+                }
+
+                item {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -293,7 +293,77 @@ fun ReminderSettingScreen(
                 }
             }
         }
+
+        // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
+        StatusBarScrim(
+            modifier = Modifier.align(Alignment.TopCenter)
+        )
+
+        // 标题栏 (Top Bar)
+        val topAppBarColors = TopAppBarDefaults.topAppBarColors(
+            containerColor = Color.Transparent,
+            scrolledContainerColor = Color.Transparent,
+            navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+            titleContentColor = MaterialTheme.colorScheme.onSurface,
+            actionIconContentColor = MaterialTheme.colorScheme.onSurface
+        )
+        val topAppBarModifier = Modifier.background(
+            Brush.verticalGradient(
+                colors = listOf(
+                    MaterialTheme.colorScheme.surface,
+                    MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                    Color.Transparent
+                )
+            )
+        )
+
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged {
+                    topBarHeightPx = it.height.toFloat()
+                }
+                .graphicsLayer {
+                    translationY = titleOffsetPx
+                }
+                .then(topAppBarModifier)
+        ) {
+            TopAppBar(
+                title = { Text("提醒设置") },
+                windowInsets = TopAppBarDefaults.windowInsets,
+                colors = topAppBarColors,
+                navigationIcon = {
+                    IconButton(onClick = handleBack) {
+                        Icon(Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
+                    }
+                },
+                actions = {
+                    IconButton(
+                        enabled = viewModel.isInitialized && viewModel.hasChanges(),
+                        onClick = {
+                            val missingPermissions = mutableListOf<String>()
+                            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU && notificationPermissionState?.status?.isGranted == false) {
+                                missingPermissions.add("通知权限")
+                            }
+                            if (!calendarPermissionState.allPermissionsGranted) {
+                                missingPermissions.add("日历权限")
+                            }
+                            
+                            if (uiState.config.isEnabled && missingPermissions.isNotEmpty()) {
+                                permissionDialogText = "开启提醒需要以下权限：${missingPermissions.joinToString("、")}。请在设置中开启以确保提醒功能正常工作。"
+                                showPermissionDialog = true
+                            } else {
+                                onSave(viewModel.getConfigJson())
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Save, contentDescription = "保存")
+                    }
+                }
+            )
+        }
     }
+}
 
     if (showPermissionDialog) {
         AlertDialog(
