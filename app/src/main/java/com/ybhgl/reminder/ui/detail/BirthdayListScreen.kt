@@ -32,6 +32,8 @@ import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayListItem
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import android.widget.Toast
+import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -41,6 +43,13 @@ fun BirthdayListScreen(
 ) {
     val uiState by viewModel.uiState.collectAsState()
     val reminderItem = uiState.reminderItem
+    val context = LocalContext.current
+
+    LaunchedEffect(Unit) {
+        viewModel.snackbarMessage.collect { message ->
+            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+        }
+    }
 
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
