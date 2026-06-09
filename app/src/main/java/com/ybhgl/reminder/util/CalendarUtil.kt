@@ -1,6 +1,7 @@
 package com.ybhgl.reminder.util
 
 import com.ybhgl.reminder.data.ReminderItem
+import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.RepeatUnit
 import com.tyme.solar.SolarDay
 import java.time.LocalDate
@@ -28,6 +29,19 @@ object CalendarUtil {
 
         if (repeatInfo == null) {
             return if (reminderItem.date.isBefore(today)) null else reminderItem.date
+        }
+
+        if (reminderItem.type == ReminderType.BIRTHDAY && reminderItem.isLunar) {
+            // 农历生日：利用 BirthdayCalculator 的逻辑寻找下一个大于等于今天的生日
+            var age = 0
+            while (age <= 150) {
+                val bday = BirthdayCalculator.getLunarBirthdayInYear(reminderItem.date, age)
+                if (!bday.isBefore(today)) {
+                    return bday
+                }
+                age++
+            }
+            return null
         }
 
         var currentDate = reminderItem.date

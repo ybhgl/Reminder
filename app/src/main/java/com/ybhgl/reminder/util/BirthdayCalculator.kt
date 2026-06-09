@@ -49,9 +49,10 @@ object BirthdayCalculator {
             val todaySolar = SolarDay.fromYmd(today.year, today.monthValue, today.dayOfMonth)
             val todayLunar = todaySolar.getLunarDay()
             val lunarYearDiff = todayLunar.getYear() - birthLunar.getYear()
+            // 计算今年该农历生日对应的公历日期
+            val birthdayThisYear = getLunarBirthdayInYear(birthDate, lunarYearDiff)
             // 检查今年农历生日是否已过（不包含今天）
-            val hasPassedThisYear = todayLunar.getMonth() > birthLunar.getMonth() ||
-                (todayLunar.getMonth() == birthLunar.getMonth() && todayLunar.getDay() > birthLunar.getDay())
+            val hasPassedThisYear = today.isAfter(birthdayThisYear)
             lunarYearDiff + if (hasPassedThisYear) 1 else 0
         } else {
             // 公历：计算公历年份差
@@ -123,18 +124,47 @@ object BirthdayCalculator {
         return items
     }
 
-    private fun getLunarBirthdayInYear(birthDate: LocalDate, yearsToAdd: Int): LocalDate {
+    fun getLunarBirthdayInYear(birthDate: LocalDate, yearsToAdd: Int): LocalDate {
         val solar = SolarDay.fromYmd(birthDate.year, birthDate.monthValue, birthDate.dayOfMonth)
         val lunar = solar.getLunarDay()
         val targetLunarYear = lunar.getYear() + yearsToAdd
-        var targetDay = lunar.getDay()
+        val birthMonth = lunar.getMonth()
         var result: com.tyme.lunar.LunarDay? = null
 
-        while (result == null && targetDay > 0) {
-            try {
-                result = com.tyme.lunar.LunarDay.fromYmd(targetLunarYear, lunar.getMonth(), targetDay)
-            } catch (_: IllegalArgumentException) {
-                targetDay--
+        if (birthMonth < 0) {
+            // 出生于闰月 (例如：birthMonth = -2 表示闰二月)
+            val normalMonth = kotlin.math.abs(birthMonth)
+
+            // 1. 先尝试在目标年份寻找对应的闰月生日 (例如 闰二月初十)
+            var targetDay = lunar.getDay()
+            while (result == null && targetDay > 0) {
+                try {
+                    result = com.tyme.lunar.LunarDay.fromYmd(targetLunarYear, birthMonth, targetDay)
+                } catch (_: IllegalArgumentException) {
+                    targetDay--
+                }
+            }
+
+            // 2. 如果在目标年份没找到对应的闰月，则“无闰过前”：找对应的正常月份生日 (例如 二月初十)
+            if (result == null) {
+                targetDay = lunar.getDay()
+                while (result == null && targetDay > 0) {
+                    try {
+                        result = com.tyme.lunar.LunarDay.fromYmd(targetLunarYear, normalMonth, targetDay)
+                    } catch (_: IllegalArgumentException) {
+                        targetDay--
+                    }
+                }
+            }
+        } else {
+            // 出生于正常月份
+            var targetDay = lunar.getDay()
+            while (result == null && targetDay > 0) {
+                try {
+                    result = com.tyme.lunar.LunarDay.fromYmd(targetLunarYear, birthMonth, targetDay)
+                } catch (_: IllegalArgumentException) {
+                    targetDay--
+                }
             }
         }
 
