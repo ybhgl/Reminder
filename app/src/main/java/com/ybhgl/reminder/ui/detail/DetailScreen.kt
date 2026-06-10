@@ -31,6 +31,13 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.clickable
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.core.content.ContextCompat
@@ -110,6 +117,8 @@ fun DetailScreen(
             reminderItems.size
         }
 
+        val showLunarMap = remember { mutableStateMapOf<Int, Boolean>() }
+
         val currentReminder = reminderItems.getOrNull(pagerState.currentPage)
         val latestReminderItems by rememberUpdatedState(reminderItems)
         var currentId by remember { mutableIntStateOf(viewModel.reminderId) }
@@ -174,8 +183,10 @@ fun DetailScreen(
             // The invisible composable for capture
             if (captureAction != null && currentReminder != null) {
                 Box(modifier = Modifier.offset(y = (10000).dp)) {
+                    val isLunarEnabled = showLunarMap[currentReminder.id] ?: currentReminder.isLunar
                     ShareableReminderImage(
                         reminderItem = currentReminder,
+                        useLunar = isLunarEnabled,
                         modifier = Modifier.capturable(captureController)
                     )
                 }
@@ -203,8 +214,13 @@ fun DetailScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Spacer(modifier = Modifier.weight(0.1f))
+                            val isLunarEnabled = showLunarMap[pageItem.id] ?: pageItem.isLunar
                             ReminderDetailCard(
-                                reminderItem = pageItem
+                                reminderItem = pageItem,
+                                useLunar = isLunarEnabled,
+                                onDateClick = {
+                                    showLunarMap[pageItem.id] = !isLunarEnabled
+                                }
                             )
                             
                             // 生日额外信息
@@ -299,6 +315,7 @@ fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
 @Composable
 fun ShareableReminderImage(
     reminderItem: ReminderItem,
+    useLunar: Boolean = reminderItem.isLunar,
     modifier: Modifier = Modifier
 ) {
     ReminderTheme(
@@ -322,6 +339,7 @@ fun ShareableReminderImage(
                 )
                 ReminderDetailCard(
                     reminderItem = reminderItem,
+                    useLunar = useLunar,
                     modifier = Modifier.padding(horizontal = 32.dp)
                 )
                 Row(
@@ -392,9 +410,11 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: 
 @Composable
 fun ReminderDetailCard(
     reminderItem: ReminderItem,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    useLunar: Boolean = reminderItem.isLunar,
+    onDateClick: (() -> Unit)? = null
 ) {
-    val displayInfo = reminderDisplayInfo(reminderItem)
+    val displayInfo = reminderDisplayInfo(reminderItem, useLunar = useLunar)
     val visuals = displayInfo.visuals
 
     Card(
@@ -452,25 +472,41 @@ fun ReminderDetailCard(
                 )
             }
 
+            val clickableModifier = if (onDateClick != null) {
+                Modifier.clickable(onClick = onDateClick)
+            } else {
+                Modifier
+            }
+
             // Bottom date section
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .weight(0.22f)
-                    .background(visuals.footerBackground),
+                    .background(visuals.footerBackground)
+                    .then(clickableModifier),
                 contentAlignment = Alignment.Center
             ) {
-                Text(
-                    text = if (reminderItem.type == ReminderType.COUNT_UP) {
-                        "自 ${displayInfo.referenceText} 起"
-                    } else {
-                        "目标日: ${displayInfo.referenceText}"
+                AnimatedContent(
+                    targetState = displayInfo.referenceText,
+                    transitionSpec = {
+                        (slideInVertically { height -> height } + fadeIn()) togetherWith
+                        (slideOutVertically { height -> -height } + fadeOut())
                     },
-                    color = visuals.secondaryTextColor,
-                    fontSize = 18.sp,
-                    textAlign = TextAlign.Center,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                    label = "DateTransition"
+                ) { targetText ->
+                    Text(
+                        text = if (reminderItem.type == ReminderType.COUNT_UP) {
+                            "自 ${targetText} 起"
+                        } else {
+                            "目标日: ${targetText}"
+                        },
+                        color = visuals.secondaryTextColor,
+                        fontSize = 18.sp,
+                        textAlign = TextAlign.Center,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
         }
     }
