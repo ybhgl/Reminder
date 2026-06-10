@@ -25,6 +25,7 @@ import com.tyme.lunar.LunarDay
 import com.tyme.lunar.LunarMonth
 import com.tyme.lunar.LunarYear
 import com.tyme.solar.SolarDay
+import com.ybhgl.reminder.util.CalendarUtil
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.toPersistentList
 import java.time.LocalDate
@@ -169,13 +170,7 @@ fun UnifiedDatePickerDialog(
     val monthOptions = remember(selectedYear) {
         LunarYear.fromYear(selectedYear).getMonths().map { m ->
             val rawName = m.getName()
-            val mappedName = when (rawName) {
-                "十一月" -> "冬月"
-                "十二月" -> "腊月"
-                "闰十一月" -> "闰冬月"
-                "闰十二月" -> "闰腊月"
-                else -> rawName
-            }
+            val mappedName = CalendarUtil.getMappedMonthName(rawName)
             val cleanName = if (mappedName.endsWith("月")) mappedName.dropLast(1) else mappedName
             DatePickerPickerOption(cleanName, m)
         }.toPersistentList()
@@ -258,13 +253,7 @@ fun UnifiedDatePickerDialog(
                 val lunarDayObj = LunarDay.fromYmd(selectedYear, curMonth.getMonthWithLeap(), activeDay)
                 val ganZhi = LunarYear.fromYear(selectedYear).getSixtyCycle()
                 val rawMonthName = curMonth.getName()
-                val monthName = when (rawMonthName) {
-                    "十一月" -> "冬月"
-                    "十二月" -> "腊月"
-                    "闰十一月" -> "闰冬月"
-                    "闰十二月" -> "闰腊月"
-                    else -> rawMonthName
-                }
+                val monthName = CalendarUtil.getMappedMonthName(rawMonthName)
                 val dayName = lunarDayObj.getName()
                 val weekName = lunarDayObj.getWeek()
                 "${ganZhi}(${selectedYear})年${monthName}${dayName} 周${weekName}"
@@ -619,13 +608,7 @@ fun UnifiedDatePickerDialog(
                         val ganZhi = LunarYear.fromYear(yearNum).getSixtyCycle().toString()
 
                         val rawMonthName = lunar.getLunarMonth()!!.getName()
-                        val mappedMonthName = when (rawMonthName) {
-                            "十一月" -> "冬月"
-                            "十二月" -> "腊月"
-                            "闰十一月" -> "闰冬月"
-                            "闰十二月" -> "闰腊月"
-                            else -> rawMonthName
-                        }
+                        val mappedMonthName = CalendarUtil.getMappedMonthName(rawMonthName)
                         val dayName = lunar.getName()
 
                         Triple(ganZhi, mappedMonthName, dayName)

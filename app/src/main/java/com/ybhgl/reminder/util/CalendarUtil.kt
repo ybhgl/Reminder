@@ -112,6 +112,28 @@ object CalendarUtil {
     }
 
 
+    fun getMappedMonthName(rawMonthName: String): String {
+        return when (rawMonthName) {
+            "十一月" -> "冬月"
+            "十二月" -> "腊月"
+            "闰十一月" -> "闰冬月"
+            "闰十二月" -> "闰腊月"
+            else -> rawMonthName
+        }
+    }
+
+    fun formatLunarDate(date: LocalDate): String {
+        val solar = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth)
+        val lunar = solar.getLunarDay()
+        val year = lunar.getYear()
+        val ganZhi = com.tyme.lunar.LunarYear.fromYear(year).getSixtyCycle().toString()
+        val rawMonthName = lunar.getLunarMonth()!!.getName()
+        val monthLabel = getMappedMonthName(rawMonthName)
+        val dayLabel = lunar.getName()
+        val weekDay = date.format(java.time.format.DateTimeFormatter.ofPattern("EEEE", java.util.Locale.CHINA))
+        return "${ganZhi}(${year}) $monthLabel $dayLabel $weekDay"
+    }
+
     fun getLunarMonthDayLabel(date: LocalDate): String {
         val solar = SolarDay.fromYmd(
             date.year,
@@ -127,13 +149,7 @@ object CalendarUtil {
 
         // 2. 获取月份名称（包含闰月，以及冬月腊月映射）
         val rawMonthName = lunar.getLunarMonth()!!.getName()
-        val monthLabel = when (rawMonthName) {
-            "十一月" -> "冬月"
-            "十二月" -> "腊月"
-            "闰十一月" -> "闰冬月"
-            "闰十二月" -> "闰腊月"
-            else -> rawMonthName
-        }
+        val monthLabel = getMappedMonthName(rawMonthName)
 
         // 3. 获取日期名称（如 廿三）
         val dayLabel = lunar.getName()
