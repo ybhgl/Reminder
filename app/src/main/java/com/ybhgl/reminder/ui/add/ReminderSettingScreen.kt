@@ -424,6 +424,7 @@ fun ReminderSettingScreen(
             ) 
         }
         var showM3TimePicker by remember { mutableStateOf(false) }
+        var isDuplicateError by remember { mutableStateOf(false) }
         
         AlertDialog(
             onDismissRequest = { showTimeConfigDialog = false },
@@ -432,9 +433,15 @@ fun ReminderSettingScreen(
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = daysBefore,
-                        onValueChange = { if (it.all { char -> char.isDigit() }) daysBefore = it },
+                        onValueChange = { 
+                            if (it.all { char -> char.isDigit() }) {
+                                daysBefore = it
+                                isDuplicateError = false
+                            }
+                        },
                         label = { Text(if (daysBefore == "0") "当天" else "$dayLabel (天数)") },
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier.fillMaxWidth(),
+                        isError = isDuplicateError
                     )
                     
                     Row(
@@ -445,11 +452,15 @@ fun ReminderSettingScreen(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.SpaceBetween
                     ) {
-                        Text("时间", style = MaterialTheme.typography.bodyLarge)
                         Text(
-                            selectedTime.format(DateTimeFormatter.ofPattern("HH:mm")),
+                            text = "时间",
                             style = MaterialTheme.typography.bodyLarge,
-                            color = MaterialTheme.colorScheme.primary
+                            color = if (isDuplicateError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                        )
+                        Text(
+                            text = selectedTime.format(DateTimeFormatter.ofPattern("HH:mm")),
+                            style = MaterialTheme.typography.bodyLarge,
+                            color = if (isDuplicateError) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary
                         )
                     }
                 }
@@ -461,6 +472,7 @@ fun ReminderSettingScreen(
                         onConfirm = { time ->
                             selectedTime = time
                             showM3TimePicker = false
+                            isDuplicateError = false
                         }
                     )
                 }
@@ -469,12 +481,27 @@ fun ReminderSettingScreen(
             confirmButton = {
                 TextButton(onClick = {
                     val days = daysBefore.toIntOrNull() ?: 0
-                    if (editingTimeIndex >= 0) {
-                        viewModel.updateNotificationTime(editingTimeIndex, days, selectedTime)
-                    } else {
-                        viewModel.addNotificationTime(days, selectedTime)
+                    val isDuplicate = uiState.config.notificationTimes.indices.any { index ->
+                        val item = uiState.config.notificationTimes[index]
+                        val isSame = item.daysBefore == days && item.time == selectedTime
+                        if (editingTimeIndex >= 0) {
+                            isSame && index != editingTimeIndex
+                        } else {
+                            isSame
+                        }
                     }
-                    showTimeConfigDialog = false
+                    
+                    if (isDuplicate) {
+                        isDuplicateError = true
+                        android.widget.Toast.makeText(context, "该时间点已存在提醒", android.widget.Toast.LENGTH_SHORT).show()
+                    } else {
+                        if (editingTimeIndex >= 0) {
+                            viewModel.updateNotificationTime(editingTimeIndex, days, selectedTime)
+                        } else {
+                            viewModel.addNotificationTime(days, selectedTime)
+                        }
+                        showTimeConfigDialog = false
+                    }
                 }) {
                     Text("确定")
                 }
