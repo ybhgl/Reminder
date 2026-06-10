@@ -262,6 +262,30 @@ fun AddReminderScreen(
                     }
                 }
 
+                // 包含起始日（仅对正数日类型事件显示）
+                if (uiState.type == ReminderType.COUNT_UP) {
+                    SettingSwitch(
+                        title = {
+                            Column {
+                                Text("包含起始日（+1）", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "开启后起始日计数为1，关闭则起始日计数为0",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        },
+                        checked = uiState.notificationConfig.includeStartDay,
+                        onCheckedChange = { checked ->
+                            viewModel.updateUiState(
+                                uiState.copy(
+                                    notificationConfig = uiState.notificationConfig.copy(includeStartDay = checked)
+                                )
+                            )
+                        }
+                    )
+                }
+
                 // 6. 分类
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val filteredOptions = remember(uiState.category, categoryOptions) {

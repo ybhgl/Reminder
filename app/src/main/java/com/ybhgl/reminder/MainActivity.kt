@@ -503,7 +503,12 @@ internal fun reminderDisplayInfo(reminder: ReminderItem): ReminderDisplayInfo {
         }
 
         ReminderType.COUNT_UP -> {
-            val daysElapsed = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0) + 1
+            val isIncludeStartDay = reminder.notificationConfig.includeStartDay
+            val daysElapsed = if (isIncludeStartDay) {
+                ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0) + 1
+            } else {
+                ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
+            }
             val formattedDate = reminder.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
             Triple("第", daysElapsed, formattedDate)
         }
@@ -583,10 +588,10 @@ private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
 
 @Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
 @Composable
-private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
+private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: Boolean = false) {
     val textMeasurer = rememberTextMeasurer()
     val density = LocalDensity.current
-    val isToday = dayCount == 0
+    val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
     val suffixText = "天"
     val suffixStyle = MaterialTheme.typography.bodyLarge
@@ -1150,7 +1155,8 @@ private fun reminderSortValue(reminder: ReminderItem): Int {
         }
 
         ReminderType.COUNT_UP -> {
-            ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
+            val days = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
+            if (reminder.notificationConfig.includeStartDay) days + 1 else days
         }
 
         ReminderType.BIRTHDAY -> {
@@ -1282,7 +1288,7 @@ private fun ReminderListItem(
                     verticalAlignment = Alignment.Bottom
                 ) {
                     Text(
-                        text = if (displayInfo.dayCount == 0) "今" else displayInfo.dayCount.toString(),
+                        text = if (displayInfo.dayCount == 0 && reminder.type != ReminderType.COUNT_UP) "今" else displayInfo.dayCount.toString(),
                         style = MaterialTheme.typography.headlineSmall.copy(fontWeight = FontWeight.Bold),
                         maxLines = 1,
                         modifier = Modifier.alignByBaseline()
@@ -1531,7 +1537,8 @@ private fun ReminderSummaryCard(
                 ) {
                     DayCountRow(
                         dayCount = displayInfo.dayCount,
-                        visuals = visuals
+                        visuals = visuals,
+                        isCountUp = reminder.type == ReminderType.COUNT_UP
                     )
                 }
                 HorizontalDivider(

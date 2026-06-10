@@ -55,8 +55,10 @@ class ReminderReceiver : BroadcastReceiver() {
 
                 subtitle = when (reminderType) {
                     "COUNT_UP" -> {
+                        val isIncludeStartDay = intent.getBooleanExtra("INCLUDE_START_DAY", true)
                         val days = ChronoUnit.DAYS.between(startDate, today).toInt()
-                        if (days == 0) "就是今天" else "第${days}天"
+                        val displayDays = if (isIncludeStartDay) days + 1 else days
+                        "第${displayDays}天"
                     }
                     "ANNUAL", "BIRTHDAY" -> {
                         val days = ChronoUnit.DAYS.between(today, targetDate).toInt()

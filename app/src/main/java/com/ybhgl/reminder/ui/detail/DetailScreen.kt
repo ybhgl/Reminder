@@ -354,8 +354,8 @@ fun ShareableReminderImage(
     }
 }
 @Composable
-private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals) {
-    val isToday = dayCount == 0
+private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: Boolean = false) {
+    val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
     Row(
         modifier = Modifier
@@ -445,7 +445,11 @@ fun ReminderDetailCard(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-                DayCountRow(dayCount = displayInfo.dayCount, visuals = visuals)
+                DayCountRow(
+                    dayCount = displayInfo.dayCount,
+                    visuals = visuals,
+                    isCountUp = reminderItem.type == ReminderType.COUNT_UP
+                )
             }
 
             // Bottom date section

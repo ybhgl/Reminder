@@ -36,7 +36,12 @@ object CalendarManager {
 
         if (item.type == com.ybhgl.reminder.data.ReminderType.COUNT_UP) {
             item.notificationConfig.notificationTimes.forEach { notifTime ->
-                val remindDate = item.date.plusDays(notifTime.daysBefore.toLong())
+                val daysOffset = if (item.notificationConfig.includeStartDay && notifTime.daysBefore > 0) {
+                    notifTime.daysBefore - 1
+                } else {
+                    notifTime.daysBefore
+                }
+                val remindDate = item.date.plusDays(daysOffset.toLong())
                 val startMillis = remindDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
                 val endMillis = startMillis + 24 * 60 * 60 * 1000
 

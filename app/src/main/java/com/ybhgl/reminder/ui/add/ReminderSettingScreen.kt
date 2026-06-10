@@ -273,7 +273,12 @@ fun ReminderSettingScreen(
                                     )
                                     viewModel.eventDate?.let { date ->
                                         val reminderDate = if (isCountUp) {
-                                            date.plusDays(item.daysBefore.toLong())
+                                            val daysOffset = if (uiState.config.includeStartDay && item.daysBefore > 0) {
+                                                item.daysBefore - 1
+                                            } else {
+                                                item.daysBefore
+                                            }
+                                            date.plusDays(daysOffset.toLong())
                                         } else {
                                             date.minusDays(item.daysBefore.toLong())
                                         }

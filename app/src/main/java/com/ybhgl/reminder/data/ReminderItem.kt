@@ -30,6 +30,7 @@ data class ReminderNotificationConfig(
     val useAppNotification: Boolean = true,
     val useSystemCalendar: Boolean = false,
     val isContinuous: Boolean = false,
+    val includeStartDay: Boolean = true,
     val notificationTimes: List<NotificationTime> = emptyList()
 )
 

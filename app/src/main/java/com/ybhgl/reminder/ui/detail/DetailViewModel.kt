@@ -68,7 +68,8 @@ class DetailViewModel(
                     val countUpList = reminders.filter { it.type == ReminderType.COUNT_UP }.sortedWith(
                         compareBy<ReminderItem> { if (it.isPinned) 0 else 1 }
                             .thenBy { reminder ->
-                                ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0) + 1
+                                val days = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
+                                if (reminder.notificationConfig.includeStartDay) days + 1 else days
                             }
                             .thenBy { it.id }
                     )

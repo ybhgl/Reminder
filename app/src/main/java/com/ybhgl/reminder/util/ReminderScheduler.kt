@@ -24,7 +24,12 @@ object ReminderScheduler {
 
         item.notificationConfig.notificationTimes.forEachIndexed { index, notifTime ->
             val remindDate = if (item.type == com.ybhgl.reminder.data.ReminderType.COUNT_UP) {
-                targetDate.plusDays(notifTime.daysBefore.toLong())
+                val daysOffset = if (item.notificationConfig.includeStartDay && notifTime.daysBefore > 0) {
+                    notifTime.daysBefore - 1
+                } else {
+                    notifTime.daysBefore
+                }
+                targetDate.plusDays(daysOffset.toLong())
             } else {
                 targetDate.minusDays(notifTime.daysBefore.toLong())
             }
@@ -39,6 +44,7 @@ object ReminderScheduler {
                     putExtra("REMINDER_TYPE", item.type.name)
                     putExtra("REMINDER_START_DATE", item.date.toString())
                     putExtra("REMINDER_TARGET_DATE", targetDate.toString())
+                    putExtra("INCLUDE_START_DAY", item.notificationConfig.includeStartDay)
                 }
                 
                 val requestCode = item.id * 100 + index

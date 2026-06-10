@@ -71,6 +71,10 @@ class ReminderSettingViewModel(
         uiState = uiState.copy(config = uiState.config.copy(isContinuous = isContinuous))
     }
 
+    fun updateIncludeStartDay(includeStartDay: Boolean) {
+        uiState = uiState.copy(config = uiState.config.copy(includeStartDay = includeStartDay))
+    }
+
     fun addNotificationTime(daysBefore: Int, time: LocalTime) {
         val newList = uiState.config.notificationTimes + NotificationTime(daysBefore, time)
         uiState = uiState.copy(config = uiState.config.copy(notificationTimes = newList))
