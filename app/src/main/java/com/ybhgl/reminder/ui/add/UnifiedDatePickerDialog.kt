@@ -232,13 +232,13 @@ fun UnifiedDatePickerDialog(
         try {
             val localDate = LocalDate.of(selectedSolarYear, selectedSolarMonth, selectedSolarDay)
             val dayOfWeekStr = when (localDate.dayOfWeek) {
-                java.time.DayOfWeek.MONDAY -> "周一"
-                java.time.DayOfWeek.TUESDAY -> "周二"
-                java.time.DayOfWeek.WEDNESDAY -> "周三"
-                java.time.DayOfWeek.THURSDAY -> "周四"
-                java.time.DayOfWeek.FRIDAY -> "周五"
-                java.time.DayOfWeek.SATURDAY -> "周六"
-                java.time.DayOfWeek.SUNDAY -> "周日"
+                java.time.DayOfWeek.MONDAY -> "星期一"
+                java.time.DayOfWeek.TUESDAY -> "星期二"
+                java.time.DayOfWeek.WEDNESDAY -> "星期三"
+                java.time.DayOfWeek.THURSDAY -> "星期四"
+                java.time.DayOfWeek.FRIDAY -> "星期五"
+                java.time.DayOfWeek.SATURDAY -> "星期六"
+                java.time.DayOfWeek.SUNDAY -> "星期日"
             }
             "${selectedSolarYear}年${selectedSolarMonth}月${selectedSolarDay}日 $dayOfWeekStr"
         } catch (e: Exception) {
@@ -256,7 +256,7 @@ fun UnifiedDatePickerDialog(
                 val monthName = CalendarUtil.getMappedMonthName(rawMonthName)
                 val dayName = lunarDayObj.getName()
                 val weekName = lunarDayObj.getWeek()
-                "${ganZhi}(${selectedYear})年${monthName}${dayName} 周${weekName}"
+                "${ganZhi}(${selectedYear}) ${monthName} ${dayName} 星期${weekName}"
             } else {
                 ""
             }
