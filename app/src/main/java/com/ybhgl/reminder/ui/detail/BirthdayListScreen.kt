@@ -1,5 +1,13 @@
 package com.ybhgl.reminder.ui.detail
 
+import androidx.compose.material.icons.filled.Sync
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import com.ybhgl.reminder.util.CalendarUtil
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -44,6 +52,7 @@ fun BirthdayListScreen(
     val uiState by viewModel.uiState.collectAsState()
     val reminderItem = uiState.reminderItem
     val context = LocalContext.current
+    var showLunar by rememberSaveable(reminderItem?.id) { mutableStateOf(reminderItem?.isLunar == true) }
 
     LaunchedEffect(Unit) {
         viewModel.snackbarMessage.collect { message ->
@@ -111,6 +120,7 @@ fun BirthdayListScreen(
                         BirthdayListItemCard(
                             item = item,
                             title = reminderItem.title,
+                            showLunar = showLunar,
                             onClick = { viewModel.showAddBirthdayDialog(item) }
                         )
                     }
@@ -162,6 +172,14 @@ fun BirthdayListScreen(
                                 contentDescription = "返回"
                             )
                         }
+                    },
+                    actions = {
+                        IconButton(onClick = { showLunar = !showLunar }) {
+                            Icon(
+                                imageVector = Icons.Default.Sync,
+                                contentDescription = if (showLunar) "转换为公历日期" else "转换为农历日期"
+                            )
+                        }
                     }
                 )
             }
@@ -194,9 +212,13 @@ fun BirthdayListScreen(
 private fun BirthdayListItemCard(
     item: BirthdayListItem,
     title: String,
+    showLunar: Boolean,
     onClick: () -> Unit
 ) {
-    val formattedDate = item.targetDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
+    val solarFormatted = item.targetDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
+    val lunarFormatted = CalendarUtil.formatLunarDate(item.targetDate)
+    val formattedDate = if (showLunar) lunarFormatted else solarFormatted
+
     val labelPrefix = if (item.age == 0) "出生" else "${item.age} 岁生日"
     val statusText = if (item.isPast) "已经" else "还有"
     val dayCountText = "${kotlin.math.abs(item.dayCount)} 天"
@@ -221,11 +243,20 @@ private fun BirthdayListItemCard(
                     fontWeight = FontWeight.Medium
                 )
                 Spacer(modifier = Modifier.height(4.dp))
-                Text(
-                    text = formattedDate,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+                AnimatedContent(
+                    targetState = formattedDate,
+                    transitionSpec = {
+                        (slideInVertically { height -> height } + fadeIn()) togetherWith
+                        (slideOutVertically { height -> -height } + fadeOut())
+                    },
+                    label = "BirthdayDateTransition"
+                ) { targetText ->
+                    Text(
+                        text = targetText,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
 
             Surface(
