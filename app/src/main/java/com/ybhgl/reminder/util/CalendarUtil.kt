@@ -33,7 +33,17 @@ object CalendarUtil {
 
         if (reminderItem.type == ReminderType.BIRTHDAY && reminderItem.isLunar) {
             // 农历生日：利用 BirthdayCalculator 的逻辑寻找下一个大于等于今天的生日
-            var age = 0
+            // 优化：通过出生农历年份和今天农历年份差确定 approximateAge，将搜索起点设为 max(0, approximateAge - 1)，避免从 0 岁开始重复计算
+            val birthSolar = SolarDay.fromYmd(reminderItem.date.year, reminderItem.date.monthValue, reminderItem.date.dayOfMonth)
+            val birthLunar = birthSolar.getLunarDay()
+            val birthLunarYear = birthLunar.getYear()
+
+            val todaySolar = SolarDay.fromYmd(today.year, today.monthValue, today.dayOfMonth)
+            val todayLunar = todaySolar.getLunarDay()
+            val todayLunarYear = todayLunar.getYear()
+
+            val approximateAge = todayLunarYear - birthLunarYear
+            var age = maxOf(0, approximateAge - 1)
             while (age <= 150) {
                 val bday = BirthdayCalculator.getLunarBirthdayInYear(reminderItem.date, age)
                 if (!bday.isBefore(today)) {
