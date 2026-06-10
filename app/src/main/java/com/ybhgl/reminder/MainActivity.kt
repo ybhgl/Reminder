@@ -474,7 +474,11 @@ data class ReminderDisplayInfo(
 )
 
 @Composable
-internal fun reminderDisplayInfo(reminder: ReminderItem, useLunar: Boolean = reminder.isLunar): ReminderDisplayInfo {
+internal fun reminderDisplayInfo(
+    reminder: ReminderItem,
+    useLunar: Boolean = reminder.isLunar,
+    shortFormat: Boolean = false
+): ReminderDisplayInfo {
     val today = LocalDate.now()
     val visuals = reminderCardVisuals(reminder.type)
 
@@ -485,7 +489,7 @@ internal fun reminderDisplayInfo(reminder: ReminderItem, useLunar: Boolean = rem
                 // This is a past, non-repeating event.
                 val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
                 val formattedDate = if (useLunar) {
-                    CalendarUtil.formatLunarDate(reminder.date)
+                    if (shortFormat) CalendarUtil.formatLunarDateShort(reminder.date) else CalendarUtil.formatLunarDate(reminder.date)
                 } else {
                     reminder.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
                 }
@@ -499,7 +503,7 @@ internal fun reminderDisplayInfo(reminder: ReminderItem, useLunar: Boolean = rem
 
             val daysRemaining = ChronoUnit.DAYS.between(today, nextDate).toInt()
             val formattedDate = if (useLunar) {
-                CalendarUtil.formatLunarDate(nextDate)
+                if (shortFormat) CalendarUtil.formatLunarDateShort(nextDate) else CalendarUtil.formatLunarDate(nextDate)
             } else {
                 nextDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
             }
@@ -518,7 +522,7 @@ internal fun reminderDisplayInfo(reminder: ReminderItem, useLunar: Boolean = rem
                 ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
             }
             val formattedDate = if (useLunar) {
-                CalendarUtil.formatLunarDate(reminder.date)
+                if (shortFormat) CalendarUtil.formatLunarDateShort(reminder.date) else CalendarUtil.formatLunarDate(reminder.date)
             } else {
                 reminder.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
             }
@@ -530,7 +534,7 @@ internal fun reminderDisplayInfo(reminder: ReminderItem, useLunar: Boolean = rem
             if (nextDate == null) {
                 val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
                 val formattedDate = if (useLunar) {
-                    CalendarUtil.formatLunarDate(reminder.date)
+                    if (shortFormat) CalendarUtil.formatLunarDateShort(reminder.date) else CalendarUtil.formatLunarDate(reminder.date)
                 } else {
                     reminder.date.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
                 }
@@ -544,7 +548,7 @@ internal fun reminderDisplayInfo(reminder: ReminderItem, useLunar: Boolean = rem
 
             val daysRemaining = ChronoUnit.DAYS.between(today, nextDate).toInt()
             val formattedDate = if (useLunar) {
-                CalendarUtil.formatLunarDate(nextDate)
+                if (shortFormat) CalendarUtil.formatLunarDateShort(nextDate) else CalendarUtil.formatLunarDate(nextDate)
             } else {
                 nextDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
             }
@@ -1200,7 +1204,7 @@ private fun ReminderListItem(
     onLongPress: () -> Unit,
     onToggleSelection: () -> Unit
 ) {
-    val displayInfo = reminderDisplayInfo(reminder)
+    val displayInfo = reminderDisplayInfo(reminder, shortFormat = true)
     val visuals = displayInfo.visuals
     val baseScale by animateFloatAsState(
         targetValue = if (isSelected) 1.01f else 1f,
@@ -1445,7 +1449,7 @@ private fun ReminderSummaryCard(
     onLongPress: () -> Unit,
     onToggleSelection: () -> Unit
 ) {
-    val displayInfo = reminderDisplayInfo(reminder)
+    val displayInfo = reminderDisplayInfo(reminder, shortFormat = true)
     val visuals = displayInfo.visuals
     val baseScale by animateFloatAsState(
         targetValue = if (isSelected) 1.02f else 1f,

@@ -134,6 +134,20 @@ object CalendarUtil {
         return "${ganZhi}(${year}) $monthLabel $dayLabel $weekDay"
     }
 
+    fun formatLunarDateShort(date: LocalDate): String {
+        val solar = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth)
+        val lunar = solar.getLunarDay()
+        val year = lunar.getYear()
+        val chineseYear = year.toString().map { char ->
+            val digits = arrayOf('〇', '一', '二', '三', '四', '五', '六', '七', '八', '九')
+            if (char in '0'..'9') digits[char - '0'] else char
+        }.joinToString("")
+        val rawMonthName = lunar.getLunarMonth()!!.getName()
+        val monthLabel = getMappedMonthName(rawMonthName)
+        val dayLabel = lunar.getName()
+        return "${chineseYear}年${monthLabel}${dayLabel}"
+    }
+
     fun getLunarMonthDayLabel(date: LocalDate): String {
         val solar = SolarDay.fromYmd(
             date.year,
