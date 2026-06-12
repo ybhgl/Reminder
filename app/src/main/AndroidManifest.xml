@@ -54,6 +54,7 @@
         <!-- AppWidgets -->
         <receiver
             android:name=".widget.ReminderWidget1x2"
+            android:label="@string/widget_name_1x2"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -65,6 +66,7 @@
 
         <receiver
             android:name=".widget.ReminderWidget2x2"
+            android:label="@string/widget_name_2x2"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
@@ -76,6 +78,7 @@
 
         <receiver
             android:name=".widget.ReminderWidget4x2"
+            android:label="@string/widget_name_4x2"
             android:exported="false">
             <intent-filter>
                 <action android:name="android.appwidget.action.APPWIDGET_UPDATE" />
