@@ -16,6 +16,9 @@ class ReminderWidget4x2 : AppWidgetProvider() {
         for (appWidgetId in appWidgetIds) {
             val views = RemoteViews(context.packageName, R.layout.widget_layout_4x2)
 
+            // Apply transparency
+            WidgetUpdateHelper.applyWidgetOpacity(context, views, R.id.widget_4x2_bg, appWidgetId)
+
             val intent = Intent(context, ReminderListWidgetService::class.java).apply {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
@@ -28,7 +31,7 @@ class ReminderWidget4x2 : AppWidgetProvider() {
             }
             val clickPI = PendingIntent.getActivity(
                 context,
-                20000 + appWidgetId, // Unique request code per widget instance
+                20000 + appWidgetId,
                 clickIntent,
                 PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )

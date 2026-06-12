@@ -26,6 +26,10 @@ class ReminderWidget2x2 : AppWidgetProvider() {
                 for (appWidgetId in appWidgetIds) {
                     val views = RemoteViews(context.packageName, R.layout.widget_layout_2x2)
 
+                    // Apply transparency
+                    WidgetUpdateHelper.applyWidgetOpacity(context, views, R.id.widget_2x2_bg, appWidgetId)
+                    WidgetUpdateHelper.applyWidgetOpacity(context, views, R.id.widget_2x2_footer_bg, appWidgetId)
+
                     val configuredId = WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId)
                     val featured = if (configuredId != -1) {
                         reminders.find { it.id == configuredId } ?: WidgetUpdateHelper.getFeaturedReminder(reminders)

@@ -37,6 +37,8 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     fun themePreferenceFlow(context: Context): Flow<AppThemeOption> = themeOptionFlow(context)
 
+    fun getAllRemindersStream(): Flow<List<ReminderItem>> = reminderRepository.getAllRemindersStream()
+
     fun pureBlackPreferenceFlow(context: Context): Flow<Boolean> = pureBlackFlow(context)
 
     suspend fun updateThemePreference(context: Context, option: AppThemeOption) {

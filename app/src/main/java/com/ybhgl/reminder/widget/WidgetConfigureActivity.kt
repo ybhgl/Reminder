@@ -57,6 +57,11 @@ class WidgetConfigureActivity : ComponentActivity() {
 
         val repository = (applicationContext as ReminderApplication).container.reminderRepository
 
+        val initialOpacity = WidgetConfigStore.getWidgetOpacity(this, appWidgetId)
+        val initialSelectedId = WidgetConfigStore.get1x2Or2x2Config(this, appWidgetId)
+        val initialFilterType = if (!isSingleSelection) WidgetConfigStore.get4x2FilterType(this, appWidgetId) else "all"
+        val initialCustomIds = if (!isSingleSelection) WidgetConfigStore.get4x2CustomIds(this, appWidgetId) else emptySet()
+
         setContent {
             ReminderTheme {
                 Surface(
@@ -65,8 +70,15 @@ class WidgetConfigureActivity : ComponentActivity() {
                 ) {
                     WidgetConfigureScreen(
                         isSingleSelection = isSingleSelection,
+                        initialOpacity = initialOpacity,
+                        initialSelectedId = initialSelectedId,
+                        initialFilterType = initialFilterType,
+                        initialCustomIds = initialCustomIds,
                         onCancel = { finish() },
-                        onSave = { selectedId, filterType, customIds ->
+                        onSave = { selectedId, filterType, customIds, opacity ->
+                            // Save opacity first for any widget
+                            WidgetConfigStore.saveWidgetOpacity(this@WidgetConfigureActivity, appWidgetId, opacity)
+
                             if (isSingleSelection) {
                                 WidgetConfigStore.save1x2Or2x2Config(this@WidgetConfigureActivity, appWidgetId, selectedId)
                                 
@@ -104,21 +116,30 @@ class WidgetConfigureActivity : ComponentActivity() {
 @Composable
 fun WidgetConfigureScreen(
     isSingleSelection: Boolean,
+    initialOpacity: Int = 100,
+    initialSelectedId: Int = -1,
+    initialFilterType: String = "all",
+    initialCustomIds: Set<Int> = emptySet(),
     onCancel: () -> Unit,
-    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>) -> Unit,
+    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, opacity: Int) -> Unit,
     loadReminders: suspend () -> List<ReminderItem>
 ) {
     var reminders by remember { mutableStateOf<List<ReminderItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
 
-    var selectedReminderId by remember { mutableIntStateOf(-1) }
+    // Transparency State (0-100)
+    var opacity by remember { mutableStateOf(initialOpacity.toFloat()) }
 
-    var filterType by remember { mutableStateOf("all") }
-    var customSelectedIds by remember { mutableStateOf<Set<Int>>(emptySet()) }
+    // Selection States for 1x2 / 2x2
+    var selectedReminderId by remember { mutableIntStateOf(initialSelectedId) }
+
+    // Selection States for 4x2
+    var filterType by remember { mutableStateOf(initialFilterType) }
+    var customSelectedIds by remember { mutableStateOf(initialCustomIds) }
 
     LaunchedEffect(Unit) {
         reminders = loadReminders()
-        if (reminders.isNotEmpty()) {
+        if (reminders.isNotEmpty() && selectedReminderId == -1) {
             selectedReminderId = reminders.first().id
         }
         isLoading = false
@@ -127,7 +148,7 @@ fun WidgetConfigureScreen(
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(if (isSingleSelection) "选择展示日程" else "配置列表展示") },
+                title = { Text(if (isSingleSelection) "配置桌面小部件" else "配置列表展示") },
                 navigationIcon = {
                     IconButton(onClick = onCancel) {
                         Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
@@ -170,9 +191,52 @@ fun WidgetConfigureScreen(
                     .padding(innerPadding)
                     .padding(16.dp)
             ) {
+                // Opacity Selection Card
+                Card(
+                    shape = RoundedCornerShape(12.dp),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    ),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(bottom = 16.dp)
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceBetween,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Text(
+                                text = "背景透明度",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Bold
+                            )
+                            Text(
+                                text = "${opacity.toInt()}%",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.Bold
+                            )
+                        }
+                        Spacer(modifier = Modifier.height(8.dp))
+                        Slider(
+                            value = opacity,
+                            onValueChange = { opacity = it },
+                            valueRange = 0f..100f,
+                            steps = 19
+                        )
+                        Text(
+                            text = "调整背景的不透明度。数值越低越透明",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
+
                 if (isSingleSelection) {
                     Text(
-                        text = "选择要显示的日程：",
+                        text = "选择要显示的提醒：",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(bottom = 12.dp)
@@ -232,17 +296,17 @@ fun WidgetConfigureScreen(
                     }
                 } else {
                     Text(
-                        text = "选择展示哪些日程：",
+                        text = "选择展示哪些提醒：",
                         style = MaterialTheme.typography.titleMedium,
                         fontWeight = FontWeight.Medium,
                         modifier = Modifier.padding(bottom = 12.dp)
                     )
 
                     val filterOptions = listOf(
-                        "all" to "展示所有日程",
-                        "countdown" to "展示所有倒数日",
-                        "countup" to "展示所有正数日",
-                        "birthday" to "展示所有生日",
+                        "all" to "展示所有提醒",
+                        "countdown" to "仅展示倒数日",
+                        "countup" to "仅展示正数日",
+                        "birthday" to "仅展示生日",
                         "custom" to "自由选择"
                     )
 
@@ -290,7 +354,7 @@ fun WidgetConfigureScreen(
                         if (filterType == "custom") {
                             item {
                                 Text(
-                                    text = "请勾选要显示的日程（可多选）：",
+                                    text = "请勾选要显示的提醒（可多选）：",
                                     style = MaterialTheme.typography.bodyMedium,
                                     fontWeight = FontWeight.Medium,
                                     modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
@@ -371,9 +435,9 @@ fun WidgetConfigureScreen(
                     Button(
                         onClick = {
                             if (isSingleSelection) {
-                                onSave(selectedReminderId, "", emptySet())
+                                onSave(selectedReminderId, "", emptySet(), opacity.toInt())
                             } else {
-                                onSave(-1, filterType, customSelectedIds)
+                                onSave(-1, filterType, customSelectedIds, opacity.toInt())
                             }
                         },
                         modifier = Modifier.weight(1f),

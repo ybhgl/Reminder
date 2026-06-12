@@ -1,6 +1,6 @@
 <resources>
     <string name="app_name">Reminder</string>
-    <string name="widget_name_1x2">事件胶囊</string>
-    <string name="widget_name_2x2">事件卡片</string>
-    <string name="widget_name_4x2">事件列表</string>
+    <string name="widget_name_1x2">提醒胶囊</string>
+    <string name="widget_name_2x2">提醒卡片</string>
+    <string name="widget_name_4x2">提醒列表</string>
 </resources>

@@ -4,6 +4,7 @@ import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
+import android.widget.RemoteViews
 import com.ybhgl.reminder.R
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
@@ -126,6 +127,12 @@ object WidgetUpdateHelper {
         )
     }
 
+    fun applyWidgetOpacity(context: Context, views: RemoteViews, bgViewId: Int, appWidgetId: Int) {
+        val opacity = WidgetConfigStore.getWidgetOpacity(context, appWidgetId)
+        val alpha = (opacity * 255) / 100
+        views.setInt(bgViewId, "setImageAlpha", alpha)
+    }
+
     fun updateAllWidgets(context: Context) {
         val appWidgetManager = AppWidgetManager.getInstance(context)
 
@@ -200,6 +207,18 @@ object WidgetConfigStore {
             .remove("widget_${appWidgetId}_reminder_id")
             .remove("widget_${appWidgetId}_filter_type")
             .remove("widget_${appWidgetId}_custom_ids")
+            .remove("widget_${appWidgetId}_opacity")
             .apply()
+    }
+
+    fun saveWidgetOpacity(context: Context, appWidgetId: Int, opacity: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putInt("widget_${appWidgetId}_opacity", opacity)
+            .apply()
+    }
+
+    fun getWidgetOpacity(context: Context, appWidgetId: Int): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt("widget_${appWidgetId}_opacity", 100)
     }
 }

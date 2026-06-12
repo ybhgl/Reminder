@@ -87,6 +87,18 @@ import androidx.compose.ui.res.painterResource
 import com.ybhgl.reminder.R
 import androidx.core.net.toUri
 
+import android.appwidget.AppWidgetManager
+import android.content.ComponentName
+import com.ybhgl.reminder.widget.ReminderWidget1x2
+import com.ybhgl.reminder.widget.ReminderWidget2x2
+import com.ybhgl.reminder.widget.ReminderWidget4x2
+import com.ybhgl.reminder.widget.WidgetConfigStore
+import com.ybhgl.reminder.widget.WidgetConfigureScreen
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.material3.Surface
+import kotlinx.coroutines.flow.first
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
@@ -139,6 +151,27 @@ fun SettingsScreen(
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
 
+    val appWidgetManager = remember { AppWidgetManager.getInstance(context) }
+    val active1x2Ids = remember { appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget1x2::class.java)) }
+    val active2x2Ids = remember { appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget2x2::class.java)) }
+    val active4x2Ids = remember { appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget4x2::class.java)) }
+
+    val activeWidgets = remember(active1x2Ids, active2x2Ids, active4x2Ids) {
+        val list = mutableListOf<ActiveWidgetInfo>()
+        active1x2Ids.forEach { id ->
+            list.add(ActiveWidgetInfo(id, "提醒胶囊 (1x2)", "ReminderWidget1x2", true))
+        }
+        active2x2Ids.forEach { id ->
+            list.add(ActiveWidgetInfo(id, "提醒卡片 (2x2)", "ReminderWidget2x2", true))
+        }
+        active4x2Ids.forEach { id ->
+            list.add(ActiveWidgetInfo(id, "提醒列表 (4x2)", "ReminderWidget4x2", false))
+        }
+        list
+    }
+
+    var configuringWidget by remember { mutableStateOf<ActiveWidgetInfo?>(null) }
+
     val customNestedScrollConnection = remember(topBarHeightPx) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
@@ -164,6 +197,57 @@ fun SettingsScreen(
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
+            if (configuringWidget != null) {
+                val widget = configuringWidget!!
+                val isSingleSelection = widget.isSingleSelection
+                val appWidgetId = widget.id
+                val initialOpacity = remember(appWidgetId) { WidgetConfigStore.getWidgetOpacity(context, appWidgetId) }
+                val initialSelectedId = remember(appWidgetId) { WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId) }
+                val initialFilterType = remember(appWidgetId) { if (!isSingleSelection) WidgetConfigStore.get4x2FilterType(context, appWidgetId) else "all" }
+                val initialCustomIds = remember(appWidgetId) { if (!isSingleSelection) WidgetConfigStore.get4x2CustomIds(context, appWidgetId) else emptySet<Int>() }
+
+                Dialog(
+                    onDismissRequest = { configuringWidget = null },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Surface(
+                        modifier = Modifier.fillMaxSize(),
+                        color = MaterialTheme.colorScheme.background
+                    ) {
+                        WidgetConfigureScreen(
+                            isSingleSelection = isSingleSelection,
+                            initialOpacity = initialOpacity,
+                            initialSelectedId = initialSelectedId,
+                            initialFilterType = initialFilterType,
+                            initialCustomIds = initialCustomIds,
+                            onCancel = { configuringWidget = null },
+                            onSave = { selectedId, filterType, customIds, opacity ->
+                                WidgetConfigStore.saveWidgetOpacity(context, appWidgetId, opacity)
+
+                                if (isSingleSelection) {
+                                    WidgetConfigStore.save1x2Or2x2Config(context, appWidgetId, selectedId)
+                                    val updateIntent = Intent(context, if (widget.providerClassName.contains("ReminderWidget1x2")) ReminderWidget1x2::class.java else ReminderWidget2x2::class.java).apply {
+                                        action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                                        putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+                                    }
+                                    context.sendBroadcast(updateIntent)
+                                } else {
+                                    WidgetConfigStore.save4x2Config(context, appWidgetId, filterType, customIds)
+                                    val updateIntent = Intent(context, ReminderWidget4x2::class.java).apply {
+                                        action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
+                                        putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
+                                    }
+                                    context.sendBroadcast(updateIntent)
+                                    appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list_view)
+                                }
+                                configuringWidget = null
+                            },
+                            loadReminders = { viewModel.getAllRemindersStream().first() }
+                        )
+                    }
+                }
+            }
+
             val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
 
             Column(
@@ -194,13 +278,22 @@ fun SettingsScreen(
                         }
                     }
                 )
-                DefaultPageSelectionCard(
+                 DefaultPageSelectionCard(
                     selectedPage = selectedDefaultPage,
                     onPageSelected = { page ->
                         coroutineScope.launch {
                             viewModel.updateDefaultPage(context, page)
                         }
                     }
+                )
+                Text(
+                    text = "桌面小部件",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
+                WidgetManagementCard(
+                    activeWidgets = activeWidgets,
+                    onConfigureClick = { widget -> configuringWidget = widget }
                 )
                 Text(
                     text = "备份与恢复",
@@ -659,6 +752,87 @@ private fun SettingsActionItem(
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
+            }
+        }
+    }
+}
+
+data class ActiveWidgetInfo(
+    val id: Int,
+    val name: String,
+    val providerClassName: String,
+    val isSingleSelection: Boolean
+)
+
+@Composable
+private fun WidgetManagementCard(
+    activeWidgets: List<ActiveWidgetInfo>,
+    onConfigureClick: (ActiveWidgetInfo) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(16.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            Text(
+                text = "已添加的小部件",
+                style = MaterialTheme.typography.bodyLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "管理和配置桌面上已添加的所有小部件",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(4.dp))
+            if (activeWidgets.isEmpty()) {
+                Text(
+                    text = "尚未添加任何小部件\n提示：长按系统桌面可以添加“提醒胶囊”、“提醒卡片”或“提醒列表”",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(vertical = 8.dp)
+                )
+            } else {
+                activeWidgets.forEach { widget ->
+                    Card(
+                        onClick = { onConfigureClick(widget) },
+                        colors = CardDefaults.cardColors(
+                            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp)
+                        ),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        Row(
+                            modifier = Modifier.padding(12.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.SpaceBetween
+                        ) {
+                            Column {
+                                Text(
+                                    text = widget.name,
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Bold
+                                )
+                                Text(
+                                    text = "小部件 ID: #${widget.id}",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Text(
+                                text = "点击配置",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.primary,
+                                fontWeight = FontWeight.SemiBold
+                            )
+                        }
+                    }
+                }
             }
         }
     }

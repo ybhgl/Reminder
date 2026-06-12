@@ -1,76 +1,87 @@
 <?xml version="1.0" encoding="utf-8"?>
-<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_1x2_container"
     android:layout_width="match_parent"
-    android:layout_height="match_parent"
-    android:background="@drawable/widget_bg_shape"
-    android:orientation="horizontal"
-    android:gravity="center_vertical"
-    android:paddingStart="16dp"
-    android:paddingEnd="16dp"
-    android:paddingTop="8dp"
-    android:paddingBottom="8dp">
+    android:layout_height="match_parent">
 
-    <!-- Left side: Event title & label -->
+    <ImageView
+        android:id="@+id/widget_1x2_bg"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
+        android:scaleType="fitXY"
+        android:src="@drawable/widget_bg_shape" />
+
     <LinearLayout
-        android:layout_width="0dp"
-        android:layout_height="wrap_content"
-        android:layout_weight="1"
-        android:orientation="vertical"
-        android:gravity="center_vertical">
-
-        <TextView
-            android:id="@+id/widget_1x2_title"
-            android:layout_width="match_parent"
-            android:layout_height="20dp"
-            android:textColor="@color/widget_text_primary"
-            android:textSize="14sp"
-            android:textStyle="bold"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:autoSizeTextType="uniform"
-            android:autoSizeMinTextSize="10sp"
-            android:autoSizeMaxTextSize="14sp"
-            android:autoSizeStepGranularity="1sp"
-            android:text="测试事件" />
-
-        <TextView
-            android:id="@+id/widget_1x2_label"
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:textColor="@color/widget_text_secondary"
-            android:textSize="11sp"
-            android:layout_marginTop="2dp"
-            android:maxLines="1"
-            android:ellipsize="end"
-            android:text="还有" />
-    </LinearLayout>
-
-    <!-- Right side: Days count -->
-    <LinearLayout
-        android:layout_width="wrap_content"
-        android:layout_height="wrap_content"
+        android:layout_width="match_parent"
+        android:layout_height="match_parent"
         android:orientation="horizontal"
-        android:gravity="bottom"
-        android:layout_marginStart="8dp">
+        android:gravity="center_vertical"
+        android:paddingStart="16dp"
+        android:paddingEnd="16dp"
+        android:paddingTop="8dp"
+        android:paddingBottom="8dp">
 
-        <TextView
-            android:id="@+id/widget_1x2_days"
+        <!-- Left side: Event title & label -->
+        <LinearLayout
+            android:layout_width="0dp"
+            android:layout_height="wrap_content"
+            android:layout_weight="1"
+            android:orientation="vertical"
+            android:gravity="center_vertical">
+
+            <TextView
+                android:id="@+id/widget_1x2_title"
+                android:layout_width="match_parent"
+                android:layout_height="20dp"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="14sp"
+                android:textStyle="bold"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:autoSizeTextType="uniform"
+                android:autoSizeMinTextSize="10sp"
+                android:autoSizeMaxTextSize="14sp"
+                android:autoSizeStepGranularity="1sp"
+                android:text="测试事件" />
+
+            <TextView
+                android:id="@+id/widget_1x2_label"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="11sp"
+                android:layout_marginTop="2dp"
+                android:maxLines="1"
+                android:ellipsize="end"
+                android:text="还有" />
+        </LinearLayout>
+
+        <!-- Right side: Days count -->
+        <LinearLayout
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:textColor="@color/widget_text_primary"
-            android:textSize="32sp"
-            android:textStyle="bold"
-            android:text="0" />
+            android:orientation="horizontal"
+            android:gravity="bottom"
+            android:layout_marginStart="8dp">
 
-        <TextView
-            android:id="@+id/widget_1x2_unit"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:textColor="@color/widget_text_secondary"
-            android:textSize="12sp"
-            android:layout_marginStart="2dp"
-            android:layout_marginBottom="4dp"
-            android:text="天" />
+            <TextView
+                android:id="@+id/widget_1x2_days"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/widget_text_primary"
+                android:textSize="32sp"
+                android:textStyle="bold"
+                android:text="0" />
+
+            <TextView
+                android:id="@+id/widget_1x2_unit"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:textColor="@color/widget_text_secondary"
+                android:textSize="12sp"
+                android:layout_marginStart="2dp"
+                android:layout_marginBottom="4dp"
+                android:text="天" />
+        </LinearLayout>
     </LinearLayout>
-</LinearLayout>
+</FrameLayout>
