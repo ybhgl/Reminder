@@ -22,12 +22,16 @@
         <TextView
             android:id="@+id/widget_1x2_title"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content"
+            android:layout_height="20dp"
             android:textColor="@color/widget_text_primary"
             android:textSize="14sp"
             android:textStyle="bold"
             android:maxLines="1"
             android:ellipsize="end"
+            android:autoSizeTextType="uniform"
+            android:autoSizeMinTextSize="10sp"
+            android:autoSizeMaxTextSize="14sp"
+            android:autoSizeStepGranularity="1sp"
             android:text="测试事件" />
 
         <TextView
