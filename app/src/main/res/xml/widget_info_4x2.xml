@@ -7,4 +7,5 @@
     android:updatePeriodMillis="1800000"
     android:initialLayout="@layout/widget_layout_4x2"
     android:resizeMode="horizontal|vertical"
-    android:widgetCategory="home_screen" />
+    android:widgetCategory="home_screen"
+    android:configure="com.ybhgl.reminder.widget.WidgetConfigureActivity" />

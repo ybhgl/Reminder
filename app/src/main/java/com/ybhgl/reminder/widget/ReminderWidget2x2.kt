@@ -22,24 +22,27 @@ class ReminderWidget2x2 : AppWidgetProvider() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val reminders = repository.getAllRemindersStream().first()
-                val featured = WidgetUpdateHelper.getFeaturedReminder(reminders)
 
                 for (appWidgetId in appWidgetIds) {
                     val views = RemoteViews(context.packageName, R.layout.widget_layout_2x2)
 
+                    val configuredId = WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId)
+                    val featured = if (configuredId != -1) {
+                        reminders.find { it.id == configuredId } ?: WidgetUpdateHelper.getFeaturedReminder(reminders)
+                    } else {
+                        WidgetUpdateHelper.getFeaturedReminder(reminders)
+                    }
+
                     if (featured != null) {
                         val displayInfo = WidgetUpdateHelper.getDisplayInfo(context, featured)
                         
-                        // Combined header title like "我的生日 生日还有" or "国庆节 还有"
                         val headerText = "${displayInfo.title} ${displayInfo.label}"
                         views.setTextViewText(R.id.widget_2x2_header_title, headerText)
                         views.setTextViewText(R.id.widget_2x2_days, displayInfo.days)
                         views.setTextViewText(R.id.widget_2x2_unit, displayInfo.unit)
                         views.setTextViewText(R.id.widget_2x2_date, displayInfo.dateString)
 
-                        // Set header background color using color filter
                         views.setInt(R.id.widget_2x2_header_bg, "setColorFilter", context.getColor(displayInfo.accentColorResId))
-                        // Set text color of days to match accent color
                         views.setTextColor(R.id.widget_2x2_days, context.getColor(displayInfo.accentColorResId))
 
                         val intent = Intent(context, MainActivity::class.java).apply {
@@ -79,6 +82,13 @@ class ReminderWidget2x2 : AppWidgetProvider() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        for (appWidgetId in appWidgetIds) {
+            WidgetConfigStore.deleteConfig(context, appWidgetId)
         }
     }
 }

@@ -22,10 +22,16 @@ class ReminderWidget1x2 : AppWidgetProvider() {
         CoroutineScope(Dispatchers.IO).launch {
             try {
                 val reminders = repository.getAllRemindersStream().first()
-                val featured = WidgetUpdateHelper.getFeaturedReminder(reminders)
 
                 for (appWidgetId in appWidgetIds) {
                     val views = RemoteViews(context.packageName, R.layout.widget_layout_1x2)
+
+                    val configuredId = WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId)
+                    val featured = if (configuredId != -1) {
+                        reminders.find { it.id == configuredId } ?: WidgetUpdateHelper.getFeaturedReminder(reminders)
+                    } else {
+                        WidgetUpdateHelper.getFeaturedReminder(reminders)
+                    }
 
                     if (featured != null) {
                         val displayInfo = WidgetUpdateHelper.getDisplayInfo(context, featured)
@@ -34,7 +40,6 @@ class ReminderWidget1x2 : AppWidgetProvider() {
                         views.setTextViewText(R.id.widget_1x2_days, displayInfo.days)
                         views.setTextViewText(R.id.widget_1x2_unit, displayInfo.unit)
 
-                        // Set days color to the event's accent color
                         views.setTextColor(R.id.widget_1x2_days, context.getColor(displayInfo.accentColorResId))
 
                         val intent = Intent(context, MainActivity::class.java).apply {
@@ -73,6 +78,13 @@ class ReminderWidget1x2 : AppWidgetProvider() {
             } catch (e: Exception) {
                 e.printStackTrace()
             }
+        }
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        for (appWidgetId in appWidgetIds) {
+            WidgetConfigStore.deleteConfig(context, appWidgetId)
         }
     }
 }

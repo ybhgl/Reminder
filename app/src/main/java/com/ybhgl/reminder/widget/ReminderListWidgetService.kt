@@ -1,5 +1,6 @@
 package com.ybhgl.reminder.widget
 
+import android.appwidget.AppWidgetManager
 import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
@@ -12,11 +13,18 @@ import kotlinx.coroutines.runBlocking
 
 class ReminderListWidgetService : RemoteViewsService() {
     override fun onGetViewFactory(intent: Intent): RemoteViewsFactory {
-        return ReminderListWidgetFactory(applicationContext)
+        val appWidgetId = intent.getIntExtra(
+            AppWidgetManager.EXTRA_APPWIDGET_ID,
+            AppWidgetManager.INVALID_APPWIDGET_ID
+        )
+        return ReminderListWidgetFactory(applicationContext, appWidgetId)
     }
 }
 
-class ReminderListWidgetFactory(private val context: Context) : RemoteViewsService.RemoteViewsFactory {
+class ReminderListWidgetFactory(
+    private val context: Context,
+    private val appWidgetId: Int
+) : RemoteViewsService.RemoteViewsFactory {
 
     private var reminderList: List<ReminderItem> = emptyList()
 
@@ -26,7 +34,21 @@ class ReminderListWidgetFactory(private val context: Context) : RemoteViewsServi
         val repository = (context.applicationContext as ReminderApplication).container.reminderRepository
         try {
             reminderList = runBlocking {
-                val list = repository.getAllRemindersStream().first()
+                var list = repository.getAllRemindersStream().first()
+
+                if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
+                    val filterType = WidgetConfigStore.get4x2FilterType(context, appWidgetId)
+                    val customIds = WidgetConfigStore.get4x2CustomIds(context, appWidgetId)
+
+                    list = when (filterType) {
+                        "countdown" -> list.filter { it.type == com.ybhgl.reminder.data.ReminderType.ANNUAL }
+                        "countup" -> list.filter { it.type == com.ybhgl.reminder.data.ReminderType.COUNT_UP }
+                        "birthday" -> list.filter { it.type == com.ybhgl.reminder.data.ReminderType.BIRTHDAY }
+                        "custom" -> list.filter { it.id in customIds }
+                        else -> list
+                    }
+                }
+
                 list.sortedWith(compareByDescending<ReminderItem> { it.isPinned }
                     .thenBy { item ->
                         val displayInfo = WidgetUpdateHelper.getDisplayInfo(context, item)

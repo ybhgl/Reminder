@@ -28,7 +28,7 @@ class ReminderWidget4x2 : AppWidgetProvider() {
             }
             val clickPI = PendingIntent.getActivity(
                 context,
-                20000,
+                20000 + appWidgetId, // Unique request code per widget instance
                 clickIntent,
                 PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
@@ -40,7 +40,7 @@ class ReminderWidget4x2 : AppWidgetProvider() {
             }
             val addPI = PendingIntent.getActivity(
                 context,
-                20001,
+                20001 + appWidgetId,
                 addIntent,
                 PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
             )
@@ -49,5 +49,12 @@ class ReminderWidget4x2 : AppWidgetProvider() {
             appWidgetManager.updateAppWidget(appWidgetId, views)
         }
         super.onUpdate(context, appWidgetManager, appWidgetIds)
+    }
+
+    override fun onDeleted(context: Context, appWidgetIds: IntArray) {
+        super.onDeleted(context, appWidgetIds)
+        for (appWidgetId in appWidgetIds) {
+            WidgetConfigStore.deleteConfig(context, appWidgetId)
+        }
     }
 }

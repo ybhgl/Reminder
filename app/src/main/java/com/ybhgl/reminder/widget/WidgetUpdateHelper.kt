@@ -161,3 +161,45 @@ object WidgetUpdateHelper {
         }
     }
 }
+
+object WidgetConfigStore {
+    private const val PREFS_NAME = "com.ybhgl.reminder.widget_prefs"
+
+    fun save1x2Or2x2Config(context: Context, appWidgetId: Int, reminderId: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putInt("widget_${appWidgetId}_reminder_id", reminderId)
+            .apply()
+    }
+
+    fun get1x2Or2x2Config(context: Context, appWidgetId: Int): Int {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getInt("widget_${appWidgetId}_reminder_id", -1)
+    }
+
+    fun save4x2Config(context: Context, appWidgetId: Int, filterType: String, customIds: Set<Int>) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString("widget_${appWidgetId}_filter_type", filterType)
+            .putString("widget_${appWidgetId}_custom_ids", customIds.joinToString(","))
+            .apply()
+    }
+
+    fun get4x2FilterType(context: Context, appWidgetId: Int): String {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("widget_${appWidgetId}_filter_type", "all") ?: "all"
+    }
+
+    fun get4x2CustomIds(context: Context, appWidgetId: Int): Set<Int> {
+        val str = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("widget_${appWidgetId}_custom_ids", "") ?: ""
+        if (str.isEmpty()) return emptySet()
+        return str.split(",").mapNotNull { it.toIntOrNull() }.toSet()
+    }
+
+    fun deleteConfig(context: Context, appWidgetId: Int) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .remove("widget_${appWidgetId}_reminder_id")
+            .remove("widget_${appWidgetId}_filter_type")
+            .remove("widget_${appWidgetId}_custom_ids")
+            .apply()
+    }
+}
