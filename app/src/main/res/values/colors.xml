@@ -1,0 +1,12 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Light Mode Widget Colors -->
+    <color name="widget_bg">#FFFFFF</color>
+    <color name="widget_list_item_bg">#F4F4F4</color>
+    <color name="widget_text_primary">#2C2C2C</color>
+    <color name="widget_text_secondary">#666666</color>
+    <color name="widget_accent_annual">#1E88E5</color>
+    <color name="widget_accent_count_up">#F28C20</color>
+    <color name="widget_accent_birthday">#E53935</color>
+    <color name="widget_divider">#E0E0E0</color>
+</resources>

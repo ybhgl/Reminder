@@ -14,6 +14,6 @@ interface AppContainer {
  */
 class DefaultAppContainer(private val context: Context) : AppContainer {
     override val reminderRepository: ReminderRepository by lazy {
-        ReminderRepository(ReminderDatabase.getDatabase(context).reminderDao())
+        ReminderRepository(ReminderDatabase.getDatabase(context).reminderDao(), context)
     }
 }

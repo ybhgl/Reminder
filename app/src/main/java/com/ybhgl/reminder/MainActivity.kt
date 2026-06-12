@@ -90,6 +90,7 @@ import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -173,6 +174,14 @@ import androidx.activity.SystemBarStyle
 import androidx.compose.ui.graphics.toArgb
 
 class MainActivity : ComponentActivity() {
+    var onNewIntentCallback: ((Intent) -> Unit)? = null
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        onNewIntentCallback?.invoke(intent)
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         val splashScreen = installSplashScreen()
         super.onCreate(savedInstanceState)
@@ -317,6 +326,27 @@ fun ReminderApp() {
     }
 
     val navController = rememberNavController()
+
+    val activity = context as? MainActivity
+    DisposableEffect(navController, activity) {
+        val callback = { intent: Intent ->
+            val reminderId = intent.getIntExtra("reminderId", -1)
+            if (reminderId != -1) {
+                intent.removeExtra("reminderId")
+                navController.navigate(Routes.detailReminder(reminderId))
+            } else if (intent.getStringExtra("action") == "add") {
+                intent.removeExtra("action")
+                navController.navigate(Routes.addReminder())
+            }
+        }
+        activity?.onNewIntentCallback = callback
+        activity?.intent?.let { callback(it) }
+
+        onDispose {
+            activity?.onNewIntentCallback = null
+        }
+    }
+
     Box(modifier = Modifier.fillMaxSize()) {
         NavHost(
             navController = navController,
