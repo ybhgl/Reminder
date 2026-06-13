@@ -95,13 +95,6 @@
             android:paddingTop="10dp"
             android:paddingBottom="10dp">
 
-            <ImageView
-                android:id="@+id/widget_2x2_footer_bg"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="fitXY"
-                android:src="@drawable/widget_footer_shape" />
-
             <TextView
                 android:id="@+id/widget_2x2_date"
                 android:layout_width="match_parent"
