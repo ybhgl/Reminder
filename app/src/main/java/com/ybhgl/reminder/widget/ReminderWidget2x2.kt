@@ -3,6 +3,7 @@ package com.ybhgl.reminder.widget
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
+import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
@@ -15,6 +16,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 class ReminderWidget2x2 : AppWidgetProvider() {
+
+    override fun onReceive(context: Context, intent: Intent) {
+        super.onReceive(context, intent)
+        when (intent.action) {
+            Intent.ACTION_DATE_CHANGED,
+            Intent.ACTION_TIME_CHANGED,
+            Intent.ACTION_TIMEZONE_CHANGED,
+            Intent.ACTION_USER_PRESENT -> {
+                val appWidgetManager = AppWidgetManager.getInstance(context)
+                val appWidgetIds = appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget2x2::class.java))
+                if (appWidgetIds.isNotEmpty()) {
+                    onUpdate(context, appWidgetManager, appWidgetIds)
+                }
+            }
+        }
+    }
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val repository = (context.applicationContext as ReminderApplication).container.reminderRepository
