@@ -1,14 +1,22 @@
 package com.ybhgl.reminder.widget
 
+import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.widget.RemoteViews
+import com.ybhgl.reminder.MainActivity
 import com.ybhgl.reminder.R
+import com.ybhgl.reminder.ReminderApplication
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.util.CalendarUtil
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -133,27 +141,34 @@ object WidgetUpdateHelper {
         views.setInt(bgViewId, "setImageAlpha", alpha)
     }
 
-    fun updateAllWidgets(context: Context) {
+    suspend fun updateAllWidgets(context: Context) {
         val appWidgetManager = AppWidgetManager.getInstance(context)
+        val repository = (context.applicationContext as ReminderApplication).container.reminderRepository
 
-        // Update 1x2
-        val ids1x2 = appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget1x2::class.java))
-        if (ids1x2.isNotEmpty()) {
-            val intent = Intent(context, ReminderWidget1x2::class.java).apply {
-                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids1x2)
-            }
-            context.sendBroadcast(intent)
-        }
+        // 既然 updateAllWidgets 运行在调用者（前台界面）的主生命周期协程作用域下，
+        // 使用 withContext(Dispatchers.IO) 直接、同步地去查询最实时的数据库，防止 Room Flow Invalidation 的异步延迟和竞态条件
+        withContext(Dispatchers.IO) {
+            try {
+                val reminders = repository.getAllRemindersList()
 
-        // Update 2x2
-        val ids2x2 = appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget2x2::class.java))
-        if (ids2x2.isNotEmpty()) {
-            val intent = Intent(context, ReminderWidget2x2::class.java).apply {
-                action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids2x2)
+                // 直接同步通过 Binder 刷新 1x2 小部件，解决后台广播限频和冻结问题
+                val ids1x2 = appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget1x2::class.java))
+                for (appWidgetId in ids1x2) {
+                    val opacity = WidgetConfigStore.getWidgetOpacity(context, appWidgetId)
+                    val configuredId = WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId)
+                    update1x2WidgetWithData(context, appWidgetManager, appWidgetId, opacity, configuredId, reminders)
+                }
+
+                // 直接同步通过 Binder 刷新 2x2 小部件
+                val ids2x2 = appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget2x2::class.java))
+                for (appWidgetId in ids2x2) {
+                    val opacity = WidgetConfigStore.getWidgetOpacity(context, appWidgetId)
+                    val configuredId = WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId)
+                    update2x2WidgetWithData(context, appWidgetManager, appWidgetId, opacity, configuredId, reminders)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
             }
-            context.sendBroadcast(intent)
         }
 
         // Update 4x2
@@ -167,6 +182,136 @@ object WidgetUpdateHelper {
             appWidgetManager.notifyAppWidgetViewDataChanged(ids4x2, R.id.widget_list_view)
         }
     }
+
+    fun update1x2WidgetWithData(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        opacity: Int,
+        selectedId: Int,
+        items: List<ReminderItem>
+    ) {
+        val views = RemoteViews(context.packageName, R.layout.widget_layout_1x2)
+        
+        // Apply transparency
+        val alpha = (opacity * 255) / 100
+        views.setInt(R.id.widget_1x2_bg, "setImageAlpha", alpha)
+
+        val featured = if (selectedId != -1) {
+            items.find { it.id == selectedId } ?: getFeaturedReminder(items)
+        } else {
+            getFeaturedReminder(items)
+        }
+
+        if (featured != null) {
+            val displayInfo = getDisplayInfo(context, featured)
+            views.setTextViewText(R.id.widget_1x2_title, displayInfo.title)
+            views.setTextViewText(R.id.widget_1x2_label, displayInfo.label)
+            views.setTextViewText(R.id.widget_1x2_days, displayInfo.days)
+            views.setTextViewText(R.id.widget_1x2_unit, displayInfo.unit)
+
+            views.setTextColor(R.id.widget_1x2_days, context.getColor(displayInfo.accentColorResId))
+
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("reminderId", featured.id)
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                featured.id,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_1x2_container, pendingIntent)
+        } else {
+            views.setTextViewText(R.id.widget_1x2_title, "暂无日程")
+            views.setTextViewText(R.id.widget_1x2_label, "点击添加")
+            views.setTextViewText(R.id.widget_1x2_days, "0")
+            views.setTextViewText(R.id.widget_1x2_unit, "天")
+
+            views.setTextColor(R.id.widget_1x2_days, context.getColor(R.color.widget_accent_annual))
+
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                0,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_1x2_container, pendingIntent)
+        }
+
+        appWidgetManager.updateAppWidget(appWidgetId, views)
+    }
+
+    fun update2x2WidgetWithData(
+        context: Context,
+        appWidgetManager: AppWidgetManager,
+        appWidgetId: Int,
+        opacity: Int,
+        selectedId: Int,
+        items: List<ReminderItem>
+    ) {
+        val views = RemoteViews(context.packageName, R.layout.widget_layout_2x2)
+        
+        // Apply transparency
+        val alpha = (opacity * 255) / 100
+        views.setInt(R.id.widget_2x2_bg, "setImageAlpha", alpha)
+
+        val featured = if (selectedId != -1) {
+            items.find { it.id == selectedId } ?: getFeaturedReminder(items)
+        } else {
+            getFeaturedReminder(items)
+        }
+
+        if (featured != null) {
+            val displayInfo = getDisplayInfo(context, featured)
+            
+            val headerText = "${displayInfo.title} ${displayInfo.label}"
+            views.setTextViewText(R.id.widget_2x2_header_title, headerText)
+            views.setTextViewText(R.id.widget_2x2_days, displayInfo.days)
+            views.setTextViewText(R.id.widget_2x2_unit, displayInfo.unit)
+            views.setTextViewText(R.id.widget_2x2_date, displayInfo.dateString)
+
+            views.setInt(R.id.widget_2x2_header_bg, "setColorFilter", context.getColor(displayInfo.accentColorResId))
+            views.setTextColor(R.id.widget_2x2_days, context.getColor(displayInfo.accentColorResId))
+
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                putExtra("reminderId", featured.id)
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                featured.id + 10000,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_2x2_container, pendingIntent)
+        } else {
+            views.setTextViewText(R.id.widget_2x2_header_title, "暂无日程")
+            views.setTextViewText(R.id.widget_2x2_days, "0")
+            views.setTextViewText(R.id.widget_2x2_unit, "天")
+            views.setTextViewText(R.id.widget_2x2_date, "——")
+
+            views.setInt(R.id.widget_2x2_header_bg, "setColorFilter", context.getColor(R.color.widget_accent_annual))
+            views.setTextColor(R.id.widget_2x2_days, context.getColor(R.color.widget_accent_annual))
+
+            val intent = Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            }
+            val pendingIntent = PendingIntent.getActivity(
+                context,
+                1,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            views.setOnClickPendingIntent(R.id.widget_2x2_container, pendingIntent)
+        }
+
+        appWidgetManager.updateAppWidget(appWidgetId, views)
+    }
 }
 
 object WidgetConfigStore {
@@ -175,7 +320,7 @@ object WidgetConfigStore {
     fun save1x2Or2x2Config(context: Context, appWidgetId: Int, reminderId: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .putInt("widget_${appWidgetId}_reminder_id", reminderId)
-            .apply()
+            .commit()
     }
 
     fun get1x2Or2x2Config(context: Context, appWidgetId: Int): Int {
@@ -187,7 +332,7 @@ object WidgetConfigStore {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .putString("widget_${appWidgetId}_filter_type", filterType)
             .putString("widget_${appWidgetId}_custom_ids", customIds.joinToString(","))
-            .apply()
+            .commit()
     }
 
     fun get4x2FilterType(context: Context, appWidgetId: Int): String {
@@ -208,13 +353,13 @@ object WidgetConfigStore {
             .remove("widget_${appWidgetId}_filter_type")
             .remove("widget_${appWidgetId}_custom_ids")
             .remove("widget_${appWidgetId}_opacity")
-            .apply()
+            .commit()
     }
 
     fun saveWidgetOpacity(context: Context, appWidgetId: Int, opacity: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .putInt("widget_${appWidgetId}_opacity", opacity)
-            .apply()
+            .commit()
     }
 
     fun getWidgetOpacity(context: Context, appWidgetId: Int): Int {

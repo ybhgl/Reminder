@@ -14,6 +14,8 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
 
     fun getAllRemindersStream(): Flow<List<ReminderItem>> = reminderDao.getAllReminders()
 
+    suspend fun getAllRemindersList(): List<ReminderItem> = reminderDao.getAllRemindersList()
+
     fun getReminderStream(id: Int): Flow<ReminderItem?> = reminderDao.getReminder(id)
 
     fun getDistinctCategoriesStream(): Flow<List<String>> = reminderDao.getDistinctCategories()

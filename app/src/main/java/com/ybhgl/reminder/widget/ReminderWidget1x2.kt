@@ -18,6 +18,7 @@ class ReminderWidget1x2 : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val repository = (context.applicationContext as ReminderApplication).container.reminderRepository
+        val pendingResult = goAsync()
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -80,6 +81,8 @@ class ReminderWidget1x2 : AppWidgetProvider() {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                pendingResult?.finish()
             }
         }
     }

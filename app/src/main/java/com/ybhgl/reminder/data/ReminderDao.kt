@@ -30,6 +30,9 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders ORDER BY isPinned DESC, date ASC")
     fun getAllReminders(): Flow<List<ReminderItem>>
 
+    @Query("SELECT * FROM reminders ORDER BY isPinned DESC, date ASC")
+    suspend fun getAllRemindersList(): List<ReminderItem>
+
     @Query("SELECT * FROM reminders WHERE id = :id")
     fun getReminder(id: Int): Flow<ReminderItem?>
 

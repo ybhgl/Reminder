@@ -96,6 +96,7 @@ import com.ybhgl.reminder.widget.ReminderWidget2x2
 import com.ybhgl.reminder.widget.ReminderWidget4x2
 import com.ybhgl.reminder.widget.WidgetConfigStore
 import com.ybhgl.reminder.widget.WidgetConfigureScreen
+import com.ybhgl.reminder.widget.WidgetUpdateHelper
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.Surface
@@ -223,12 +224,18 @@ fun SettingsScreen(
                             initialFilterType = initialFilterType,
                             initialCustomIds = initialCustomIds,
                             onCancel = { configuringWidget = null },
-                            onSave = { selectedId, filterType, customIds, opacity ->
+                            onSave = { selectedId, filterType, customIds, opacity, items ->
                                 WidgetConfigStore.saveWidgetOpacity(context, appWidgetId, opacity)
 
                                 if (isSingleSelection) {
                                     WidgetConfigStore.save1x2Or2x2Config(context, appWidgetId, selectedId)
-                                    val updateIntent = Intent(context, if (widget.providerClassName.contains("ReminderWidget1x2")) ReminderWidget1x2::class.java else ReminderWidget2x2::class.java).apply {
+                                    val is1x2 = widget.providerClassName.contains("ReminderWidget1x2")
+                                    if (is1x2) {
+                                        WidgetUpdateHelper.update1x2WidgetWithData(context, appWidgetManager, appWidgetId, opacity, selectedId, items)
+                                    } else {
+                                        WidgetUpdateHelper.update2x2WidgetWithData(context, appWidgetManager, appWidgetId, opacity, selectedId, items)
+                                    }
+                                    val updateIntent = Intent(context, if (is1x2) ReminderWidget1x2::class.java else ReminderWidget2x2::class.java).apply {
                                         action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
                                         putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
                                     }

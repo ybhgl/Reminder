@@ -18,6 +18,7 @@ class ReminderWidget2x2 : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         val repository = (context.applicationContext as ReminderApplication).container.reminderRepository
+        val pendingResult = goAsync()
 
         CoroutineScope(Dispatchers.IO).launch {
             try {
@@ -28,7 +29,6 @@ class ReminderWidget2x2 : AppWidgetProvider() {
 
                     // Apply transparency
                     WidgetUpdateHelper.applyWidgetOpacity(context, views, R.id.widget_2x2_bg, appWidgetId)
-                    WidgetUpdateHelper.applyWidgetOpacity(context, views, R.id.widget_2x2_footer_bg, appWidgetId)
 
                     val configuredId = WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId)
                     val featured = if (configuredId != -1) {
@@ -85,6 +85,8 @@ class ReminderWidget2x2 : AppWidgetProvider() {
                 }
             } catch (e: Exception) {
                 e.printStackTrace()
+            } finally {
+                pendingResult?.finish()
             }
         }
     }

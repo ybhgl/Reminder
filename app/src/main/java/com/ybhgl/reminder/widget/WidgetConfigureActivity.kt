@@ -75,14 +75,20 @@ class WidgetConfigureActivity : ComponentActivity() {
                         initialFilterType = initialFilterType,
                         initialCustomIds = initialCustomIds,
                         onCancel = { finish() },
-                        onSave = { selectedId, filterType, customIds, opacity ->
+                        onSave = { selectedId, filterType, customIds, opacity, items ->
                             // Save opacity first for any widget
                             WidgetConfigStore.saveWidgetOpacity(this@WidgetConfigureActivity, appWidgetId, opacity)
 
                             if (isSingleSelection) {
                                 WidgetConfigStore.save1x2Or2x2Config(this@WidgetConfigureActivity, appWidgetId, selectedId)
                                 
-                                val updateIntent = Intent(this@WidgetConfigureActivity, if (providerClassName.contains("ReminderWidget1x2")) ReminderWidget1x2::class.java else ReminderWidget2x2::class.java).apply {
+                                val is1x2 = providerClassName.contains("ReminderWidget1x2")
+                                if (is1x2) {
+                                    WidgetUpdateHelper.update1x2WidgetWithData(this@WidgetConfigureActivity, appWidgetManager, appWidgetId, opacity, selectedId, items)
+                                } else {
+                                    WidgetUpdateHelper.update2x2WidgetWithData(this@WidgetConfigureActivity, appWidgetManager, appWidgetId, opacity, selectedId, items)
+                                }
+                                val updateIntent = Intent(this@WidgetConfigureActivity, if (is1x2) ReminderWidget1x2::class.java else ReminderWidget2x2::class.java).apply {
                                     action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
                                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
                                 }
@@ -121,7 +127,7 @@ fun WidgetConfigureScreen(
     initialFilterType: String = "all",
     initialCustomIds: Set<Int> = emptySet(),
     onCancel: () -> Unit,
-    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, opacity: Int) -> Unit,
+    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, opacity: Int, reminders: List<ReminderItem>) -> Unit,
     loadReminders: suspend () -> List<ReminderItem>
 ) {
     var reminders by remember { mutableStateOf<List<ReminderItem>>(emptyList()) }
@@ -435,9 +441,9 @@ fun WidgetConfigureScreen(
                     Button(
                         onClick = {
                             if (isSingleSelection) {
-                                onSave(selectedReminderId, "", emptySet(), opacity.toInt())
+                                onSave(selectedReminderId, "", emptySet(), opacity.toInt(), reminders)
                             } else {
-                                onSave(-1, filterType, customSelectedIds, opacity.toInt())
+                                onSave(-1, filterType, customSelectedIds, opacity.toInt(), reminders)
                             }
                         },
                         modifier = Modifier.weight(1f),
