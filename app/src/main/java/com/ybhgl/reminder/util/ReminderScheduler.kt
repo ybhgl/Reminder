@@ -6,11 +6,12 @@ import android.content.Context
 import android.content.Intent
 import android.os.Build
 import com.ybhgl.reminder.data.ReminderItem
+import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
 
 object ReminderScheduler {
-    fun scheduleReminder(context: Context, item: ReminderItem) {
+    fun scheduleReminder(context: Context, item: ReminderItem, forceNext: Boolean = false) {
         if (!item.notificationConfig.isEnabled || !item.notificationConfig.useAppNotification) {
             cancelReminder(context, item)
             return
@@ -18,7 +19,8 @@ object ReminderScheduler {
 
         cancelReminder(context, item)
 
-        val targetDate = CalendarUtil.calculateNextTargetDate(item) ?: item.date
+        val baseDate = if (forceNext) LocalDate.now().plusDays(1) else LocalDate.now()
+        val targetDate = CalendarUtil.calculateNextTargetDate(item, baseDate) ?: item.date
 
         val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as AlarmManager
 

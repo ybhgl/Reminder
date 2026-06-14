@@ -158,6 +158,10 @@ import com.ybhgl.reminder.ui.detail.BirthdayListScreen
 import com.ybhgl.reminder.ui.detail.DetailScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.Dispatchers
+import androidx.lifecycle.lifecycleScope
+import com.ybhgl.reminder.util.ReminderScheduler
+import com.ybhgl.reminder.util.CalendarManager
 import kotlinx.serialization.ExperimentalSerializationApi
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -189,6 +193,20 @@ class MainActivity : ComponentActivity() {
         val viewModel = ViewModelProvider(this, AppViewModelProvider.Factory)[ReminderListViewModel::class.java]
         splashScreen.setKeepOnScreenCondition {
             viewModel.reminderListUiState.value.isLoading
+        }
+
+        lifecycleScope.launch(Dispatchers.IO) {
+            try {
+                val app = application as ReminderApplication
+                val repository = app.container.reminderRepository
+                val items = repository.getAllRemindersList()
+                items.forEach { item ->
+                    ReminderScheduler.scheduleReminder(this@MainActivity, item)
+                    CalendarManager.addOrUpdateEvent(this@MainActivity, item)
+                }
+            } catch (e: Exception) {
+                e.printStackTrace()
+            }
         }
 
         enableEdgeToEdge(

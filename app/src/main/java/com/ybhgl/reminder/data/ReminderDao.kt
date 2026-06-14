@@ -36,6 +36,9 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE id = :id")
     fun getReminder(id: Int): Flow<ReminderItem?>
 
+    @Query("SELECT * FROM reminders WHERE id = :id")
+    suspend fun getReminderById(id: Int): ReminderItem?
+
     @Query("SELECT DISTINCT category FROM reminders WHERE category != '' ORDER BY category COLLATE NOCASE")
     fun getDistinctCategories(): Flow<List<String>>
 

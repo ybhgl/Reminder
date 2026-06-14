@@ -23,30 +23,29 @@ object CalendarUtil {
         "七月", "八月", "九月", "十月", "冬月", "腊月"
     )
 
-    fun calculateNextTargetDate(reminderItem: ReminderItem): LocalDate? {
+    fun calculateNextTargetDate(reminderItem: ReminderItem, baseDate: LocalDate = LocalDate.now()): LocalDate? {
         val repeatInfo = reminderItem.repeatInfo
-        val today = LocalDate.now()
 
         if (repeatInfo == null) {
-            return if (reminderItem.date.isBefore(today)) null else reminderItem.date
+            return if (reminderItem.date.isBefore(baseDate)) null else reminderItem.date
         }
 
         if (reminderItem.type == ReminderType.BIRTHDAY && reminderItem.isLunar) {
-            // 农历生日：利用 BirthdayCalculator 的逻辑寻找下一个大于等于今天的生日
+            // 农历生日：利用 BirthdayCalculator 的逻辑寻找下一个大于等于 baseDate 的生日
             // 优化：通过出生农历年份和今天农历年份差确定 approximateAge，将搜索起点设为 max(0, approximateAge - 1)，避免从 0 岁开始重复计算
             val birthSolar = SolarDay.fromYmd(reminderItem.date.year, reminderItem.date.monthValue, reminderItem.date.dayOfMonth)
             val birthLunar = birthSolar.getLunarDay()
             val birthLunarYear = birthLunar.getYear()
 
-            val todaySolar = SolarDay.fromYmd(today.year, today.monthValue, today.dayOfMonth)
-            val todayLunar = todaySolar.getLunarDay()
-            val todayLunarYear = todayLunar.getYear()
+            val baseSolar = SolarDay.fromYmd(baseDate.year, baseDate.monthValue, baseDate.dayOfMonth)
+            val baseLunar = baseSolar.getLunarDay()
+            val baseLunarYear = baseLunar.getYear()
 
-            val approximateAge = todayLunarYear - birthLunarYear
+            val approximateAge = baseLunarYear - birthLunarYear
             var age = maxOf(0, approximateAge - 1)
             while (age <= 150) {
                 val bday = BirthdayCalculator.getLunarBirthdayInYear(reminderItem.date, age)
-                if (!bday.isBefore(today)) {
+                if (!bday.isBefore(baseDate)) {
                     return bday
                 }
                 age++
@@ -58,7 +57,7 @@ object CalendarUtil {
 
         if (!reminderItem.isLunar) {
             // Gregorian calculation
-            while (currentDate.isBefore(today)) {
+            while (currentDate.isBefore(baseDate)) {
                 currentDate = when (repeatInfo.unit) {
                     RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
                     RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
@@ -69,7 +68,7 @@ object CalendarUtil {
             return currentDate
         } else {
             // Lunar calculation
-            while (currentDate.isBefore(today)) {
+            while (currentDate.isBefore(baseDate)) {
                 currentDate = when (repeatInfo.unit) {
                     RepeatUnit.YEAR -> getNextLunarYearDate(currentDate, repeatInfo.interval)
                     RepeatUnit.MONTH -> getNextLunarMonthDate(currentDate, repeatInfo.interval)

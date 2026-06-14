@@ -10,6 +10,11 @@ import android.os.Build
 import androidx.core.app.NotificationCompat
 import com.ybhgl.reminder.MainActivity
 import com.ybhgl.reminder.R
+import com.ybhgl.reminder.ReminderApplication
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.firstOrNull
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -81,5 +86,34 @@ class ReminderReceiver : BroadcastReceiver() {
 
         val notifyId = if (reminderId > 0) reminderId else System.currentTimeMillis().toInt()
         notificationManager.notify(notifyId, builder.build())
+
+        if (reminderId != -1) {
+            val pendingResult = goAsync()
+            CoroutineScope(Dispatchers.IO).launch {
+                try {
+                    val app = context.applicationContext as ReminderApplication
+                    android.util.Log.d("ReminderReceiver", "开始为 reminderId = $reminderId 处理重复事件重调度")
+                    val repository = app.container.reminderRepository
+                    val item = repository.getReminderById(reminderId)
+                    android.util.Log.d("ReminderReceiver", "查询到 ReminderItem: $item")
+                    if (item != null) {
+                        if (item.repeatInfo != null) {
+                            android.util.Log.d("ReminderReceiver", "该事件已开启重复: ${item.repeatInfo}")
+                            ReminderScheduler.scheduleReminder(app, item, forceNext = true)
+                            android.util.Log.d("ReminderReceiver", "本地闹钟重调度已完成")
+                        } else {
+                            android.util.Log.d("ReminderReceiver", "该事件未开启重复，不处理重调度")
+                        }
+                    } else {
+                        android.util.Log.d("ReminderReceiver", "未查询到 ID = $reminderId 的事件")
+                    }
+                } catch (e: Exception) {
+                    android.util.Log.e("ReminderReceiver", "重调度过程中发生异常", e)
+                    e.printStackTrace()
+                } finally {
+                    pendingResult.finish()
+                }
+            }
+        }
     }
 }
