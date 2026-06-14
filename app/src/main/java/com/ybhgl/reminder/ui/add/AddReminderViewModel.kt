@@ -126,12 +126,12 @@ class AddReminderViewModel(
 
     suspend fun deleteReminder(context: Context): Boolean {
         val id = reminderId ?: return false
-        // Fetch item to cancel reminders
-        val item = reminderRepository.getReminderStream(id).firstOrNull()
+        val app = context.applicationContext
+        val item = reminderRepository.getReminderById(id)
         
         if (item != null) {
-            ReminderScheduler.cancelReminder(context, item)
-            CalendarManager.deleteEvent(context, item)
+            ReminderScheduler.cancelReminder(app, item)
+            CalendarManager.deleteEvent(app, item)
         }
         
         reminderRepository.deleteReminderById(id)

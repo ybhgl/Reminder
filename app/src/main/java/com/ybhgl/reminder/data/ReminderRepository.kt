@@ -4,6 +4,8 @@ package com.ybhgl.reminder.data
 
 import android.content.Context
 import com.ybhgl.reminder.widget.WidgetUpdateHelper
+import com.ybhgl.reminder.util.ReminderScheduler
+import com.ybhgl.reminder.util.CalendarManager
 import kotlinx.coroutines.flow.Flow
 import kotlinx.serialization.ExperimentalSerializationApi
 
@@ -33,17 +35,37 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
     }
 
     suspend fun deleteReminderById(id: Int) {
+        val item = getReminderById(id)
+        if (item != null) {
+            val app = context.applicationContext
+            ReminderScheduler.cancelReminder(app, item)
+            CalendarManager.deleteEvent(app, item)
+        }
         reminderDao.deleteById(id)
         WidgetUpdateHelper.updateAllWidgets(context)
     }
 
     suspend fun deleteRemindersByIds(ids: Set<Int>) {
         if (ids.isEmpty()) return
+        val app = context.applicationContext
+        ids.forEach { id ->
+            val item = getReminderById(id)
+            if (item != null) {
+                ReminderScheduler.cancelReminder(app, item)
+                CalendarManager.deleteEvent(app, item)
+            }
+        }
         reminderDao.deleteByIds(ids.toList())
         WidgetUpdateHelper.updateAllWidgets(context)
     }
 
     suspend fun deleteAllReminders() {
+        val app = context.applicationContext
+        val items = getAllRemindersList()
+        items.forEach { item ->
+            ReminderScheduler.cancelReminder(app, item)
+            CalendarManager.deleteEvent(app, item)
+        }
         reminderDao.deleteAll()
         WidgetUpdateHelper.updateAllWidgets(context)
     }
