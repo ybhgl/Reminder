@@ -11,11 +11,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -55,6 +57,8 @@ fun ReminderSettingScreen(
     var editingTimeIndex by remember { mutableIntStateOf(-1) }
     var showPermissionDialog by remember { mutableStateOf(false) }
     var permissionDialogText by remember { mutableStateOf("") }
+    var showImportDialog by remember { mutableStateOf(false) }
+    val importableReminders by viewModel.enabledReminders.collectAsState(initial = emptyList())
     
     val context = LocalContext.current
     val isCountUp = viewModel.reminderType == ReminderType.COUNT_UP
@@ -241,11 +245,18 @@ fun ReminderSettingScreen(
                             horizontalArrangement = Arrangement.SpaceBetween
                         ) {
                             Text("提醒时间", style = MaterialTheme.typography.titleMedium)
-                            IconButton(onClick = {
-                                editingTimeIndex = -1
-                                showTimeConfigDialog = true
-                            }) {
-                                Icon(Icons.Default.Add, contentDescription = "添加时间")
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                IconButton(onClick = {
+                                    showImportDialog = true
+                                }) {
+                                    Icon(Icons.Default.Download, contentDescription = "导入设置")
+                                }
+                                IconButton(onClick = {
+                                    editingTimeIndex = -1
+                                    showTimeConfigDialog = true
+                                }) {
+                                    Icon(Icons.Default.Add, contentDescription = "添加时间")
+                                }
                             }
                         }
                     }
@@ -513,6 +524,84 @@ fun ReminderSettingScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showTimeConfigDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
+    }
+
+    if (showImportDialog) {
+        AlertDialog(
+            onDismissRequest = { showImportDialog = false },
+            title = { Text("导入提醒设置") },
+            text = {
+                if (importableReminders.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 16.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            "暂无开启提醒的事件",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            style = MaterialTheme.typography.bodyMedium
+                        )
+                    }
+                } else {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .heightIn(max = 280.dp)
+                    ) {
+                        LazyColumn(
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            items(importableReminders) { item ->
+                                Card(
+                                    colors = CardDefaults.cardColors(
+                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                    ),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            viewModel.importNotificationConfig(item.notificationConfig)
+                                            showImportDialog = false
+                                        }
+                                ) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = item.title,
+                                                style = MaterialTheme.typography.titleMedium,
+                                                color = MaterialTheme.colorScheme.onSurface
+                                            )
+                                            Spacer(modifier = Modifier.height(4.dp))
+                                            val reminderTimesDesc = item.notificationConfig.notificationTimes.joinToString("、") { time ->
+                                                if (time.daysBefore == 0) "当天 ${time.time.format(DateTimeFormatter.ofPattern("HH:mm"))}"
+                                                else "提前 ${time.daysBefore} 天 ${time.time.format(DateTimeFormatter.ofPattern("HH:mm"))}"
+                                            }
+                                            Text(
+                                                text = if (item.notificationConfig.isContinuous) "连续提醒" else reminderTimesDesc,
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showImportDialog = false }) {
                     Text("取消")
                 }
             }

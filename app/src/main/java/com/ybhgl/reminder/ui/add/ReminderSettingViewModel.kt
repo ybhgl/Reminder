@@ -7,11 +7,13 @@ import androidx.lifecycle.SavedStateHandle
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.NotificationTime
+import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderNotificationConfig
 import com.ybhgl.reminder.data.ReminderRepository
 import com.ybhgl.reminder.data.ReminderType
 import kotlinx.coroutines.flow.filterNotNull
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.launch
 import java.time.LocalTime
 import java.time.LocalDate
@@ -28,6 +30,11 @@ class ReminderSettingViewModel(
     val reminderType: ReminderType = savedStateHandle.get<String>("reminderType")?.let { typeName ->
         ReminderType.entries.find { it.name == typeName }
     } ?: ReminderType.ANNUAL
+
+    val enabledReminders = reminderRepository.getAllRemindersStream()
+        .map { reminders ->
+            reminders.filter { it.notificationConfig.isEnabled }
+        }
 
     var uiState by mutableStateOf(ReminderSettingUiState())
         private set
@@ -101,6 +108,10 @@ class ReminderSettingViewModel(
     
     fun getConfigJson(): String {
         return Json.encodeToString(uiState.config)
+    }
+
+    fun importNotificationConfig(config: ReminderNotificationConfig) {
+        uiState = uiState.copy(config = config)
     }
 }
 
