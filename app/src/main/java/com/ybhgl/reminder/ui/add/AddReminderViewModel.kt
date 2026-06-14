@@ -113,14 +113,16 @@ class AddReminderViewModel(
 
         viewModelScope.launch {
             val reminder = reminderUiState.toReminderItem()
-            if (reminder.id == 0) {
-                reminderRepository.insertReminder(reminder)
+            val savedReminder = if (reminder.id == 0) {
+                val generatedId = reminderRepository.insertReminder(reminder)
+                reminder.copy(id = generatedId.toInt())
             } else {
                 reminderRepository.updateReminder(reminder)
+                reminder
             }
-            // Trigger scheduling and calendar update
-            ReminderScheduler.scheduleReminder(context, reminder)
-            CalendarManager.addOrUpdateEvent(context, reminder)
+            // Trigger scheduling and calendar update with the correct ID
+            ReminderScheduler.scheduleReminder(context, savedReminder)
+            CalendarManager.addOrUpdateEvent(context, savedReminder)
         }
     }
 

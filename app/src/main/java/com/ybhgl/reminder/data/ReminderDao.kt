@@ -13,7 +13,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 @Dao
 interface ReminderDao {
     @Insert
-    suspend fun insert(item: ReminderItem)
+    suspend fun insert(item: ReminderItem): Long
 
     @Update
     suspend fun update(item: ReminderItem)
