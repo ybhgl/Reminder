@@ -430,7 +430,7 @@ fun ReminderSettingScreen(
         var daysBefore by remember { 
             mutableStateOf(
                 if (editingTimeIndex >= 0) uiState.config.notificationTimes[editingTimeIndex].daysBefore.toString() 
-                else "0"
+                else ""
             ) 
         }
         var selectedTime by remember { 
@@ -450,12 +450,28 @@ fun ReminderSettingScreen(
                     OutlinedTextField(
                         value = daysBefore,
                         onValueChange = { 
-                            if (it.all { char -> char.isDigit() }) {
+                            val isValid = if (editingTimeIndex >= 0) {
+                                it.all { char -> char.isDigit() }
+                            } else {
+                                it.all { char -> char.isDigit() || char == ',' || char == '，' || char == ' ' || char == ';' || char == '；' }
+                            }
+                            if (isValid) {
                                 daysBefore = it
                                 isDuplicateError = false
                             }
                         },
-                        label = { Text(if (daysBefore == "0") "当天" else "$dayLabel (天数)") },
+                        label = { 
+                            Text(
+                                if (editingTimeIndex >= 0) {
+                                    if (daysBefore == "0") "当天" else "$dayLabel (天数)"
+                                } else {
+                                    "$dayLabel (天数)"
+                                }
+                            ) 
+                        },
+                        supportingText = if (editingTimeIndex < 0) {
+                            { Text("支持输入多个天数，使用逗号、空格或分号分隔，例如：0, 1, 3") }
+                        } else null,
                         modifier = Modifier.fillMaxWidth(),
                         isError = isDuplicateError
                     )
@@ -496,27 +512,46 @@ fun ReminderSettingScreen(
             },
             confirmButton = {
                 TextButton(onClick = {
-                    val days = daysBefore.toIntOrNull() ?: 0
-                    val isDuplicate = uiState.config.notificationTimes.indices.any { index ->
-                        val item = uiState.config.notificationTimes[index]
-                        val isSame = item.daysBefore == days && item.time == selectedTime
-                        if (editingTimeIndex >= 0) {
+                    if (editingTimeIndex >= 0) {
+                        val days = daysBefore.toIntOrNull() ?: 0
+                        val isDuplicate = uiState.config.notificationTimes.indices.any { index ->
+                            val item = uiState.config.notificationTimes[index]
+                            val isSame = item.daysBefore == days && item.time == selectedTime
                             isSame && index != editingTimeIndex
-                        } else {
-                            isSame
                         }
-                    }
-                    
-                    if (isDuplicate) {
-                        isDuplicateError = true
-                        android.widget.Toast.makeText(context, "该时间点已存在提醒", android.widget.Toast.LENGTH_SHORT).show()
-                    } else {
-                        if (editingTimeIndex >= 0) {
+                        
+                        if (isDuplicate) {
+                            isDuplicateError = true
+                            android.widget.Toast.makeText(context, "该时间点已存在提醒", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
                             viewModel.updateNotificationTime(editingTimeIndex, days, selectedTime)
-                        } else {
-                            viewModel.addNotificationTime(days, selectedTime)
+                            showTimeConfigDialog = false
                         }
-                        showTimeConfigDialog = false
+                    } else {
+                        val daysList = daysBefore.split(Regex("[,，\\s;；]+"))
+                            .map { it.trim() }
+                            .filter { it.isNotEmpty() }
+                            .mapNotNull { it.toIntOrNull() }
+                            .distinct()
+
+                        if (daysList.isEmpty()) {
+                            isDuplicateError = true
+                            android.widget.Toast.makeText(context, "请输入有效的天数数值", android.widget.Toast.LENGTH_SHORT).show()
+                        } else {
+                            val existingTimes = uiState.config.notificationTimes
+                            val toAdd = daysList.filter { days ->
+                                existingTimes.none { item -> item.daysBefore == days && item.time == selectedTime }
+                            }
+                            if (toAdd.isEmpty()) {
+                                isDuplicateError = true
+                                android.widget.Toast.makeText(context, "输入的提醒时间点已全部存在", android.widget.Toast.LENGTH_SHORT).show()
+                            } else {
+                                toAdd.forEach { days ->
+                                    viewModel.addNotificationTime(days, selectedTime)
+                                }
+                                showTimeConfigDialog = false
+                            }
+                        }
                     }
                 }) {
                     Text("确定")
