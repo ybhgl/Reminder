@@ -40,7 +40,7 @@ import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayListItem
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import android.widget.Toast
+import com.ybhgl.reminder.ui.common.CustomToast
 import androidx.compose.ui.platform.LocalContext
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -56,7 +56,11 @@ fun BirthdayListScreen(
 
     LaunchedEffect(Unit) {
         viewModel.snackbarMessage.collect { message ->
-            Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+            if (message.contains("添加") || message.contains("成功") || message.contains("已")) {
+                CustomToast.showSuccess(context, message)
+            } else {
+                CustomToast.showNormal(context, message)
+            }
         }
     }
 

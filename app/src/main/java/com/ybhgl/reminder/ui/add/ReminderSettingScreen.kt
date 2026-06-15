@@ -30,6 +30,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.*
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.CustomToast
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import androidx.compose.ui.geometry.Offset
@@ -522,7 +523,7 @@ fun ReminderSettingScreen(
                         
                         if (isDuplicate) {
                             isDuplicateError = true
-                            android.widget.Toast.makeText(context, "该时间点已存在提醒", android.widget.Toast.LENGTH_SHORT).show()
+                            CustomToast.showError(context, "该时间点已存在提醒")
                         } else {
                             viewModel.updateNotificationTime(editingTimeIndex, days, selectedTime)
                             showTimeConfigDialog = false
@@ -536,7 +537,7 @@ fun ReminderSettingScreen(
 
                         if (daysList.isEmpty()) {
                             isDuplicateError = true
-                            android.widget.Toast.makeText(context, "请输入有效的天数数值", android.widget.Toast.LENGTH_SHORT).show()
+                            CustomToast.showError(context, "请输入有效的天数数值")
                         } else {
                             val existingTimes = uiState.config.notificationTimes
                             val toAdd = daysList.filter { days ->
@@ -544,7 +545,7 @@ fun ReminderSettingScreen(
                             }
                             if (toAdd.isEmpty()) {
                                 isDuplicateError = true
-                                android.widget.Toast.makeText(context, "输入的提醒时间点已全部存在", android.widget.Toast.LENGTH_SHORT).show()
+                                CustomToast.showError(context, "输入的提醒时间点已全部存在")
                             } else {
                                 toAdd.forEach { days ->
                                     viewModel.addNotificationTime(days, selectedTime)

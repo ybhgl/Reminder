@@ -97,7 +97,7 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import kotlinx.coroutines.launch
-import android.widget.Toast
+import com.ybhgl.reminder.ui.common.CustomToast
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import java.util.Locale
@@ -369,7 +369,11 @@ fun BackupAndRestoreScreen(
                                     webDavPath
                                 )
                                 isProcessing = false
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                if (success) {
+                                    CustomToast.showSuccess(context, msg)
+                                } else {
+                                    CustomToast.showError(context, msg)
+                                }
                             }
                         },
                         enabled = isWebDavConfigured && !isProcessing,
@@ -387,7 +391,11 @@ fun BackupAndRestoreScreen(
                                 isProcessing = true
                                 val msg = viewModel.backupToWebDav(context)
                                 isProcessing = false
-                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                if (msg.contains("成功")) {
+                                    CustomToast.showSuccess(context, msg)
+                                } else {
+                                    CustomToast.showError(context, msg)
+                                }
                             }
                         },
                         enabled = isWebDavConfigured && !isProcessing,
@@ -550,7 +558,7 @@ fun BackupAndRestoreScreen(
                                         pathInput.trim().ifBlank { "reminder_backups" }
                                     )
                                     showServerConfigDialog = false
-                                    Toast.makeText(context, "设置已保存", Toast.LENGTH_SHORT).show()
+                                    CustomToast.showSuccess(context, "设置已保存")
                                 }
                             }
                         ) {
@@ -852,7 +860,11 @@ fun BackupAndRestoreScreen(
                                                     if (files != null) cloudFiles = files else cloudFilesError = errorMsg
                                                 }
                                                 isLoadingCloudFiles = false
-                                                Toast.makeText(context, msg, Toast.LENGTH_SHORT).show()
+                                                if (success) {
+                                                    CustomToast.showSuccess(context, msg)
+                                                } else {
+                                                    CustomToast.showError(context, msg)
+                                                }
                                             }
                                         },
                                         colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
@@ -886,7 +898,11 @@ fun BackupAndRestoreScreen(
                                                     isProcessing = true
                                                     val msg = viewModel.restoreFromWebDav(context, fileName, isSmartMerge = false)
                                                     isProcessing = false
-                                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                                    if (msg.contains("失败")) {
+                                                        CustomToast.showError(context, msg, CustomToast.LENGTH_LONG)
+                                                    } else {
+                                                        CustomToast.showSuccess(context, msg, CustomToast.LENGTH_LONG)
+                                                    }
                                                 }
                                             },
                                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
@@ -907,7 +923,11 @@ fun BackupAndRestoreScreen(
                                                     isProcessing = true
                                                     val msg = viewModel.restoreFromWebDav(context, fileName, isSmartMerge = true)
                                                     isProcessing = false
-                                                    Toast.makeText(context, msg, Toast.LENGTH_LONG).show()
+                                                    if (msg.contains("失败")) {
+                                                        CustomToast.showError(context, msg, CustomToast.LENGTH_LONG)
+                                                    } else {
+                                                        CustomToast.showSuccess(context, msg, CustomToast.LENGTH_LONG)
+                                                    }
                                                 }
                                             },
                                             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
