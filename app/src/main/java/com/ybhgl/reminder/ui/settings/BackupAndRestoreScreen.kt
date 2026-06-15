@@ -30,7 +30,6 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.BackupTable
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
@@ -99,6 +98,7 @@ import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import kotlinx.coroutines.launch
 import android.widget.Toast
+import androidx.compose.material.icons.filled.Archive
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -247,7 +247,7 @@ fun BackupAndRestoreScreen(
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = "开启后，若数据发生变动且未备份，将在首页显示云端提醒图标",
+                                text = "开启后，若数据发生变动且未备份，将在首页显示提醒图标",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -277,8 +277,8 @@ fun BackupAndRestoreScreen(
                 HorizontalDivider()
                 SettingsActionItem(
                     title = "导出为 JSON",
-                    description = "导出所有提醒及偏好设置数据为 JSON 文件保存至本地",
-                    icon = Icons.Default.BackupTable,
+                    description = "导出所有提醒及偏好设置数据为 JSON 文件",
+                    icon = Icons.Default.Archive,
                     enabled = !isProcessing
                 ) {
                     if (!isProcessing) {
@@ -287,7 +287,7 @@ fun BackupAndRestoreScreen(
                 }
                 SettingsActionItem(
                     title = "从文件恢复",
-                    description = "从本地 JSON 备份文件中读取并导入数据",
+                    description = "从 JSON 备份文件中读取并导入数据",
                     icon = Icons.Default.Restore,
                     enabled = !isProcessing
                 ) {
@@ -298,7 +298,7 @@ fun BackupAndRestoreScreen(
 
                 // Section 3: WebDAV Cloud Backup (WebDAV 云端备份)
                 Text(
-                    text = "WebDAV 云端备份",
+                    text = "WebDAV 备份",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider()
@@ -342,7 +342,7 @@ fun BackupAndRestoreScreen(
                                 fontWeight = FontWeight.Medium
                             )
                             Text(
-                                text = if (isWebDavConfigured) "服务器：$webDavServer" else "点击配置云备份服务器信息",
+                                text = if (isWebDavConfigured) "服务器：$webDavServer" else "点击配置 WebDAV 服务器信息",
                                 style = MaterialTheme.typography.bodySmall,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -501,7 +501,7 @@ fun BackupAndRestoreScreen(
                                 value = serverInput,
                                 onValueChange = { serverInput = it },
                                 label = { Text("服务器地址") },
-                                placeholder = { Text("例如：https://dav.jianguoyun.com/dav/") },
+                                placeholder = { Text("https://dav.jianguoyun.com/dav/") },
                                 singleLine = true,
                                 modifier = Modifier.fillMaxWidth()
                             )
@@ -567,10 +567,10 @@ fun BackupAndRestoreScreen(
                 val uri = pendingLocalRestoreUri!!
                 AlertDialog(
                     onDismissRequest = { showLocalRestoreConfirmDialog = false },
-                    title = { Text("从文件导入数据", fontWeight = FontWeight.SemiBold) },
+                    title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
                     text = {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                            Text("请选择数据导入模式：", style = MaterialTheme.typography.bodyLarge)
+                            Text("请选择数据导入方式：", style = MaterialTheme.typography.bodyLarge)
                             
                             Card(
                                 onClick = {
@@ -588,7 +588,7 @@ fun BackupAndRestoreScreen(
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text("完全覆盖", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text("清空当前所有的本地提醒和偏好设置，用备份中的数据完全替换。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("清空当前所有的本地提醒和偏好设置，用备份中的数据完全替换", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
 
@@ -608,7 +608,7 @@ fun BackupAndRestoreScreen(
                                 Column(modifier = Modifier.padding(12.dp)) {
                                     Text("智能合并 (推荐)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                     Spacer(modifier = Modifier.height(2.dp))
-                                    Text("保留当前本地数据，仅合并备份中不同标题/类型/日期的记录，不覆盖个人偏好选项。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("保留本地数据，仅合并/添加备份中不同/不存在的记录，不覆盖个人偏好选项", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             }
                         }
@@ -652,7 +652,7 @@ fun BackupAndRestoreScreen(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Text(
-                                    text = "云端备份文件",
+                                    text = "云备份",
                                     style = MaterialTheme.typography.titleLarge,
                                     fontWeight = FontWeight.SemiBold
                                 )
@@ -693,7 +693,7 @@ fun BackupAndRestoreScreen(
                                         .fillMaxWidth(),
                                     contentAlignment = Alignment.Center
                                 ) {
-                                    Text("云端未找到任何备份文件", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    Text("未找到任何备份文件", color = MaterialTheme.colorScheme.onSurfaceVariant)
                                 }
                             } else {
                                 Column(
@@ -765,7 +765,7 @@ fun BackupAndRestoreScreen(
                             val fileName = pendingDeleteFile!!
                             AlertDialog(
                                 onDismissRequest = { showDeleteConfirmDialog = false },
-                                title = { Text("确认删除云备份") },
+                                title = { Text("确认删除备份") },
                                 text = { Text("确定要永久删除云备份文件 $fileName 吗？此操作不可恢复。") },
                                 confirmButton = {
                                     Button(
@@ -801,7 +801,7 @@ fun BackupAndRestoreScreen(
                             val fileName = pendingImportFile!!
                             AlertDialog(
                                 onDismissRequest = { showImportConfirmDialog = false },
-                                title = { Text("恢复云端备份", fontWeight = FontWeight.SemiBold) },
+                                title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
                                 text = {
                                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                         Text("确定要恢复云备份 $fileName 吗？请选择导入方式：")
@@ -823,7 +823,7 @@ fun BackupAndRestoreScreen(
                                             Column(modifier = Modifier.padding(12.dp)) {
                                                 Text("完全覆盖", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
                                                 Spacer(modifier = Modifier.height(2.dp))
-                                                Text("清空当前所有本地提醒和偏好设置，用备份中的数据完全替换。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("清空当前所有本地提醒和偏好设置，用备份中的数据完全替换", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
 
@@ -844,7 +844,7 @@ fun BackupAndRestoreScreen(
                                             Column(modifier = Modifier.padding(12.dp)) {
                                                 Text("智能合并 (推荐)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
                                                 Spacer(modifier = Modifier.height(2.dp))
-                                                Text("保留当前本地数据，仅合并备份中不同标题/类型/日期的记录，不覆盖个人偏好选项。", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                                Text("保留本地数据，仅合并/添加备份中不同/不存在的记录，不覆盖个人偏好选项", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
                                             }
                                         }
                                     }

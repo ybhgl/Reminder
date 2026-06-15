@@ -22,9 +22,14 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Widgets
+import androidx.compose.material.icons.filled.CropLandscape
+import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -282,7 +287,7 @@ fun SettingsScreen(
                 HorizontalDivider()
                 SettingsActionItem(
                     title = "备份与恢复",
-                    description = "管理本地及 WebDAV 云端备份与恢复",
+                    description = "管理本地及 WebDAV 备份与恢复",
                     icon = Icons.Filled.Storage,
                     enabled = true
                 ) {
@@ -667,7 +672,7 @@ private fun PureBlackModeRow(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "深色模式下对AMOLED屏幕更省电",
+                text = "深色模式下对 AMOLED 屏幕更省电",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -781,6 +786,12 @@ private fun WidgetManagementCard(
                                 .padding(12.dp),
                             verticalAlignment = Alignment.CenterVertically
                         ) {
+                            val widgetIcon = when {
+                                widget.providerClassName.contains("ReminderWidget1x2") -> Icons.Filled.CropLandscape
+                                widget.providerClassName.contains("ReminderWidget2x2") -> Icons.Filled.Event
+                                widget.providerClassName.contains("ReminderWidget4x2") -> Icons.AutoMirrored.Filled.ViewList
+                                else -> Icons.Default.Widgets
+                            }
                             Box(
                                 modifier = Modifier
                                     .size(40.dp)
@@ -791,7 +802,7 @@ private fun WidgetManagementCard(
                                 contentAlignment = Alignment.Center
                             ) {
                                 Icon(
-                                    imageVector = Icons.Default.Widgets,
+                                    imageVector = widgetIcon,
                                     contentDescription = null,
                                     tint = MaterialTheme.colorScheme.primary,
                                     modifier = Modifier.size(22.dp)
