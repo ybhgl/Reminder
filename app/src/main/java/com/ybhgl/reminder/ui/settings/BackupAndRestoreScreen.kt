@@ -99,6 +99,8 @@ import com.ybhgl.reminder.ui.common.StatusBarScrim
 import kotlinx.coroutines.launch
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Archive
+import java.util.Locale
+import com.ybhgl.reminder.util.WebDavFile
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -128,7 +130,7 @@ fun BackupAndRestoreScreen(
     var pendingLocalRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
     // Cloud recovery files list state
-    var cloudFiles by remember { mutableStateOf<List<String>?>(null) }
+    var cloudFiles by remember { mutableStateOf<List<WebDavFile>?>(null) }
     var cloudFilesError by remember { mutableStateOf("") }
     var isLoadingCloudFiles by remember { mutableStateOf(false) }
 
@@ -700,58 +702,125 @@ fun BackupAndRestoreScreen(
                                     modifier = Modifier
                                         .weight(1f)
                                         .verticalScroll(rememberScrollState()),
-                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
                                     cloudFiles!!.forEach { file ->
                                         Card(
                                             modifier = Modifier.fillMaxWidth(),
                                             colors = CardDefaults.cardColors(
-                                                containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
-                                            )
+                                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                            ),
+                                            shape = RoundedCornerShape(16.dp)
                                         ) {
                                             Row(
                                                 modifier = Modifier
                                                     .fillMaxWidth()
-                                                    .padding(12.dp),
+                                                    .padding(16.dp),
                                                 verticalAlignment = Alignment.CenterVertically
                                             ) {
-                                                Icon(
-                                                    imageVector = Icons.Default.Folder,
-                                                    contentDescription = null,
-                                                    tint = MaterialTheme.colorScheme.primary,
-                                                    modifier = Modifier.size(24.dp)
-                                                )
-                                                Spacer(modifier = Modifier.width(12.dp))
-                                                Column(modifier = Modifier.weight(1f)) {
-                                                    Text(
-                                                        text = file,
-                                                        fontWeight = FontWeight.Medium,
-                                                        fontSize = 14.sp
-                                                    )
-                                                }
-                                                IconButton(
-                                                    onClick = {
-                                                        pendingImportFile = file
-                                                        showImportConfirmDialog = true
-                                                    }
+                                                Column(
+                                                    modifier = Modifier.weight(1f),
+                                                    verticalArrangement = Arrangement.spacedBy(8.dp)
                                                 ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Restore,
-                                                        contentDescription = "恢复",
-                                                        tint = MaterialTheme.colorScheme.primary
-                                                    )
-                                                }
-                                                IconButton(
-                                                    onClick = {
-                                                        pendingDeleteFile = file
-                                                        showDeleteConfirmDialog = true
+                                                    // Backup Time Block
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .background(
+                                                                    color = MaterialTheme.colorScheme.primaryContainer,
+                                                                    shape = RoundedCornerShape(8.dp)
+                                                                )
+                                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "备份时间",
+                                                                style = MaterialTheme.typography.labelMedium,
+                                                                color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = formatBackupTime(file.name),
+                                                            style = MaterialTheme.typography.bodyLarge,
+                                                            color = MaterialTheme.colorScheme.onSurface,
+                                                            fontWeight = FontWeight.Medium
+                                                        )
                                                     }
+
+                                                    // File Size Block
+                                                    Row(
+                                                        verticalAlignment = Alignment.CenterVertically,
+                                                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Box(
+                                                            modifier = Modifier
+                                                                .background(
+                                                                    color = MaterialTheme.colorScheme.secondaryContainer,
+                                                                    shape = RoundedCornerShape(8.dp)
+                                                                )
+                                                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                        ) {
+                                                            Text(
+                                                                text = "文件大小",
+                                                                style = MaterialTheme.typography.labelMedium,
+                                                                color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                                fontWeight = FontWeight.Bold
+                                                            )
+                                                        }
+                                                        Text(
+                                                            text = formatFileSize(file.size),
+                                                            style = MaterialTheme.typography.bodyMedium,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+
+                                                // Action buttons
+                                                Row(
+                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
                                                 ) {
-                                                    Icon(
-                                                        imageVector = Icons.Default.Delete,
-                                                        contentDescription = "删除",
-                                                        tint = MaterialTheme.colorScheme.error
-                                                    )
+                                                    IconButton(
+                                                        onClick = {
+                                                            pendingImportFile = file.name
+                                                            showImportConfirmDialog = true
+                                                        },
+                                                        modifier = Modifier
+                                                            .background(
+                                                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                                                shape = CircleShape
+                                                            )
+                                                            .size(36.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Restore,
+                                                            contentDescription = "恢复",
+                                                            tint = MaterialTheme.colorScheme.primary,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
+                                                    IconButton(
+                                                        onClick = {
+                                                            pendingDeleteFile = file.name
+                                                            showDeleteConfirmDialog = true
+                                                        },
+                                                        modifier = Modifier
+                                                            .background(
+                                                                color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f),
+                                                                shape = CircleShape
+                                                            )
+                                                            .size(36.dp)
+                                                    ) {
+                                                        Icon(
+                                                            imageVector = Icons.Default.Delete,
+                                                            contentDescription = "删除",
+                                                            tint = MaterialTheme.colorScheme.error,
+                                                            modifier = Modifier.size(20.dp)
+                                                        )
+                                                    }
                                                 }
                                             }
                                         }
@@ -759,6 +828,8 @@ fun BackupAndRestoreScreen(
                                 }
                             }
                         }
+                    }
+                }
 
                         // WebDAV Cloud File Delete Confirm Dialog
                         if (showDeleteConfirmDialog && pendingDeleteFile != null) {
@@ -766,7 +837,7 @@ fun BackupAndRestoreScreen(
                             AlertDialog(
                                 onDismissRequest = { showDeleteConfirmDialog = false },
                                 title = { Text("确认删除备份") },
-                                text = { Text("确定要永久删除云备份文件 $fileName 吗？此操作不可恢复。") },
+                                text = { Text("确定要永久删除 ${formatBackupTime(fileName)} 的云备份吗？此操作不可恢复。") },
                                 confirmButton = {
                                     Button(
                                         onClick = {
@@ -804,7 +875,7 @@ fun BackupAndRestoreScreen(
                                 title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
                                 text = {
                                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                                        Text("确定要恢复云备份 $fileName 吗？请选择导入方式：")
+                                        Text("确定要恢复 ${formatBackupTime(fileName)} 的云备份吗？请选择导入方式：")
                                         
                                         Card(
                                             onClick = {
@@ -861,8 +932,6 @@ fun BackupAndRestoreScreen(
                 }
             }
         }
-    }
-}
 
 @Composable
 private fun SettingsActionItem(
@@ -904,4 +973,29 @@ private fun SettingsActionItem(
             }
         }
     }
+}
+
+private fun formatBackupTime(fileName: String): String {
+    val regex = Regex("""(?:^|[^0-9])(\d{4})(\d{2})(\d{2})-(\d{2})(\d{2})(\d{2})(?:[^0-9]|$)""")
+    val match = regex.find(fileName)
+    if (match != null) {
+        val (year, month, day, hour, minute, second) = match.destructured
+        return "${year}年${month}月${day}日 $hour:$minute:$second"
+    }
+    val dateRegex = Regex("""(?:^|[^0-9])(\d{4})(\d{2})(\d{2})(?:[^0-9]|$)""")
+    val dateMatch = dateRegex.find(fileName)
+    if (dateMatch != null) {
+        val (year, month, day) = dateMatch.destructured
+        return "${year}年${month}月${day}日"
+    }
+    return fileName
+        .replace("reminder-backup-", "", ignoreCase = true)
+        .replace(".json", "", ignoreCase = true)
+}
+
+private fun formatFileSize(bytes: Long): String {
+    if (bytes <= 0) return "0 B"
+    val units = arrayOf("B", "KB", "MB", "GB")
+    val digitGroups = (Math.log10(bytes.toDouble()) / Math.log10(1024.0)).toInt().coerceAtMost(units.size - 1)
+    return String.format(Locale.getDefault(), "%.1f %s", bytes / Math.pow(1024.0, digitGroups.toDouble()), units[digitGroups])
 }

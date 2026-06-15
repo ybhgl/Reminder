@@ -22,8 +22,10 @@ sealed class WebDavDownloadResult {
     data class Failure(val code: Int, val message: String) : WebDavDownloadResult()
 }
 
+data class WebDavFile(val name: String, val size: Long)
+
 sealed class WebDavListResult {
-    data class Success(val files: List<String>) : WebDavListResult()
+    data class Success(val files: List<WebDavFile>) : WebDavListResult()
     data class Failure(val code: Int, val message: String) : WebDavListResult()
 }
 
@@ -294,33 +296,43 @@ object WebDavClient {
         }
     }
 
-    private fun parseWebDavXml(xml: String): List<String> {
-        val hrefs = mutableListOf<String>()
-        // Robust pattern matching <d:href>...</d:href> or <D:href>...</D:href> or <href>...</href>
-        val pattern = Pattern.compile("<[^>]*href[^>]*>([^<]+)</[^>]*href[^>]*>", Pattern.CASE_INSENSITIVE)
-        val matcher = pattern.matcher(xml)
-        while (matcher.find()) {
-            val href = matcher.group(1) ?: continue
-            try {
-                val decodedHref = URLDecoder.decode(href, "UTF-8")
-                // Extract filename
-                val lastSlashIdx = decodedHref.lastIndexOf('/')
-                val filename = if (lastSlashIdx >= 0) {
-                    decodedHref.substring(lastSlashIdx + 1)
-                } else {
-                    decodedHref
+    private fun parseWebDavXml(xml: String): List<WebDavFile> {
+        val files = mutableListOf<WebDavFile>()
+        val responsePattern = Pattern.compile("<[^>]*response[^>]*>([\\s\\S]*?)</[^>]*response[^>]*>", Pattern.CASE_INSENSITIVE)
+        val responseMatcher = responsePattern.matcher(xml)
+        
+        val hrefPattern = Pattern.compile("<[^>]*href[^>]*>([^<]+)</[^>]*href[^>]*>", Pattern.CASE_INSENSITIVE)
+        val lengthPattern = Pattern.compile("<[^>]*getcontentlength[^>]*>([^<]+)</[^>]*getcontentlength[^>]*>", Pattern.CASE_INSENSITIVE)
+        
+        while (responseMatcher.find()) {
+            val responseContent = responseMatcher.group(1) ?: continue
+            val hrefMatcher = hrefPattern.matcher(responseContent)
+            if (hrefMatcher.find()) {
+                val href = hrefMatcher.group(1) ?: continue
+                try {
+                    val decodedHref = URLDecoder.decode(href, "UTF-8")
+                    val lastSlashIdx = decodedHref.lastIndexOf('/')
+                    val filename = if (lastSlashIdx >= 0) {
+                        decodedHref.substring(lastSlashIdx + 1)
+                    } else {
+                        decodedHref
+                    }
+                    
+                    if (filename.endsWith(".json", ignoreCase = true) && filename.isNotBlank()) {
+                        val lengthMatcher = lengthPattern.matcher(responseContent)
+                        val size = if (lengthMatcher.find()) {
+                            lengthMatcher.group(1)?.trim()?.toLongOrNull() ?: 0L
+                        } else {
+                            0L
+                        }
+                        files.add(WebDavFile(filename, size))
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
                 }
-                
-                // Only keep files ending with .json
-                if (filename.endsWith(".json", ignoreCase = true) && filename.isNotBlank()) {
-                    hrefs.add(filename)
-                }
-            } catch (e: Exception) {
-                e.printStackTrace()
             }
         }
-        // Deduplicate and return
-        return hrefs.distinct().sorted()
+        return files.distinctBy { it.name }.sortedBy { it.name }
     }
 
     private fun setRequestMethod(connection: HttpURLConnection, method: String) {

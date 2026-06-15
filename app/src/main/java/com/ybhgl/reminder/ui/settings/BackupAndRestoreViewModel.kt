@@ -11,6 +11,7 @@ import com.ybhgl.reminder.util.WebDavClient
 import com.ybhgl.reminder.util.WebDavResult
 import com.ybhgl.reminder.util.WebDavDownloadResult
 import com.ybhgl.reminder.util.WebDavListResult
+import com.ybhgl.reminder.util.WebDavFile
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
@@ -204,7 +205,7 @@ class BackupAndRestoreViewModel(
         }
     }
 
-    suspend fun listWebDavBackups(context: Context): Pair<List<String>?, String> = withContext(Dispatchers.IO) {
+    suspend fun listWebDavBackups(context: Context): Pair<List<WebDavFile>?, String> = withContext(Dispatchers.IO) {
         val server = BackupPreferences.webDavServerFlow(context).first()
         val username = BackupPreferences.webDavUsernameFlow(context).first()
         val password = BackupPreferences.webDavPasswordFlow(context).first()
@@ -217,7 +218,7 @@ class BackupAndRestoreViewModel(
         return@withContext when (val result = WebDavClient.listFilesActual(server, username, password, path)) {
             is WebDavListResult.Success -> {
                 // Filter and sort files (newest first based on filename patterns like reminder-backup-YYYYMMDD-HHMMSS.json)
-                val sortedFiles = result.files.sortedDescending()
+                val sortedFiles = result.files.sortedByDescending { it.name }
                 sortedFiles to "获取成功"
             }
             is WebDavListResult.Failure -> {
