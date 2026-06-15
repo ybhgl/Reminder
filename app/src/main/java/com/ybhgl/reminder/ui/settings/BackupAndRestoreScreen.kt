@@ -99,6 +99,7 @@ import com.ybhgl.reminder.ui.common.StatusBarScrim
 import kotlinx.coroutines.launch
 import android.widget.Toast
 import androidx.compose.material.icons.filled.Archive
+import androidx.compose.material.icons.filled.Close
 import java.util.Locale
 import com.ybhgl.reminder.util.WebDavFile
 
@@ -659,7 +660,7 @@ fun BackupAndRestoreScreen(
                                     fontWeight = FontWeight.SemiBold
                                 )
                                 IconButton(onClick = { showCloudRecoveryDialog = false }) {
-                                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "关闭")
+                                    Icon(imageVector = Icons.Filled.Close, contentDescription = "关闭")
                                 }
                             }
 
@@ -955,19 +956,34 @@ private fun SettingsActionItem(
             verticalAlignment = Alignment.CenterVertically,
             horizontalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            Icon(
-                imageVector = icon,
-                contentDescription = null,
-                tint = MaterialTheme.colorScheme.primary
-            )
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
             Column(
                 modifier = Modifier.weight(1f),
                 verticalArrangement = Arrangement.spacedBy(4.dp)
             ) {
-                Text(text = title, style = MaterialTheme.typography.titleMedium)
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Medium
+                )
                 Text(
                     text = description,
-                    style = MaterialTheme.typography.bodyMedium,
+                    style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
