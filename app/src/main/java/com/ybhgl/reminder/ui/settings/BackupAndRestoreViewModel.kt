@@ -78,12 +78,23 @@ class BackupAndRestoreViewModel(
             val defaultPage = defaultPageFlow(context).first()
             val viewMode = viewModeFlow(context).first()
 
+            val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
+            val webDavServer = BackupPreferences.webDavServerFlow(context).first()
+            val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()
+            val webDavPassword = BackupPreferences.webDavPasswordFlow(context).first()
+            val webDavPath = BackupPreferences.webDavPathFlow(context).first()
+
             val backupData = BackupData(
                 reminders = reminders,
                 themeOption = themeOption,
                 pureBlackEnabled = pureBlackEnabled,
                 defaultPage = defaultPage,
-                viewMode = viewMode
+                viewMode = viewMode,
+                backupReminderEnabled = backupReminderEnabled,
+                webDavServer = webDavServer,
+                webDavUsername = webDavUsername,
+                webDavPassword = webDavPassword,
+                webDavPath = webDavPath
             )
 
             val json = Json.encodeToString(backupData)
@@ -159,12 +170,23 @@ class BackupAndRestoreViewModel(
         val defaultPage = defaultPageFlow(context).first()
         val viewMode = viewModeFlow(context).first()
 
+        val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
+        val webDavServer = BackupPreferences.webDavServerFlow(context).first()
+        val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()
+        val webDavPassword = BackupPreferences.webDavPasswordFlow(context).first()
+        val webDavPath = BackupPreferences.webDavPathFlow(context).first()
+
         val backupData = BackupData(
             reminders = reminders,
             themeOption = themeOption,
             pureBlackEnabled = pureBlackEnabled,
             defaultPage = defaultPage,
-            viewMode = viewMode
+            viewMode = viewMode,
+            backupReminderEnabled = backupReminderEnabled,
+            webDavServer = webDavServer,
+            webDavUsername = webDavUsername,
+            webDavPassword = webDavPassword,
+            webDavPath = webDavPath
         )
 
         val json = Json.encodeToString(backupData)
@@ -255,22 +277,56 @@ class BackupAndRestoreViewModel(
     }
 
     private suspend fun performRestore(context: Context, backupData: BackupData, isSmartMerge: Boolean): String {
+        // 如果当前 WebDAV 账号为空，则覆盖备份中的 WebDAV 账号及备份提醒设置
+        val currentServer = BackupPreferences.webDavServerFlow(context).first()
+        val currentUsername = BackupPreferences.webDavUsernameFlow(context).first()
+        val isCurrentWebDavEmpty = currentServer.isBlank() || currentUsername.isBlank()
+        if (isCurrentWebDavEmpty) {
+            backupData.backupReminderEnabled?.let { BackupPreferences.saveBackupReminderEnabled(context, it) }
+            backupData.webDavServer?.let { BackupPreferences.saveWebDavServer(context, it) }
+            backupData.webDavUsername?.let { BackupPreferences.saveWebDavUsername(context, it) }
+            backupData.webDavPassword?.let { BackupPreferences.saveWebDavPassword(context, it) }
+            backupData.webDavPath?.let { BackupPreferences.saveWebDavPath(context, it) }
+        }
+
         if (isSmartMerge) {
             val existingList = reminderRepository.getAllRemindersList()
-            val uniqueNewItems = backupData.reminders.filter { newItem ->
-                existingList.none { existing ->
+            var insertedCount = 0
+            var updatedCount = 0
+
+            for (newItem in backupData.reminders) {
+                val matched = existingList.find { existing ->
                     existing.title == newItem.title &&
                     existing.date == newItem.date &&
                     existing.type == newItem.type
                 }
+
+                if (matched == null) {
+                    reminderRepository.insertReminder(newItem.copy(id = 0))
+                    insertedCount++
+                } else {
+                    val isAllSettingsEqual = matched.isLunar == newItem.isLunar &&
+                            matched.category == newItem.category &&
+                            matched.isPinned == newItem.isPinned &&
+                            matched.repeatInfo == newItem.repeatInfo &&
+                            matched.notificationConfig == newItem.notificationConfig
+
+                    if (!isAllSettingsEqual) {
+                        reminderRepository.updateReminder(newItem.copy(id = matched.id))
+                        updatedCount++
+                    }
+                }
             }
-            uniqueNewItems.forEach { reminderRepository.insertReminder(it.copy(id = 0)) }
             
             // For merge, we don't overwrite user's preference options to avoid disrupting their current theme/layout.
             // Update last backup to clear warning
             BackupPreferences.saveLastBackupTimestamp(context, System.currentTimeMillis())
             
-            return "智能合并完成，共新增 ${uniqueNewItems.size} 条不重复记录"
+            return if (updatedCount > 0) {
+                "智能合并完成，共新增 $insertedCount 条记录，覆盖更新 $updatedCount 条相同提醒的设置"
+            } else {
+                "智能合并完成，共新增 $insertedCount 条不重复记录"
+            }
         } else {
             reminderRepository.deleteAllReminders()
             backupData.reminders.forEach { reminderRepository.insertReminder(it.copy(id = 0)) }

@@ -99,5 +99,10 @@ data class BackupData(
     val themeOption: AppThemeOption? = null,
     val pureBlackEnabled: Boolean? = null,
     val defaultPage: AppDefaultPage? = null,
-    val viewMode: String? = null
+    val viewMode: String? = null,
+    val backupReminderEnabled: Boolean? = null,
+    val webDavServer: String? = null,
+    val webDavUsername: String? = null,
+    val webDavPassword: String? = null,
+    val webDavPath: String? = null
 )
