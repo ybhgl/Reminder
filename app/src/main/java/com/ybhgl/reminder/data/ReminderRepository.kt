@@ -27,12 +27,14 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
     suspend fun insertReminder(item: ReminderItem): Long {
         val id = reminderDao.insert(item)
         WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
         return id
     }
 
     suspend fun updateReminder(item: ReminderItem) {
         reminderDao.update(item)
         WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
     }
 
     suspend fun deleteReminderById(id: Int) {
@@ -44,6 +46,7 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
         }
         reminderDao.deleteById(id)
         WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
     }
 
     suspend fun deleteRemindersByIds(ids: Set<Int>) {
@@ -58,6 +61,7 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
         }
         reminderDao.deleteByIds(ids.toList())
         WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
     }
 
     suspend fun deleteAllReminders() {
@@ -69,5 +73,6 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
         }
         reminderDao.deleteAll()
         WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
     }
 }

@@ -22,7 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Widgets
 import androidx.compose.material.icons.automirrored.rounded.KeyboardArrowRight
@@ -106,6 +106,7 @@ import kotlinx.coroutines.flow.first
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToBackupAndRestore: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
@@ -120,36 +121,6 @@ fun SettingsScreen(
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val scrollState = rememberScrollState()
-    val backupLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
-    ) { uri ->
-        if (uri != null) {
-            coroutineScope.launch {
-                isProcessing = true
-                val message = try {
-                    viewModel.backupToUri(context, uri)
-                } finally {
-                    isProcessing = false
-                }
-                snackbarHostState.showSnackbar(message)
-            }
-        }
-    }
-    val restoreLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.OpenDocument()
-    ) { uri ->
-        if (uri != null) {
-            coroutineScope.launch {
-                isProcessing = true
-                val message = try {
-                    viewModel.restoreFromUri(context, uri)
-                } finally {
-                    isProcessing = false
-                }
-                snackbarHostState.showSnackbar(message)
-            }
-        }
-    }
 
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
@@ -310,24 +281,12 @@ fun SettingsScreen(
                 )
                 HorizontalDivider()
                 SettingsActionItem(
-                    title = "备份到本地",
-                    description = "导出所有提醒数据为 JSON 文件",
-                    icon = Icons.Filled.Backup,
-                    enabled = !isProcessing
+                    title = "备份与恢复",
+                    description = "管理本地及 WebDAV 云端备份与恢复",
+                    icon = Icons.Filled.Storage,
+                    enabled = true
                 ) {
-                    if (!isProcessing) {
-                        backupLauncher.launch(viewModel.generateBackupFileName())
-                    }
-                }
-                SettingsActionItem(
-                    title = "从备份恢复",
-                    description = "从 JSON 备份文件恢复数据",
-                    icon = Icons.Filled.Restore,
-                    enabled = !isProcessing
-                ) {
-                    if (!isProcessing) {
-                        restoreLauncher.launch(arrayOf("application/json"))
-                    }
+                    onNavigateToBackupAndRestore()
                 }
 
                 Text(

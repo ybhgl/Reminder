@@ -11,12 +11,18 @@ import com.ybhgl.reminder.ui.add.ReminderSettingViewModel
 import com.ybhgl.reminder.ui.detail.DetailViewModel
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.SettingsViewModel
+import com.ybhgl.reminder.ui.settings.BackupAndRestoreViewModel
 
 /**
  * Provides Factory to create instance of ViewModel for the entire Reminder app
  */
 object AppViewModelProvider {
     val Factory = viewModelFactory {
+        // Initializer for BackupAndRestoreViewModel
+        initializer {
+            BackupAndRestoreViewModel(reminderApplication().container.reminderRepository)
+        }
+
         // Initializer for ReminderSettingViewModel
         initializer {
             val application = reminderApplication()

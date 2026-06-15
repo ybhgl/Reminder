@@ -69,6 +69,8 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -144,6 +146,8 @@ import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.SettingsScreen
+import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
+import com.ybhgl.reminder.data.BackupPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.CalendarUtil
@@ -291,6 +295,7 @@ object Routes {
     private const val EDIT_REMINDER_BASE = "edit_reminder"
     const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}"
     const val SETTINGS = "settings"
+    const val BACKUP_AND_RESTORE = "backup_and_restore"
     const val DETAIL_REMINDER_BASE = "detail_reminder"
     const val DETAIL_REMINDER_PATTERN = "$DETAIL_REMINDER_BASE/{reminderId}"
     const val BIRTHDAY_LIST_BASE = "birthday_list"
@@ -470,7 +475,13 @@ fun ReminderApp() {
                 BirthdayListScreen(navController = navController)
             }
             composable(route = Routes.SETTINGS) {
-                SettingsScreen(onNavigateBack = { navController.navigateUp() })
+                SettingsScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToBackupAndRestore = { navController.navigate(Routes.BACKUP_AND_RESTORE) }
+                )
+            }
+            composable(route = Routes.BACKUP_AND_RESTORE) {
+                BackupAndRestoreScreen(onNavigateBack = { navController.navigateUp() })
             }
         }
 
@@ -714,6 +725,11 @@ fun ReminderListScreen(
 ) {
     val reminderListUiState by viewModel.reminderListUiState.collectAsState()
     val context = LocalContext.current
+    val backupReminderEnabled by remember(context) { BackupPreferences.backupReminderEnabledFlow(context) }.collectAsState(initial = false)
+    val lastBackupTimestamp by remember(context) { BackupPreferences.lastBackupTimestampFlow(context) }.collectAsState(initial = 0L)
+    val lastDataChangeTimestamp by remember(context) { BackupPreferences.lastDataChangeTimestampFlow(context) }.collectAsState(initial = 0L)
+    val showBackupAlert = backupReminderEnabled && lastDataChangeTimestamp > lastBackupTimestamp
+
     var viewMode by rememberSaveable { mutableStateOf(ReminderViewMode.CARD) }
     var hasLoaded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
@@ -983,6 +999,15 @@ fun ReminderListScreen(
                         windowInsets = TopAppBarDefaults.windowInsets,
                         colors = topAppBarColors,
                         actions = {
+                            if (showBackupAlert) {
+                                IconButton(onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.CloudUpload,
+                                        contentDescription = "需要备份",
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                }
+                            }
                             IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
