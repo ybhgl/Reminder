@@ -115,6 +115,7 @@ fun BackupAndRestoreScreen(
     val snackbarHostState = remember { SnackbarHostState() }
     
     var isProcessing by remember { mutableStateOf(false) }
+    var isTestingConnection by remember { mutableStateOf(false) }
     val scrollState = rememberScrollState()
 
     // Preferences states
@@ -361,14 +362,14 @@ fun BackupAndRestoreScreen(
                     OutlinedButton(
                         onClick = {
                             coroutineScope.launch {
-                                isProcessing = true
+                                isTestingConnection = true
                                 val (success, msg) = viewModel.testWebDavConnection(
                                     webDavServer,
                                     webDavUsername,
                                     webDavPassword,
                                     webDavPath
                                 )
-                                isProcessing = false
+                                isTestingConnection = false
                                 if (success) {
                                     CustomToast.showSuccess(context, msg)
                                 } else {
@@ -376,7 +377,7 @@ fun BackupAndRestoreScreen(
                                 }
                             }
                         },
-                        enabled = isWebDavConfigured && !isProcessing,
+                        enabled = isWebDavConfigured && !isProcessing && !isTestingConnection,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp)
                     ) {
@@ -398,7 +399,7 @@ fun BackupAndRestoreScreen(
                                 }
                             }
                         },
-                        enabled = isWebDavConfigured && !isProcessing,
+                        enabled = isWebDavConfigured && !isProcessing && !isTestingConnection,
                         modifier = Modifier.weight(1f),
                         shape = RoundedCornerShape(12.dp),
                         colors = ButtonDefaults.buttonColors(
@@ -428,7 +429,7 @@ fun BackupAndRestoreScreen(
                             }
                         }
                     },
-                    enabled = isWebDavConfigured && !isProcessing,
+                    enabled = isWebDavConfigured && !isProcessing && !isTestingConnection,
                     modifier = Modifier.fillMaxWidth(),
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(
