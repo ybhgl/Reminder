@@ -56,8 +56,6 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
-import androidx.compose.material3.SnackbarHost
-import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
 import androidx.compose.material3.Text
@@ -112,7 +110,6 @@ fun BackupAndRestoreScreen(
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
-    val snackbarHostState = remember { SnackbarHostState() }
     
     var isProcessing by remember { mutableStateOf(false) }
     var isTestingConnection by remember { mutableStateOf(false) }
@@ -151,7 +148,11 @@ fun BackupAndRestoreScreen(
                 } finally {
                     isProcessing = false
                 }
-                snackbarHostState.showSnackbar(message)
+                if (message.contains("失败") || message.contains("没有")) {
+                    CustomToast.showError(context, message)
+                } else {
+                    CustomToast.showSuccess(context, message)
+                }
             }
         }
     }
@@ -186,7 +187,6 @@ fun BackupAndRestoreScreen(
     }
 
     Scaffold(
-        snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
         modifier = modifier.nestedScroll(customNestedScrollConnection)
@@ -591,7 +591,11 @@ fun BackupAndRestoreScreen(
                                         isProcessing = true
                                         val msg = viewModel.restoreFromUri(context, uri, isSmartMerge = false)
                                         isProcessing = false
-                                        snackbarHostState.showSnackbar(msg)
+                                        if (msg.contains("失败")) {
+                                            CustomToast.showError(context, msg, CustomToast.LENGTH_LONG)
+                                        } else {
+                                            CustomToast.showSuccess(context, msg, CustomToast.LENGTH_LONG)
+                                        }
                                     }
                                 },
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
@@ -611,7 +615,11 @@ fun BackupAndRestoreScreen(
                                         isProcessing = true
                                         val msg = viewModel.restoreFromUri(context, uri, isSmartMerge = true)
                                         isProcessing = false
-                                        snackbarHostState.showSnackbar(msg)
+                                        if (msg.contains("失败")) {
+                                            CustomToast.showError(context, msg, CustomToast.LENGTH_LONG)
+                                        } else {
+                                            CustomToast.showSuccess(context, msg, CustomToast.LENGTH_LONG)
+                                        }
                                     }
                                 },
                                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
