@@ -8,7 +8,13 @@ import androidx.compose.foundation.text.BasicTextField
 import androidx.compose.foundation.text.selection.LocalTextSelectionColors
 import androidx.compose.foundation.text.selection.TextSelectionColors
 import androidx.compose.material3.*
-import androidx.compose.material3.TabRowDefaults.tabIndicatorOffset
+import androidx.compose.animation.core.animateIntAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.draw.clip
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -289,89 +295,154 @@ fun UnifiedDatePickerDialog(
                     .padding(vertical = 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                // Tab Selection (Solar vs. Lunar)
-                TabRow(
-                    selectedTabIndex = if (isLunarSelected) 1 else 0,
+                // Tab Selection (Solar vs. Lunar) - M3 Standard Filled Segmented style
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(start = 16.dp, end = 16.dp, bottom = 12.dp),
-                    indicator = { tabPositions ->
-                        if (tabPositions.isNotEmpty()) {
-                            TabRowDefaults.SecondaryIndicator(
-                                Modifier.tabIndicatorOffset(tabPositions[if (isLunarSelected) 1 else 0])
+                        .padding(start = 16.dp, end = 16.dp, bottom = 12.dp)
+                        .height(40.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.4f),
+                            shape = RoundedCornerShape(20.dp)
+                        )
+                ) {
+                    val density = LocalDensity.current
+                    var totalWidthPx by remember { mutableIntStateOf(0) }
+                    val indicatorWidthPx = if (totalWidthPx > 0) totalWidthPx / 2 else 0
+
+                    val indicatorOffsetPx by animateIntAsState(
+                        targetValue = if (isLunarSelected) indicatorWidthPx else 0,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioNoBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        ),
+                        label = "tabIndicator"
+                    )
+
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .onSizeChanged { totalWidthPx = it.width }
+                    ) {
+                        // 选中的高亮填充块
+                        if (indicatorWidthPx > 0) {
+                            val indicatorWidthDp = with(density) { indicatorWidthPx.toDp() }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .width(indicatorWidthDp)
+                                    .offset { IntOffset(indicatorOffsetPx, 0) }
+                                    .padding(4.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primary,
+                                        shape = RoundedCornerShape(16.dp)
+                                    )
                             )
                         }
+
+                        Row(modifier = Modifier.fillMaxSize()) {
+                            // 公历 Tab
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        if (isLunarSelected) {
+                                            // Sync Lunar to Solar on tab switch
+                                            val curMonth = monthOptions.getOrNull(monthPickerState.settledIndex)?.value
+                                            if (curMonth != null) {
+                                                try {
+                                                    val lunarDayObj = LunarDay.fromYmd(selectedYear, curMonth.getMonthWithLeap(), activeDay)
+                                                    val solarDayObj = lunarDayObj.getSolarDay()
+                                                    val targetSolarYear = solarDayObj.getYear()
+                                                    val targetSolarMonth = solarDayObj.getMonth()
+                                                    val targetSolarDay = solarDayObj.getDay()
+
+                                                    selectedSolarYear = targetSolarYear
+                                                    selectedSolarMonth = targetSolarMonth
+                                                    selectedSolarDay = targetSolarDay
+
+                                                    val yIdx = solarYearOptions.indexOfFirst { it.value == targetSolarYear }.coerceAtLeast(0)
+                                                    solarYearPickerState.scrollToIndex(yIdx)
+
+                                                    val mIdx = solarMonthOptions.indexOfFirst { it.value == targetSolarMonth }.coerceAtLeast(0)
+                                                    solarMonthPickerState.scrollToIndex(mIdx)
+
+                                                    val maxD = java.time.YearMonth.of(targetSolarYear, targetSolarMonth).lengthOfMonth()
+                                                    val dIdx = (targetSolarDay - 1).coerceIn(0, maxD - 1)
+                                                    solarDayPickerState.scrollToIndex(dIdx)
+                                                } catch (e: Exception) {
+                                                    e.printStackTrace()
+                                                }
+                                            }
+                                            isLunarSelected = false
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "公历",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (!isLunarSelected) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+
+                            // 农历 Tab
+                            Box(
+                                modifier = Modifier
+                                    .weight(1f)
+                                    .fillMaxHeight()
+                                    .clip(RoundedCornerShape(16.dp))
+                                    .clickable {
+                                        if (!isLunarSelected) {
+                                            // Sync Solar to Lunar on tab switch
+                                            try {
+                                                val solar = SolarDay.fromYmd(selectedSolarYear, selectedSolarMonth, selectedSolarDay)
+                                                val lunar = solar.getLunarDay()
+                                                val targetYear = lunar.getYear()
+                                                val targetMonthName = lunar.getLunarMonth()!!.getName()
+                                                val targetDay = lunar.getDay()
+
+                                                selectedYear = targetYear
+                                                activeMonthName = targetMonthName
+                                                activeDay = targetDay
+
+                                                val yIdx = yearOptions.indexOfFirst { it.value == targetYear }.coerceAtLeast(0)
+                                                yearPickerState.scrollToIndex(yIdx)
+
+                                                val mOpts = LunarYear.fromYear(targetYear).getMonths()
+                                                val mIdx = mOpts.indexOfFirst { it.getName() == targetMonthName }.coerceAtLeast(0)
+                                                monthPickerState.scrollToIndex(mIdx)
+
+                                                val dIdx = (targetDay - 1).coerceIn(0, (mOpts.getOrNull(mIdx)?.getDayCount() ?: 30) - 1)
+                                                dayPickerState.scrollToIndex(dIdx)
+                                            } catch (e: Exception) {
+                                                e.printStackTrace()
+                                            }
+                                            isLunarSelected = true
+                                        }
+                                    },
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Text(
+                                    text = "农历",
+                                    fontWeight = FontWeight.Bold,
+                                    color = if (isLunarSelected) {
+                                        MaterialTheme.colorScheme.onPrimary
+                                    } else {
+                                        MaterialTheme.colorScheme.onSurfaceVariant
+                                    },
+                                    style = MaterialTheme.typography.bodyMedium
+                                )
+                            }
+                        }
                     }
-                ) {
-                    Tab(
-                        selected = !isLunarSelected,
-                        onClick = {
-                            if (isLunarSelected) {
-                                // Sync Lunar to Solar on tab switch
-                                val curMonth = monthOptions.getOrNull(monthPickerState.settledIndex)?.value
-                                if (curMonth != null) {
-                                    try {
-                                        val lunarDayObj = LunarDay.fromYmd(selectedYear, curMonth.getMonthWithLeap(), activeDay)
-                                        val solarDayObj = lunarDayObj.getSolarDay()
-                                        val targetSolarYear = solarDayObj.getYear()
-                                        val targetSolarMonth = solarDayObj.getMonth()
-                                        val targetSolarDay = solarDayObj.getDay()
-
-                                        selectedSolarYear = targetSolarYear
-                                        selectedSolarMonth = targetSolarMonth
-                                        selectedSolarDay = targetSolarDay
-
-                                        val yIdx = solarYearOptions.indexOfFirst { it.value == targetSolarYear }.coerceAtLeast(0)
-                                        solarYearPickerState.scrollToIndex(yIdx)
-
-                                        val mIdx = solarMonthOptions.indexOfFirst { it.value == targetSolarMonth }.coerceAtLeast(0)
-                                        solarMonthPickerState.scrollToIndex(mIdx)
-
-                                        val maxD = java.time.YearMonth.of(targetSolarYear, targetSolarMonth).lengthOfMonth()
-                                        val dIdx = (targetSolarDay - 1).coerceIn(0, maxD - 1)
-                                        solarDayPickerState.scrollToIndex(dIdx)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                }
-                                isLunarSelected = false
-                            }
-                        },
-                        text = { Text("公历", fontWeight = FontWeight.Bold) }
-                    )
-                    Tab(
-                        selected = isLunarSelected,
-                        onClick = {
-                            if (!isLunarSelected) {
-                                // Sync Solar to Lunar on tab switch
-                                try {
-                                    val solar = SolarDay.fromYmd(selectedSolarYear, selectedSolarMonth, selectedSolarDay)
-                                    val lunar = solar.getLunarDay()
-                                    val targetYear = lunar.getYear()
-                                    val targetMonthName = lunar.getLunarMonth()!!.getName()
-                                    val targetDay = lunar.getDay()
-
-                                    selectedYear = targetYear
-                                    activeMonthName = targetMonthName
-                                    activeDay = targetDay
-
-                                    val yIdx = yearOptions.indexOfFirst { it.value == targetYear }.coerceAtLeast(0)
-                                    yearPickerState.scrollToIndex(yIdx)
-
-                                    val mOpts = LunarYear.fromYear(targetYear).getMonths()
-                                    val mIdx = mOpts.indexOfFirst { it.getName() == targetMonthName }.coerceAtLeast(0)
-                                    monthPickerState.scrollToIndex(mIdx)
-
-                                    val dIdx = (targetDay - 1).coerceIn(0, (mOpts.getOrNull(mIdx)?.getDayCount() ?: 30) - 1)
-                                    dayPickerState.scrollToIndex(dIdx)
-                                } catch (e: Exception) {
-                                    e.printStackTrace()
-                                }
-                                isLunarSelected = true
-                            }
-                        },
-                        text = { Text("农历", fontWeight = FontWeight.Bold) }
-                    )
                 }
 
                 // Dynamic live title display below TabRow (Clickable for quick input)

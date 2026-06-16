@@ -1573,7 +1573,7 @@ private fun ReminderSummaryCard(
             containerColor = Color.Transparent,
             contentColor = visuals.numberColor
         ),
-        elevation = CardDefaults.cardElevation(defaultElevation = 6.dp),
+        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         onClick = {}
     ) {
         Surface(
@@ -1609,7 +1609,7 @@ private fun ReminderSummaryCard(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                         .background(visuals.headerColor)
-                        .padding(horizontal = 16.dp, vertical = 14.dp)
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
                 ) {
                     Text(
                         text = displayInfo.headerTitle,

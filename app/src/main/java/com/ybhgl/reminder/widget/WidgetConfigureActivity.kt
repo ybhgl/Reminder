@@ -14,6 +14,7 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -138,6 +139,7 @@ fun WidgetConfigureScreen(
 ) {
     var reminders by remember { mutableStateOf<List<ReminderItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
+    val widgetCardShape = RoundedCornerShape(16.dp)
 
     // Transparency State (0-100)
     var opacity by remember { mutableStateOf(initialOpacity.toFloat()) }
@@ -167,7 +169,7 @@ fun WidgetConfigureScreen(
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
-                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                    containerColor = MaterialTheme.colorScheme.surface
                 )
             )
         }
@@ -205,9 +207,9 @@ fun WidgetConfigureScreen(
             ) {
                 // Opacity Selection Card
                 Card(
-                    shape = RoundedCornerShape(12.dp),
+                    shape = widgetCardShape,
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     ),
                     modifier = Modifier
                         .fillMaxWidth()
@@ -263,12 +265,13 @@ fun WidgetConfigureScreen(
                         items(reminders) { reminder ->
                             val isSelected = reminder.id == selectedReminderId
                             Card(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = widgetCardShape,
                                 colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
+                                    .clip(widgetCardShape)
                                     .selectable(
                                         selected = isSelected,
                                         onClick = { selectedReminderId = reminder.id }
@@ -330,9 +333,9 @@ fun WidgetConfigureScreen(
                     ) {
                         item {
                             Card(
-                                shape = RoundedCornerShape(12.dp),
+                                shape = widgetCardShape,
                                 colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                 ),
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -340,9 +343,11 @@ fun WidgetConfigureScreen(
                             ) {
                                 Column(modifier = Modifier.padding(8.dp)) {
                                     filterOptions.forEach { (optionType, label) ->
+                                        val itemShape = RoundedCornerShape(8.dp)
                                         Row(
                                             modifier = Modifier
                                                 .fillMaxWidth()
+                                                .clip(itemShape)
                                                 .clickable { filterType = optionType }
                                                 .padding(vertical = 10.dp, horizontal = 12.dp),
                                             verticalAlignment = Alignment.CenterVertically
@@ -376,12 +381,13 @@ fun WidgetConfigureScreen(
                             items(reminders) { reminder ->
                                 val isChecked = customSelectedIds.contains(reminder.id)
                                 Card(
-                                    shape = RoundedCornerShape(12.dp),
+                                    shape = widgetCardShape,
                                     colors = CardDefaults.cardColors(
-                                        containerColor = if (isChecked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant
+                                        containerColor = if (isChecked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                                     ),
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .clip(widgetCardShape)
                                         .clickable {
                                             customSelectedIds = if (isChecked) {
                                                 customSelectedIds - reminder.id
@@ -439,8 +445,7 @@ fun WidgetConfigureScreen(
                 ) {
                     OutlinedButton(
                         onClick = onCancel,
-                        modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp)
+                        modifier = Modifier.weight(1f)
                     ) {
                         Text("取消")
                     }
@@ -453,7 +458,6 @@ fun WidgetConfigureScreen(
                             }
                         },
                         modifier = Modifier.weight(1f),
-                        shape = RoundedCornerShape(12.dp),
                         enabled = if (isSingleSelection) selectedReminderId != -1 else (filterType != "custom" || customSelectedIds.isNotEmpty())
                     ) {
                         Text("保存")

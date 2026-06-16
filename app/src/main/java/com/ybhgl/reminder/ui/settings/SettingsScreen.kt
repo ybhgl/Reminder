@@ -517,7 +517,7 @@ private fun DefaultPageSegmentedControl(
             animationSpec = if (shouldAnimate) spring() else snap(),
             label = "DefaultPageHighlightOffset"
         )
-        val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        val highlightColor = MaterialTheme.colorScheme.primaryContainer
 
         Box(
             modifier = Modifier
@@ -537,7 +537,7 @@ private fun DefaultPageSegmentedControl(
                 val isSelected = option == selectedOption
                 val textColor by animateColorAsState(
                     targetValue = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
@@ -605,7 +605,7 @@ private fun ThemeModeSegmentedControl(
             animationSpec = if (shouldAnimate) spring() else snap(),
             label = "ThemeHighlightOffset"
         )
-        val highlightColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.16f)
+        val highlightColor = MaterialTheme.colorScheme.primaryContainer
 
         Box(
             modifier = Modifier
@@ -625,7 +625,7 @@ private fun ThemeModeSegmentedControl(
                 val isSelected = option == selectedOption
                 val textColor by animateColorAsState(
                     targetValue = if (isSelected) {
-                        MaterialTheme.colorScheme.primary
+                        MaterialTheme.colorScheme.onPrimaryContainer
                     } else {
                         MaterialTheme.colorScheme.onSurfaceVariant
                     },
