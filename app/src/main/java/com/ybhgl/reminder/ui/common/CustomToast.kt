@@ -17,8 +17,10 @@ import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.TextView
 import android.widget.Toast
+import android.content.res.Configuration
 import androidx.core.content.ContextCompat
 import com.ybhgl.reminder.R
+import com.ybhgl.reminder.data.AppThemeOption
 import java.lang.ref.WeakReference
 
 object CustomToast {
@@ -43,7 +45,8 @@ object CustomToast {
         context: Context,
         message: String,
         type: Type = Type.NORMAL,
-        duration: Long = LENGTH_SHORT
+        duration: Long = LENGTH_SHORT,
+        themeOption: AppThemeOption = AppThemeOption.SYSTEM
     ) {
         // Find the active activity context to attach the dialog window
         val activity = findActivity(context) ?: return
@@ -74,7 +77,13 @@ object CustomToast {
             // 2. 移除原 runBlocking { themeOptionFlow(activity).first() } 的磁盘 I/O 阻塞。
             // 宿主 Activity 的配置已完全同步应用了暗色/亮色状态，此处直接通过 Activity Configuration
             // 进行无阻塞、秒级读取，100% 避免主线程因 I/O 造成卡顿与 ANR 隐患。
-            val isDark = (activity.resources.configuration.uiMode and android.content.res.Configuration.UI_MODE_NIGHT_MASK) == android.content.res.Configuration.UI_MODE_NIGHT_YES
+            val isDark = when (themeOption) {
+                AppThemeOption.SYSTEM -> {
+                    (activity.resources.configuration.uiMode and Configuration.UI_MODE_NIGHT_MASK) == Configuration.UI_MODE_NIGHT_YES
+                }
+                AppThemeOption.LIGHT -> false
+                AppThemeOption.DARK -> true
+            }
 
             // 3. Background Color setting:
             // "背景需实现类似 Windows Mica Alt 的质感，即黑白半透明色调结合深层背景模糊效果（Backdrop Blur）"
