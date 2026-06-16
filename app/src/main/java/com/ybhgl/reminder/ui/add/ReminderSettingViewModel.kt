@@ -33,7 +33,7 @@ class ReminderSettingViewModel(
 
     val enabledReminders = reminderRepository.getAllRemindersStream()
         .map { reminders ->
-            reminders.filter { it.notificationConfig.isEnabled }
+            reminders.filter { it.notificationConfig.isEnabled && (reminderId == null || it.id != reminderId) }
         }
 
     var uiState by mutableStateOf(ReminderSettingUiState())

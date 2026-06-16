@@ -18,6 +18,8 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -567,6 +569,8 @@ fun ReminderSettingScreen(
     }
 
     if (showImportDialog) {
+        var selectedReminder by remember { mutableStateOf<com.ybhgl.reminder.data.ReminderItem?>(null) }
+
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
             title = { Text("导入提醒设置") },
@@ -594,21 +598,28 @@ fun ReminderSettingScreen(
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             items(importableReminders) { item ->
+                                val isSelected = selectedReminder?.id == item.id
                                 Card(
                                     colors = CardDefaults.cardColors(
-                                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        containerColor = if (isSelected) {
+                                            MaterialTheme.colorScheme.primaryContainer
+                                        } else {
+                                            MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                        }
                                     ),
+                                    border = if (isSelected) {
+                                        BorderStroke(1.5.dp, MaterialTheme.colorScheme.primary)
+                                    } else null,
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            viewModel.importNotificationConfig(item.notificationConfig)
-                                            showImportDialog = false
+                                            selectedReminder = if (isSelected) null else item
                                         }
                                 ) {
                                     Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
-                                            .padding(16.dp),
+                                            .padding(horizontal = 16.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically,
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
@@ -616,7 +627,7 @@ fun ReminderSettingScreen(
                                             Text(
                                                 text = item.title,
                                                 style = MaterialTheme.typography.titleMedium,
-                                                color = MaterialTheme.colorScheme.onSurface
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
                                             )
                                             Spacer(modifier = Modifier.height(4.dp))
                                             val reminderTimesDesc = item.notificationConfig.notificationTimes.joinToString("、") { time ->
@@ -626,7 +637,15 @@ fun ReminderSettingScreen(
                                             Text(
                                                 text = if (item.notificationConfig.isContinuous) "连续提醒" else reminderTimesDesc,
                                                 style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                color = if (isSelected) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f) else MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+
+                                        if (isSelected) {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = "已选中",
+                                                tint = MaterialTheme.colorScheme.primary
                                             )
                                         }
                                     }
@@ -637,6 +656,19 @@ fun ReminderSettingScreen(
                 }
             },
             confirmButton = {
+                TextButton(
+                    enabled = selectedReminder != null,
+                    onClick = {
+                        selectedReminder?.let {
+                            viewModel.importNotificationConfig(it.notificationConfig)
+                        }
+                        showImportDialog = false
+                    }
+                ) {
+                    Text("导入")
+                }
+            },
+            dismissButton = {
                 TextButton(onClick = { showImportDialog = false }) {
                     Text("取消")
                 }
