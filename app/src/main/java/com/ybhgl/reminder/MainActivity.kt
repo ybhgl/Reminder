@@ -224,6 +224,10 @@ class MainActivity : ComponentActivity() {
             val pureBlackModeFlow = remember(context) { pureBlackFlow(context) }
             val usePureBlack by pureBlackModeFlow.collectAsState(initial = false)
 
+            LaunchedEffect(themeOption) {
+                com.ybhgl.reminder.ui.common.CustomToast.currentAppTheme = themeOption
+            }
+
             val reminderListState by viewModel.reminderListUiState.collectAsState()
             var showPermissionDialog by remember { mutableStateOf(false) }
             var permissionDialogText by remember { mutableStateOf("") }
