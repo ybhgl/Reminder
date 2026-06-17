@@ -2,6 +2,11 @@ package com.ybhgl.reminder.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -30,6 +35,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
@@ -58,12 +64,17 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.SwitchDefaults
+import androidx.compose.material3.MultiChoiceSegmentedButtonRow
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.surfaceColorAtElevation
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -121,9 +132,15 @@ fun BackupAndRestoreScreen(
     val webDavUsername by viewModel.webDavUsernameFlow(context).collectAsState(initial = "")
     val webDavPassword by viewModel.webDavPasswordFlow(context).collectAsState(initial = "")
     val webDavPath by viewModel.webDavPathFlow(context).collectAsState(initial = "reminder_backups")
+    val autoBackupLocalEnabled by viewModel.autoBackupLocalEnabledFlow(context).collectAsState(initial = false)
+    val autoBackupWebDavEnabled by viewModel.autoBackupWebDavEnabledFlow(context).collectAsState(initial = false)
+    val isAutoBackupActive = autoBackupLocalEnabled || autoBackupWebDavEnabled
+    val autoBackupMaxCount by viewModel.autoBackupMaxCountFlow(context).collectAsState(initial = 5)
+    val autoBackupLocalPath by viewModel.autoBackupLocalPathFlow(context).collectAsState(initial = "")
 
     // UI Dialog triggers
     var showServerConfigDialog by remember { mutableStateOf(false) }
+    var showAutoBackupManagerDialog by remember { mutableStateOf(false) }
     var showCloudRecoveryDialog by remember { mutableStateOf(false) }
     var showLocalRestoreConfirmDialog by remember { mutableStateOf(false) }
     var pendingLocalRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
@@ -163,6 +180,23 @@ fun BackupAndRestoreScreen(
         if (uri != null) {
             pendingLocalRestoreUri = uri
             showLocalRestoreConfirmDialog = true
+        }
+    }
+
+    val autoBackupDirLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri != null) {
+            try {
+                val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
+                context.contentResolver.takePersistableUriPermission(uri, takeFlags)
+                coroutineScope.launch {
+                    viewModel.saveAutoBackupLocalPath(context, uri.toString())
+                    CustomToast.showSuccess(context, "自动备份目录设置成功")
+                }
+            } catch (e: Exception) {
+                CustomToast.showError(context, "授权失败：${e.localizedMessage}")
+            }
         }
     }
 
@@ -273,6 +307,261 @@ fun BackupAndRestoreScreen(
                     }
                 }
 
+                // Section 1.5: Auto Backup (自动备份)
+                Text(
+                    text = "自动备份",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider()
+
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+                    )
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                        ) {
+                            Box(
+                                modifier = Modifier
+                                    .size(40.dp)
+                                    .background(
+                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                        shape = RoundedCornerShape(8.dp)
+                                    ),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Autorenew,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.primary,
+                                    modifier = Modifier.size(22.dp)
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f),
+                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = "自动备份数据",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    fontWeight = FontWeight.Medium
+                                )
+                                Text(
+                                    text = "在数据变动时自动执行备份",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+
+                        Column(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                text = "备份目标",
+                                style = MaterialTheme.typography.bodyMedium,
+                                fontWeight = FontWeight.Medium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                            
+                            val options = listOf("本地", "WebDAV")
+                            @OptIn(ExperimentalMaterial3Api::class)
+                            MultiChoiceSegmentedButtonRow(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                options.forEachIndexed { index, label ->
+                                    val checked = if (index == 0) autoBackupLocalEnabled else autoBackupWebDavEnabled
+                                    SegmentedButton(
+                                        checked = checked,
+                                        onCheckedChange = { isChecked ->
+                                            coroutineScope.launch {
+                                                if (index == 0) {
+                                                    viewModel.saveAutoBackupLocalEnabled(context, isChecked)
+                                                } else {
+                                                    viewModel.saveAutoBackupWebDavEnabled(context, isChecked)
+                                                }
+                                            }
+                                        },
+                                        shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size)
+                                    ) {
+                                        Text(label)
+                                    }
+                                }
+                            }
+                        }
+
+                        AnimatedVisibility(
+                            visible = isAutoBackupActive,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(
+                                modifier = Modifier.fillMaxWidth(),
+                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                                ) {
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.SpaceBetween,
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        Text(
+                                            text = "自动备份数量",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Medium,
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                        Text(
+                                            text = "$autoBackupMaxCount 个",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                    }
+                                    Slider(
+                                        value = autoBackupMaxCount.toFloat(),
+                                        onValueChange = { newValue ->
+                                            coroutineScope.launch {
+                                                viewModel.saveAutoBackupMaxCount(context, newValue.toInt())
+                                            }
+                                        },
+                                        valueRange = 1f..20f,
+                                        steps = 18,
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    Text(
+                                        text = "保留的最大历史备份数量，超过此数量的旧备份将被自动清理",
+                                        style = MaterialTheme.typography.labelSmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+
+                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .selectable(
+                                            selected = false,
+                                            onClick = {
+                                                showAutoBackupManagerDialog = true
+                                            }
+                                        )
+                                        .padding(12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                    Column(
+                                        modifier = Modifier.weight(1f),
+                                        verticalArrangement = Arrangement.spacedBy(2.dp)
+                                    ) {
+                                        Text(
+                                            text = "管理自动备份",
+                                            style = MaterialTheme.typography.bodyMedium,
+                                            fontWeight = FontWeight.Bold,
+                                            color = MaterialTheme.colorScheme.primary
+                                        )
+                                        Text(
+                                            text = "查看、恢复或清理自动备份文件",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                }
+
+                                AnimatedVisibility(
+                                    visible = autoBackupLocalEnabled,
+                                    enter = expandVertically() + fadeIn(),
+                                    exit = shrinkVertically() + fadeOut()
+                                ) {
+                                    val isLocalPathMissing = autoBackupLocalEnabled && autoBackupLocalPath.isBlank()
+                                    val localBorderColor = if (isLocalPathMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                    
+                                    Column(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                    ) {
+                                        HorizontalDivider(color = localBorderColor)
+
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp),
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Column(
+                                                modifier = Modifier.weight(1f),
+                                                verticalArrangement = Arrangement.spacedBy(4.dp)
+                                            ) {
+                                                Text(
+                                                    text = "本地自动备份目录",
+                                                    style = MaterialTheme.typography.bodyMedium,
+                                                    fontWeight = FontWeight.Medium,
+                                                    color = if (isLocalPathMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface
+                                                )
+                                                Text(
+                                                    text = if (autoBackupLocalPath.isNotBlank()) {
+                                                        val uri = android.net.Uri.parse(autoBackupLocalPath)
+                                                        val pathText = uri.path ?: autoBackupLocalPath
+                                                        try {
+                                                            android.net.Uri.decode(pathText)
+                                                        } catch (e: Exception) {
+                                                            pathText
+                                                        }
+                                                    } else "请选择自动备份保存的文件夹",
+                                                    style = MaterialTheme.typography.bodySmall,
+                                                    color = if (isLocalPathMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
+                                            }
+                                            
+                                            OutlinedButton(
+                                                onClick = {
+                                                    autoBackupDirLauncher.launch(null)
+                                                },
+                                                shape = RoundedCornerShape(8.dp),
+                                                colors = if (isLocalPathMissing) ButtonDefaults.outlinedButtonColors(contentColor = MaterialTheme.colorScheme.error) else ButtonDefaults.outlinedButtonColors()
+                                            ) {
+                                                Icon(
+                                                    imageVector = Icons.Default.Folder,
+                                                    contentDescription = "选择目录",
+                                                    modifier = Modifier.size(18.dp)
+                                                )
+                                                Spacer(modifier = Modifier.width(4.dp))
+                                                Text("配置目录", fontSize = 12.sp)
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
                 // Section 2: Local Backup (本地备份)
                 Text(
                     text = "本地备份",
@@ -308,10 +597,27 @@ fun BackupAndRestoreScreen(
                 HorizontalDivider()
                 
                 // WebDAV Server Configuration Card
+                val isWebDavMissing = autoBackupWebDavEnabled && !isWebDavConfigured
+                val webDavCardColor = if (isWebDavMissing) {
+                    MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+                }
+                val webDavTextColor = if (isWebDavMissing) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                }
+                val webDavIconColor = if (isWebDavMissing) {
+                    MaterialTheme.colorScheme.error
+                } else {
+                    MaterialTheme.colorScheme.primary
+                }
+
                 Card(
                     modifier = Modifier.fillMaxWidth(),
                     colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+                        containerColor = webDavCardColor
                     ),
                     onClick = { showServerConfigDialog = true }
                 ) {
@@ -324,7 +630,7 @@ fun BackupAndRestoreScreen(
                             modifier = Modifier
                                 .size(40.dp)
                                 .background(
-                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                    color = (if (isWebDavMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.primary).copy(alpha = 0.1f),
                                     shape = RoundedCornerShape(8.dp)
                                 ),
                             contentAlignment = Alignment.Center
@@ -332,7 +638,7 @@ fun BackupAndRestoreScreen(
                             Icon(
                                 imageVector = Icons.Default.Settings,
                                 contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
+                                tint = webDavIconColor,
                                 modifier = Modifier.size(22.dp)
                             )
                         }
@@ -343,12 +649,13 @@ fun BackupAndRestoreScreen(
                             Text(
                                 text = "WebDAV 服务器设置",
                                 style = MaterialTheme.typography.bodyLarge,
-                                fontWeight = FontWeight.Medium
+                                fontWeight = FontWeight.Medium,
+                                color = webDavTextColor
                             )
                             Text(
                                 text = if (isWebDavConfigured) "服务器：$webDavServer" else "点击配置 WebDAV 服务器信息",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = if (isWebDavMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -492,6 +799,610 @@ fun BackupAndRestoreScreen(
             }
 
             // --- ALL DIALOGS IMPLEMENTATION ---
+
+            if (showAutoBackupManagerDialog) {
+                var selectedDialogTab by remember { mutableStateOf(0) }
+                
+                var localAutoFiles by remember { mutableStateOf<List<androidx.documentfile.provider.DocumentFile>?>(null) }
+                var isLoadingLocalAuto by remember { mutableStateOf(false) }
+                
+                var webDavAutoFiles by remember { mutableStateOf<List<WebDavFile>?>(null) }
+                var isLoadingWebDavAuto by remember { mutableStateOf(false) }
+                var webDavAutoError by remember { mutableStateOf("") }
+
+                var pendingDeleteLocalFile by remember { mutableStateOf<androidx.documentfile.provider.DocumentFile?>(null) }
+                var showLocalDeleteConfirm by remember { mutableStateOf(false) }
+
+                var pendingDeleteWebDavFile by remember { mutableStateOf<String?>(null) }
+                var showWebDavDeleteConfirm by remember { mutableStateOf(false) }
+
+                var pendingRestoreLocalFile by remember { mutableStateOf<androidx.documentfile.provider.DocumentFile?>(null) }
+                var showLocalRestoreConfirm by remember { mutableStateOf(false) }
+
+                var pendingRestoreWebDavFile by remember { mutableStateOf<String?>(null) }
+                var showWebDavRestoreConfirm by remember { mutableStateOf(false) }
+
+                val loadLocalAuto = {
+                    isLoadingLocalAuto = true
+                    coroutineScope.launch {
+                        localAutoFiles = viewModel.listLocalAutoBackups(context)
+                        isLoadingLocalAuto = false
+                    }
+                }
+
+                val loadWebDavAuto = {
+                    isLoadingWebDavAuto = true
+                    webDavAutoError = ""
+                    coroutineScope.launch {
+                        val (files, errorMsg) = viewModel.listWebDavAutoBackups(context)
+                        isLoadingWebDavAuto = false
+                        if (files != null) {
+                            webDavAutoFiles = files
+                        } else {
+                            webDavAutoError = errorMsg
+                        }
+                    }
+                }
+
+                LaunchedEffect(Unit) {
+                    loadLocalAuto()
+                    if (isWebDavConfigured) {
+                        loadWebDavAuto()
+                    }
+                }
+
+                Dialog(
+                    onDismissRequest = { showAutoBackupManagerDialog = false },
+                    properties = DialogProperties(usePlatformDefaultWidth = false)
+                ) {
+                    Surface(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .padding(16.dp),
+                        shape = RoundedCornerShape(24.dp),
+                        color = MaterialTheme.colorScheme.surface
+                    ) {
+                        Column(
+                            modifier = Modifier
+                                .fillMaxSize()
+                                .padding(16.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Text(
+                                    text = "管理自动备份",
+                                    style = MaterialTheme.typography.titleLarge,
+                                    fontWeight = FontWeight.SemiBold
+                                )
+                                IconButton(onClick = { showAutoBackupManagerDialog = false }) {
+                                    Icon(imageVector = Icons.Filled.Close, contentDescription = "关闭")
+                                }
+                            }
+
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(vertical = 8.dp),
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                OutlinedButton(
+                                    onClick = { selectedDialogTab = 0 },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (selectedDialogTab == 0) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                        contentColor = if (selectedDialogTab == 0) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                    )
+                                ) {
+                                    Text("本地备份")
+                                }
+                                OutlinedButton(
+                                    onClick = { selectedDialogTab = 1 },
+                                    modifier = Modifier.weight(1f),
+                                    shape = RoundedCornerShape(12.dp),
+                                    colors = ButtonDefaults.outlinedButtonColors(
+                                        containerColor = if (selectedDialogTab == 1) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
+                                        contentColor = if (selectedDialogTab == 1) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurface
+                                    )
+                                ) {
+                                    Text("WebDAV 备份")
+                                }
+                            }
+
+                            HorizontalDivider(modifier = Modifier.padding(vertical = 8.dp))
+
+                            if (selectedDialogTab == 0) {
+                                if (isLoadingLocalAuto) {
+                                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator()
+                                    }
+                                } else if (!autoBackupLocalEnabled) {
+                                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        Text("未开启本地自动备份", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                } else if (localAutoFiles.isNullOrEmpty()) {
+                                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        Text("未找到任何本地自动备份文件", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                } else {
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .verticalScroll(rememberScrollState()),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        localAutoFiles!!.forEach { file ->
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                ),
+                                                shape = RoundedCornerShape(16.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(16.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.weight(1f),
+                                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .background(
+                                                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                                                        shape = RoundedCornerShape(8.dp)
+                                                                    )
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "备份时间",
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = formatBackupTime(file.name ?: ""),
+                                                                style = MaterialTheme.typography.bodyLarge,
+                                                                color = MaterialTheme.colorScheme.onSurface,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                        }
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .background(
+                                                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                                                        shape = RoundedCornerShape(8.dp)
+                                                                    )
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "文件大小",
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = formatFileSize(file.length()),
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                pendingRestoreLocalFile = file
+                                                                showLocalRestoreConfirm = true
+                                                            },
+                                                            modifier = Modifier
+                                                                .background(
+                                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                                                    shape = CircleShape
+                                                                )
+                                                                .size(36.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Restore,
+                                                                contentDescription = "恢复",
+                                                                tint = MaterialTheme.colorScheme.primary,
+                                                                modifier = Modifier.size(20.dp)
+                                                            )
+                                                        }
+                                                        IconButton(
+                                                            onClick = {
+                                                                pendingDeleteLocalFile = file
+                                                                showLocalDeleteConfirm = true
+                                                            },
+                                                            modifier = Modifier
+                                                                .background(
+                                                                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f),
+                                                                    shape = CircleShape
+                                                                )
+                                                                .size(36.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Delete,
+                                                                contentDescription = "删除",
+                                                                tint = MaterialTheme.colorScheme.error,
+                                                                modifier = Modifier.size(20.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            } else {
+                                if (isLoadingWebDavAuto) {
+                                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        CircularProgressIndicator()
+                                    }
+                                } else if (!autoBackupWebDavEnabled) {
+                                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        Text("未开启云端自动备份", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                } else if (webDavAutoError.isNotBlank()) {
+                                    Box(modifier = Modifier.weight(1f).fillMaxWidth().padding(16.dp), contentAlignment = Alignment.Center) {
+                                        Text(text = webDavAutoError, color = MaterialTheme.colorScheme.error, fontWeight = FontWeight.Medium)
+                                    }
+                                } else if (webDavAutoFiles.isNullOrEmpty()) {
+                                    Box(modifier = Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
+                                        Text("未找到任何云端自动备份文件", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                } else {
+                                    Column(
+                                        modifier = Modifier
+                                            .weight(1f)
+                                            .verticalScroll(rememberScrollState()),
+                                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        webDavAutoFiles!!.forEach { file ->
+                                            Card(
+                                                modifier = Modifier.fillMaxWidth(),
+                                                colors = CardDefaults.cardColors(
+                                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                                ),
+                                                shape = RoundedCornerShape(16.dp)
+                                            ) {
+                                                Row(
+                                                    modifier = Modifier
+                                                        .fillMaxWidth()
+                                                        .padding(16.dp),
+                                                    verticalAlignment = Alignment.CenterVertically
+                                                ) {
+                                                    Column(
+                                                        modifier = Modifier.weight(1f),
+                                                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                                                    ) {
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .background(
+                                                                        color = MaterialTheme.colorScheme.primaryContainer,
+                                                                        shape = RoundedCornerShape(8.dp)
+                                                                    )
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "备份时间",
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = formatBackupTime(file.name),
+                                                                style = MaterialTheme.typography.bodyLarge,
+                                                                color = MaterialTheme.colorScheme.onSurface,
+                                                                fontWeight = FontWeight.Medium
+                                                            )
+                                                        }
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                                                        ) {
+                                                            Box(
+                                                                modifier = Modifier
+                                                                    .background(
+                                                                        color = MaterialTheme.colorScheme.secondaryContainer,
+                                                                        shape = RoundedCornerShape(8.dp)
+                                                                    )
+                                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                            ) {
+                                                                Text(
+                                                                    text = "文件大小",
+                                                                    style = MaterialTheme.typography.labelMedium,
+                                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                                    fontWeight = FontWeight.Bold
+                                                                )
+                                                            }
+                                                            Text(
+                                                                text = formatFileSize(file.size),
+                                                                style = MaterialTheme.typography.bodyMedium,
+                                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                            )
+                                                        }
+                                                    }
+
+                                                    Row(
+                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                        verticalAlignment = Alignment.CenterVertically
+                                                    ) {
+                                                        IconButton(
+                                                            onClick = {
+                                                                pendingRestoreWebDavFile = file.name
+                                                                showWebDavRestoreConfirm = true
+                                                            },
+                                                            modifier = Modifier
+                                                                .background(
+                                                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                                                    shape = CircleShape
+                                                                )
+                                                                .size(36.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Restore,
+                                                                contentDescription = "恢复",
+                                                                tint = MaterialTheme.colorScheme.primary,
+                                                                modifier = Modifier.size(20.dp)
+                                                            )
+                                                        }
+                                                        IconButton(
+                                                            onClick = {
+                                                                pendingDeleteWebDavFile = file.name
+                                                                showWebDavDeleteConfirm = true
+                                                            },
+                                                            modifier = Modifier
+                                                                .background(
+                                                                    color = MaterialTheme.colorScheme.error.copy(alpha = 0.1f),
+                                                                    shape = CircleShape
+                                                                )
+                                                                .size(36.dp)
+                                                        ) {
+                                                            Icon(
+                                                                imageVector = Icons.Default.Delete,
+                                                                contentDescription = "删除",
+                                                                tint = MaterialTheme.colorScheme.error,
+                                                                modifier = Modifier.size(20.dp)
+                                                            )
+                                                        }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+
+                if (showLocalDeleteConfirm && pendingDeleteLocalFile != null) {
+                    val file = pendingDeleteLocalFile!!
+                    AlertDialog(
+                        onDismissRequest = { showLocalDeleteConfirm = false },
+                        title = { Text("确认删除备份") },
+                        text = { Text("确定要永久删除 ${formatBackupTime(file.name ?: "")} 的本地自动备份吗？") },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showLocalDeleteConfirm = false
+                                    coroutineScope.launch {
+                                        val success = viewModel.deleteLocalAutoBackupFile(context, file)
+                                        if (success) {
+                                            CustomToast.showSuccess(context, "已删除本地备份文件")
+                                            loadLocalAuto()
+                                        } else {
+                                            CustomToast.showError(context, "删除失败")
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("确认删除")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showLocalDeleteConfirm = false }) {
+                                Text("取消")
+                            }
+                        }
+                    )
+                }
+
+                if (showWebDavDeleteConfirm && pendingDeleteWebDavFile != null) {
+                    val fileName = pendingDeleteWebDavFile!!
+                    AlertDialog(
+                        onDismissRequest = { showWebDavDeleteConfirm = false },
+                        title = { Text("确认删除备份") },
+                        text = { Text("确定要永久删除 ${formatBackupTime(fileName)} 的云端自动备份吗？") },
+                        confirmButton = {
+                            Button(
+                                onClick = {
+                                    showWebDavDeleteConfirm = false
+                                    coroutineScope.launch {
+                                        val (success, msg) = viewModel.deleteWebDavAutoBackup(context, fileName)
+                                        if (success) {
+                                            CustomToast.showSuccess(context, msg)
+                                            loadWebDavAuto()
+                                        } else {
+                                            CustomToast.showError(context, msg)
+                                        }
+                                    }
+                                },
+                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
+                            ) {
+                                Text("确认删除")
+                            }
+                        },
+                        dismissButton = {
+                            TextButton(onClick = { showWebDavDeleteConfirm = false }) {
+                                Text("取消")
+                            }
+                        }
+                    )
+                }
+
+                if (showLocalRestoreConfirm && pendingRestoreLocalFile != null) {
+                    val file = pendingRestoreLocalFile!!
+                    AlertDialog(
+                        onDismissRequest = { showLocalRestoreConfirm = false },
+                        title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("确定要从本地自动备份中恢复数据吗？请选择导入方式：", style = MaterialTheme.typography.bodyLarge)
+                                Card(
+                                    onClick = {
+                                        showLocalRestoreConfirm = false
+                                        showAutoBackupManagerDialog = false
+                                        coroutineScope.launch {
+                                            isProcessing = true
+                                            val msg = viewModel.restoreFromUri(context, file.uri, isSmartMerge = false)
+                                            isProcessing = false
+                                            if (msg.contains("失败")) {
+                                                CustomToast.showError(context, msg, CustomToast.LENGTH_LONG)
+                                            } else {
+                                                CustomToast.showSuccess(context, msg, CustomToast.LENGTH_LONG)
+                                            }
+                                        }
+                                    },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text("完全覆盖", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text("清空当前所有本地提醒和偏好设置，用备份中的数据完全替换", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+
+                                Card(
+                                    onClick = {
+                                        showLocalRestoreConfirm = false
+                                        showAutoBackupManagerDialog = false
+                                        coroutineScope.launch {
+                                            isProcessing = true
+                                            val msg = viewModel.restoreFromUri(context, file.uri, isSmartMerge = true)
+                                            isProcessing = false
+                                            if (msg.contains("失败")) {
+                                                CustomToast.showError(context, msg, CustomToast.LENGTH_LONG)
+                                            } else {
+                                                CustomToast.showSuccess(context, msg, CustomToast.LENGTH_LONG)
+                                            }
+                                        }
+                                    },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text("智能合并 (推荐)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text("保留本地数据，仅合并/添加备份中不同/不存在的记录，不覆盖个人偏好选项", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {},
+                        dismissButton = {
+                            TextButton(onClick = { showLocalRestoreConfirm = false }) {
+                                Text("取消")
+                            }
+                        }
+                    )
+                }
+
+                if (showWebDavRestoreConfirm && pendingRestoreWebDavFile != null) {
+                    val fileName = pendingRestoreWebDavFile!!
+                    AlertDialog(
+                        onDismissRequest = { showWebDavRestoreConfirm = false },
+                        title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
+                        text = {
+                            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                                Text("确定要从云端自动备份中恢复数据吗？请选择导入方式：")
+                                Card(
+                                    onClick = {
+                                        showWebDavRestoreConfirm = false
+                                        showAutoBackupManagerDialog = false
+                                        coroutineScope.launch {
+                                            isProcessing = true
+                                            val msg = viewModel.restoreFromWebDavAutoBackup(context, fileName, isSmartMerge = false)
+                                            isProcessing = false
+                                            if (msg.contains("失败")) {
+                                                CustomToast.showError(context, msg, CustomToast.LENGTH_LONG)
+                                            } else {
+                                                CustomToast.showSuccess(context, msg, CustomToast.LENGTH_LONG)
+                                            }
+                                        }
+                                    },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text("完全覆盖", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.error)
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text("清空当前所有本地提醒和偏好设置，用备份中的数据完全替换", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+
+                                Card(
+                                    onClick = {
+                                        showWebDavRestoreConfirm = false
+                                        showAutoBackupManagerDialog = false
+                                        coroutineScope.launch {
+                                            isProcessing = true
+                                            val msg = viewModel.restoreFromWebDavAutoBackup(context, fileName, isSmartMerge = true)
+                                            isProcessing = false
+                                            if (msg.contains("失败")) {
+                                                CustomToast.showError(context, msg, CustomToast.LENGTH_LONG)
+                                            } else {
+                                                CustomToast.showSuccess(context, msg, CustomToast.LENGTH_LONG)
+                                            }
+                                        }
+                                    },
+                                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.2f)),
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    Column(modifier = Modifier.padding(12.dp)) {
+                                        Text("智能合并 (推荐)", fontWeight = FontWeight.Bold, color = MaterialTheme.colorScheme.primary)
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text("保留本地数据，仅合并/添加备份中不同/不存在的记录，不覆盖个人偏好选项", fontSize = 12.sp, color = MaterialTheme.colorScheme.onSurfaceVariant)
+                                    }
+                                }
+                            }
+                        },
+                        confirmButton = {},
+                        dismissButton = {
+                            TextButton(onClick = { showWebDavRestoreConfirm = false }) {
+                                Text("取消")
+                            }
+                        }
+                    )
+                }
+            }
 
             // WebDAV Server Configuration Dialog
             if (showServerConfigDialog) {

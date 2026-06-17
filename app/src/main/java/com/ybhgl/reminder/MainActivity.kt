@@ -71,6 +71,7 @@ import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
@@ -720,6 +721,10 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: 
     }
 }
 
+enum class AutoBackupStatus {
+    IDLE, BACKUPING, SUCCESS, FAILED
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReminderListScreen(
@@ -733,6 +738,43 @@ fun ReminderListScreen(
     val lastBackupTimestamp by remember(context) { BackupPreferences.lastBackupTimestampFlow(context) }.collectAsState(initial = 0L)
     val lastDataChangeTimestamp by remember(context) { BackupPreferences.lastDataChangeTimestampFlow(context) }.collectAsState(initial = 0L)
     val showBackupAlert = backupReminderEnabled && lastDataChangeTimestamp > lastBackupTimestamp
+
+    val autoBackupLocalEnabled by remember(context) { BackupPreferences.autoBackupLocalEnabledFlow(context) }.collectAsState(initial = false)
+    val autoBackupWebDavEnabled by remember(context) { BackupPreferences.autoBackupWebDavEnabledFlow(context) }.collectAsState(initial = false)
+    val isAutoBackupActive = autoBackupLocalEnabled || autoBackupWebDavEnabled
+    var autoBackupStatus by remember { mutableStateOf(AutoBackupStatus.IDLE) }
+
+    val infiniteTransition = rememberInfiniteTransition(label = "AutoBackupBlink")
+    val autoBackupAlpha by infiniteTransition.animateFloat(
+        initialValue = 0.3f,
+        targetValue = 1.0f,
+        animationSpec = infiniteRepeatable(
+            animation = tween(durationMillis = 1000, easing = FastOutSlowInEasing),
+            repeatMode = RepeatMode.Reverse
+        ),
+        label = "AutoBackupAlpha"
+    )
+
+    LaunchedEffect(lastDataChangeTimestamp, lastBackupTimestamp, autoBackupLocalEnabled, autoBackupWebDavEnabled) {
+        if (isAutoBackupActive && lastDataChangeTimestamp > lastBackupTimestamp) {
+            if (autoBackupStatus == AutoBackupStatus.IDLE || autoBackupStatus == AutoBackupStatus.FAILED) {
+                autoBackupStatus = AutoBackupStatus.BACKUPING
+                kotlinx.coroutines.delay(500)
+                val appInstance = context.applicationContext as com.ybhgl.reminder.ReminderApplication
+                val repository = appInstance.container.reminderRepository
+                val success = BackupPreferences.triggerAutoBackup(context, repository)
+                if (success) {
+                    autoBackupStatus = AutoBackupStatus.SUCCESS
+                    kotlinx.coroutines.delay(3000)
+                    autoBackupStatus = AutoBackupStatus.IDLE
+                } else {
+                    autoBackupStatus = AutoBackupStatus.FAILED
+                }
+            }
+        } else if (!isAutoBackupActive) {
+            autoBackupStatus = AutoBackupStatus.IDLE
+        }
+    }
 
     var viewMode by rememberSaveable { mutableStateOf(ReminderViewMode.CARD) }
     var hasLoaded by remember { mutableStateOf(false) }
@@ -1003,13 +1045,49 @@ fun ReminderListScreen(
                         windowInsets = TopAppBarDefaults.windowInsets,
                         colors = topAppBarColors,
                         actions = {
-                            if (showBackupAlert) {
-                                IconButton(onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) }) {
-                                    Icon(
-                                        imageVector = Icons.Default.CloudUpload,
-                                        contentDescription = "需要备份",
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
+                            if (isAutoBackupActive) {
+                                when (autoBackupStatus) {
+                                    AutoBackupStatus.BACKUPING -> {
+                                        IconButton(
+                                            onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) },
+                                            modifier = Modifier.graphicsLayer { alpha = autoBackupAlpha }
+                                        ) {
+                                            Icon(
+                                                imageVector = Icons.Default.CloudUpload,
+                                                contentDescription = "正在自动备份",
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                    AutoBackupStatus.SUCCESS -> {
+                                        IconButton(onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) }) {
+                                            Icon(
+                                                imageVector = Icons.Default.CloudDone,
+                                                contentDescription = "自动备份成功",
+                                                tint = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                    }
+                                    AutoBackupStatus.FAILED -> {
+                                        IconButton(onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) }) {
+                                            Icon(
+                                                imageVector = Icons.Default.CloudUpload,
+                                                contentDescription = "自动备份失败",
+                                                tint = MaterialTheme.colorScheme.error
+                                            )
+                                        }
+                                    }
+                                    AutoBackupStatus.IDLE -> {}
+                                }
+                            } else {
+                                if (showBackupAlert) {
+                                    IconButton(onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) }) {
+                                        Icon(
+                                            imageVector = Icons.Default.CloudUpload,
+                                            contentDescription = "需要备份",
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
                             }
                             IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {

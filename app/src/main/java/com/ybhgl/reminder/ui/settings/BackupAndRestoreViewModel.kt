@@ -41,6 +41,38 @@ class BackupAndRestoreViewModel(
         BackupPreferences.saveBackupReminderEnabled(context, enabled)
     }
 
+    fun autoBackupLocalEnabledFlow(context: Context): Flow<Boolean> =
+        BackupPreferences.autoBackupLocalEnabledFlow(context)
+
+    suspend fun saveAutoBackupLocalEnabled(context: Context, enabled: Boolean) {
+        BackupPreferences.saveAutoBackupLocalEnabled(context, enabled)
+    }
+
+    fun autoBackupWebDavEnabledFlow(context: Context): Flow<Boolean> =
+        BackupPreferences.autoBackupWebDavEnabledFlow(context)
+
+    suspend fun saveAutoBackupWebDavEnabled(context: Context, enabled: Boolean) {
+        BackupPreferences.saveAutoBackupWebDavEnabled(context, enabled)
+    }
+
+    fun autoBackupMaxCountFlow(context: Context): Flow<Int> =
+        BackupPreferences.autoBackupMaxCountFlow(context)
+
+    suspend fun saveAutoBackupMaxCount(context: Context, count: Int) {
+        BackupPreferences.saveAutoBackupMaxCount(context, count)
+    }
+
+    fun autoBackupLocalPathFlow(context: Context): Flow<String> =
+        BackupPreferences.autoBackupLocalPathFlow(context)
+
+    suspend fun saveAutoBackupLocalPath(context: Context, path: String) {
+        BackupPreferences.saveAutoBackupLocalPath(context, path)
+    }
+
+    suspend fun triggerAutoBackupManually(context: Context): Boolean {
+        return BackupPreferences.triggerAutoBackup(context, reminderRepository)
+    }
+
     fun webDavServerFlow(context: Context): Flow<String> =
         BackupPreferences.webDavServerFlow(context)
 
@@ -341,6 +373,110 @@ class BackupAndRestoreViewModel(
             BackupPreferences.saveLastBackupTimestamp(context, System.currentTimeMillis())
 
             return "恢复完成，共导入 ${backupData.reminders.size} 条记录"
+        }
+    }
+
+    // 管理自动备份逻辑
+    suspend fun listLocalAutoBackups(context: Context): List<androidx.documentfile.provider.DocumentFile> = withContext(Dispatchers.IO) {
+        val pathStr = BackupPreferences.autoBackupLocalPathFlow(context).first()
+        if (pathStr.isBlank()) return@withContext emptyList()
+        return@withContext try {
+            val treeUri = android.net.Uri.parse(pathStr)
+            val pickedDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+            if (pickedDir != null && pickedDir.exists() && pickedDir.isDirectory) {
+                val autoDir = pickedDir.findFile("Auto")
+                if (autoDir != null && autoDir.exists() && autoDir.isDirectory) {
+                    autoDir.listFiles().filter { file ->
+                        file.isFile && file.name != null && file.name!!.startsWith("reminder-autobackup-") && file.name!!.endsWith(".json")
+                    }.sortedByDescending { it.name }
+                } else {
+                    emptyList()
+                }
+            } else {
+                emptyList()
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            emptyList()
+        }
+    }
+
+    suspend fun deleteLocalAutoBackupFile(context: Context, file: androidx.documentfile.provider.DocumentFile): Boolean = withContext(Dispatchers.IO) {
+        return@withContext try {
+            if (file.exists()) {
+                file.delete()
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+            false
+        }
+    }
+
+    suspend fun listWebDavAutoBackups(context: Context): Pair<List<WebDavFile>?, String> = withContext(Dispatchers.IO) {
+        val server = BackupPreferences.webDavServerFlow(context).first()
+        val username = BackupPreferences.webDavUsernameFlow(context).first()
+        val password = BackupPreferences.webDavPasswordFlow(context).first()
+        val path = BackupPreferences.webDavPathFlow(context).first()
+
+        if (server.isBlank() || username.isBlank() || password.isBlank()) {
+            return@withContext null to "请先设置 WebDAV 服务器信息"
+        }
+
+        val autoPath = if (path.endsWith("/")) "${path}Auto" else "$path/Auto"
+
+        return@withContext when (val result = WebDavClient.listFilesActual(server, username, password, autoPath)) {
+            is WebDavListResult.Success -> {
+                val sortedFiles = result.files.filter {
+                    it.name.startsWith("reminder-autobackup-") && it.name.endsWith(".json")
+                }.sortedByDescending { it.name }
+                sortedFiles to "获取成功"
+            }
+            is WebDavListResult.Failure -> {
+                null to "获取列表失败（码:${result.code}）: ${result.message}"
+            }
+        }
+    }
+
+    suspend fun restoreFromWebDavAutoBackup(context: Context, fileName: String, isSmartMerge: Boolean): String = withContext(Dispatchers.IO) {
+        val server = BackupPreferences.webDavServerFlow(context).first()
+        val username = BackupPreferences.webDavUsernameFlow(context).first()
+        val password = BackupPreferences.webDavPasswordFlow(context).first()
+        val path = BackupPreferences.webDavPathFlow(context).first()
+
+        if (server.isBlank() || username.isBlank() || password.isBlank()) {
+            return@withContext "请先设置 WebDAV 服务器信息"
+        }
+
+        val autoPath = if (path.endsWith("/")) "${path}Auto" else "$path/Auto"
+
+        return@withContext when (val result = WebDavClient.downloadFile(server, username, password, autoPath, fileName)) {
+            is WebDavDownloadResult.Success -> {
+                val backupData = parseBackupData(result.content) ?: return@withContext "恢复失败：文件格式不正确"
+                performRestore(context, backupData, isSmartMerge)
+            }
+            is WebDavDownloadResult.Failure -> {
+                "云端下载失败（码:${result.code}）"
+            }
+        }
+    }
+
+    suspend fun deleteWebDavAutoBackup(context: Context, fileName: String): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val server = BackupPreferences.webDavServerFlow(context).first()
+        val username = BackupPreferences.webDavUsernameFlow(context).first()
+        val password = BackupPreferences.webDavPasswordFlow(context).first()
+        val path = BackupPreferences.webDavPathFlow(context).first()
+
+        if (server.isBlank() || username.isBlank() || password.isBlank()) {
+            return@withContext false to "请先设置 WebDAV 服务器信息"
+        }
+
+        val autoPath = if (path.endsWith("/")) "${path}Auto" else "$path/Auto"
+
+        return@withContext when (val result = WebDavClient.deleteFile(server, username, password, autoPath, fileName)) {
+            is WebDavResult.Success -> true to "已删除备份文件"
+            is WebDavResult.Failure -> false to "删除失败（码:${result.code}）: ${result.message}"
         }
     }
 }
