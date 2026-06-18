@@ -355,6 +355,34 @@ fun ReminderApp() {
 
     val navController = rememberNavController()
 
+    val lastBackupTimestamp by remember(context) { BackupPreferences.lastBackupTimestampFlow(context) }.collectAsState(initial = 0L)
+    val lastDataChangeTimestamp by remember(context) { BackupPreferences.lastDataChangeTimestampFlow(context) }.collectAsState(initial = 0L)
+    val autoBackupLocalEnabled by remember(context) { BackupPreferences.autoBackupLocalEnabledFlow(context) }.collectAsState(initial = false)
+    val autoBackupWebDavEnabled by remember(context) { BackupPreferences.autoBackupWebDavEnabledFlow(context) }.collectAsState(initial = false)
+    val isAutoBackupActive = autoBackupLocalEnabled || autoBackupWebDavEnabled
+    var autoBackupStatus by remember { mutableStateOf(AutoBackupStatus.IDLE) }
+
+    LaunchedEffect(lastDataChangeTimestamp, autoBackupLocalEnabled, autoBackupWebDavEnabled) {
+        if (isAutoBackupActive && lastDataChangeTimestamp > lastBackupTimestamp) {
+            if (autoBackupStatus == AutoBackupStatus.IDLE || autoBackupStatus == AutoBackupStatus.FAILED) {
+                autoBackupStatus = AutoBackupStatus.BACKUPING
+                kotlinx.coroutines.delay(500)
+                val appInstance = context.applicationContext as com.ybhgl.reminder.ReminderApplication
+                val repository = appInstance.container.reminderRepository
+                val success = BackupPreferences.triggerAutoBackup(context, repository)
+                if (success) {
+                    autoBackupStatus = AutoBackupStatus.SUCCESS
+                    kotlinx.coroutines.delay(3000)
+                    autoBackupStatus = AutoBackupStatus.IDLE
+                } else {
+                    autoBackupStatus = AutoBackupStatus.FAILED
+                }
+            }
+        } else if (!isAutoBackupActive) {
+            autoBackupStatus = AutoBackupStatus.IDLE
+        }
+    }
+
     val activity = context as? MainActivity
     DisposableEffect(navController, activity) {
         val callback = { intent: Intent ->
@@ -405,7 +433,10 @@ fun ReminderApp() {
             }
         ) {
             composable(Routes.REMINDER_LIST) {
-                ReminderListScreen(navController = navController)
+                ReminderListScreen(
+                    navController = navController,
+                    autoBackupStatus = autoBackupStatus
+                )
             }
             composable(
                 route = Routes.ADD_REMINDER_PATTERN,
@@ -729,6 +760,7 @@ enum class AutoBackupStatus {
 @Composable
 fun ReminderListScreen(
     navController: NavController,
+    autoBackupStatus: AutoBackupStatus,
     modifier: Modifier = Modifier,
     viewModel: ReminderListViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
@@ -742,7 +774,6 @@ fun ReminderListScreen(
     val autoBackupLocalEnabled by remember(context) { BackupPreferences.autoBackupLocalEnabledFlow(context) }.collectAsState(initial = false)
     val autoBackupWebDavEnabled by remember(context) { BackupPreferences.autoBackupWebDavEnabledFlow(context) }.collectAsState(initial = false)
     val isAutoBackupActive = autoBackupLocalEnabled || autoBackupWebDavEnabled
-    var autoBackupStatus by remember { mutableStateOf(AutoBackupStatus.IDLE) }
 
     val infiniteTransition = rememberInfiniteTransition(label = "AutoBackupBlink")
     val autoBackupAlpha by infiniteTransition.animateFloat(
@@ -754,27 +785,6 @@ fun ReminderListScreen(
         ),
         label = "AutoBackupAlpha"
     )
-
-    LaunchedEffect(lastDataChangeTimestamp, lastBackupTimestamp, autoBackupLocalEnabled, autoBackupWebDavEnabled) {
-        if (isAutoBackupActive && lastDataChangeTimestamp > lastBackupTimestamp) {
-            if (autoBackupStatus == AutoBackupStatus.IDLE || autoBackupStatus == AutoBackupStatus.FAILED) {
-                autoBackupStatus = AutoBackupStatus.BACKUPING
-                kotlinx.coroutines.delay(500)
-                val appInstance = context.applicationContext as com.ybhgl.reminder.ReminderApplication
-                val repository = appInstance.container.reminderRepository
-                val success = BackupPreferences.triggerAutoBackup(context, repository)
-                if (success) {
-                    autoBackupStatus = AutoBackupStatus.SUCCESS
-                    kotlinx.coroutines.delay(3000)
-                    autoBackupStatus = AutoBackupStatus.IDLE
-                } else {
-                    autoBackupStatus = AutoBackupStatus.FAILED
-                }
-            }
-        } else if (!isAutoBackupActive) {
-            autoBackupStatus = AutoBackupStatus.IDLE
-        }
-    }
 
     var viewMode by rememberSaveable { mutableStateOf(ReminderViewMode.CARD) }
     var hasLoaded by remember { mutableStateOf(false) }
