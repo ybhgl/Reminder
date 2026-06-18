@@ -145,6 +145,12 @@ fun BackupAndRestoreScreen(
     var showLocalRestoreConfirmDialog by remember { mutableStateOf(false) }
     var pendingLocalRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
 
+    // Auto folder confirmation dialog states
+    var showAutoFolderConfirmDialog by remember { mutableStateOf(false) }
+    var autoFolderConfirmTitle by remember { mutableStateOf("") }
+    var autoFolderConfirmMessage by remember { mutableStateOf("") }
+    var onAutoFolderConfirm by remember { mutableStateOf<(() -> Unit)?>(null) }
+
     // Cloud recovery files list state
     var cloudFiles by remember { mutableStateOf<List<WebDavFile>?>(null) }
     var cloudFilesError by remember { mutableStateOf("") }
@@ -191,8 +197,21 @@ fun BackupAndRestoreScreen(
                 val takeFlags = android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION or android.content.Intent.FLAG_GRANT_WRITE_URI_PERMISSION
                 context.contentResolver.takePersistableUriPermission(uri, takeFlags)
                 coroutineScope.launch {
-                    viewModel.saveAutoBackupLocalPath(context, uri.toString())
-                    CustomToast.showSuccess(context, "自动备份目录设置成功")
+                    val exists = viewModel.checkLocalAutoFolderExists(context, uri.toString())
+                    if (exists) {
+                        autoFolderConfirmTitle = "确认选择目录"
+                        autoFolderConfirmMessage = "检测到选择的目录下已存在 'Auto' 文件夹，是否确认选择该目录？"
+                        onAutoFolderConfirm = {
+                            coroutineScope.launch {
+                                viewModel.saveAutoBackupLocalPath(context, uri.toString())
+                                CustomToast.showSuccess(context, "已开启本地自动备份")
+                            }
+                        }
+                        showAutoFolderConfirmDialog = true
+                    } else {
+                        viewModel.saveAutoBackupLocalPath(context, uri.toString())
+                        CustomToast.showSuccess(context, "已开启本地自动备份")
+                    }
                 }
             } catch (e: Exception) {
                 CustomToast.showError(context, "授权失败：${e.localizedMessage}")
@@ -387,9 +406,62 @@ fun BackupAndRestoreScreen(
                                         onCheckedChange = { isChecked ->
                                             coroutineScope.launch {
                                                 if (index == 0) {
-                                                    viewModel.saveAutoBackupLocalEnabled(context, isChecked)
+                                                    if (isChecked) {
+                                                        if (autoBackupLocalPath.isNotBlank()) {
+                                                            isProcessing = true
+                                                            val exists = viewModel.checkLocalAutoFolderExists(context, autoBackupLocalPath)
+                                                            isProcessing = false
+                                                            if (exists) {
+                                                                autoFolderConfirmTitle = "文件夹冲突"
+                                                                autoFolderConfirmMessage = "检测到当前备份目录中已存在 'Auto' 文件夹，是否确认开启自动备份并使用该目录？"
+                                                                onAutoFolderConfirm = {
+                                                                    coroutineScope.launch {
+                                                                        viewModel.saveAutoBackupLocalEnabled(context, true)
+                                                                    }
+                                                                }
+                                                                showAutoFolderConfirmDialog = true
+                                                            } else {
+                                                                viewModel.saveAutoBackupLocalEnabled(context, true)
+                                                            }
+                                                        } else {
+                                                            viewModel.saveAutoBackupLocalEnabled(context, true)
+                                                        }
+                                                    } else {
+                                                        viewModel.saveAutoBackupLocalEnabled(context, false)
+                                                    }
                                                 } else {
-                                                    viewModel.saveAutoBackupWebDavEnabled(context, isChecked)
+                                                    if (isChecked) {
+                                                        if (isWebDavConfigured) {
+                                                            isProcessing = true
+                                                            val exists = viewModel.checkWebDavAutoFolderExists(context)
+                                                            isProcessing = false
+                                                            if (exists) {
+                                                                autoFolderConfirmTitle = "文件夹冲突"
+                                                                autoFolderConfirmMessage = "检测到 WebDAV 云端目录下已存在 'Auto' 文件夹，是否确认开启自动备份并使用该目录？"
+                                                                onAutoFolderConfirm = {
+                                                                    coroutineScope.launch {
+                                                                        viewModel.saveAutoBackupWebDavEnabled(context, true)
+                                                                        CustomToast.showSuccess(context, "已开启 WebDAV 自动备份")
+                                                                    }
+                                                                }
+                                                                showAutoFolderConfirmDialog = true
+                                                            } else {
+                                                                isProcessing = true
+                                                                val (success, msg) = viewModel.checkAndCreateWebDavAutoFolder(context)
+                                                                isProcessing = false
+                                                                if (success) {
+                                                                    viewModel.saveAutoBackupWebDavEnabled(context, true)
+                                                                    CustomToast.showSuccess(context, "已创建 'Auto' 目录并开启 WebDAV 自动备份")
+                                                                } else {
+                                                                    CustomToast.showError(context, msg)
+                                                                }
+                                                            }
+                                                        } else {
+                                                            CustomToast.showError(context, "请先配置 WebDAV 服务器信息")
+                                                        }
+                                                    } else {
+                                                        viewModel.saveAutoBackupWebDavEnabled(context, false)
+                                                    }
                                                 }
                                             }
                                         },
@@ -1403,6 +1475,34 @@ fun BackupAndRestoreScreen(
                     )
                 }
             }
+            
+            // Auto Folder Existing Confirmation Dialog
+            if (showAutoFolderConfirmDialog) {
+                AlertDialog(
+                    onDismissRequest = { showAutoFolderConfirmDialog = false },
+                    title = { Text(autoFolderConfirmTitle, fontWeight = FontWeight.SemiBold) },
+                    text = { Text(autoFolderConfirmMessage) },
+                    confirmButton = {
+                        Button(
+                            onClick = {
+                                showAutoFolderConfirmDialog = false
+                                onAutoFolderConfirm?.invoke()
+                            }
+                        ) {
+                            Text("确认")
+                        }
+                    },
+                    dismissButton = {
+                        TextButton(
+                            onClick = {
+                                showAutoFolderConfirmDialog = false
+                            }
+                        ) {
+                            Text("取消")
+                        }
+                    }
+                )
+            }
 
             // WebDAV Server Configuration Dialog
             if (showServerConfigDialog) {
@@ -1462,15 +1562,37 @@ fun BackupAndRestoreScreen(
                         Button(
                             onClick = {
                                 coroutineScope.launch {
+                                    val server = serverInput.trim()
+                                    val username = usernameInput.trim()
+                                    val password = passwordInput.trim()
+                                    val path = pathInput.trim().ifBlank { "reminder_backups" }
+
                                     viewModel.saveWebDavSettings(
                                         context,
-                                        serverInput.trim(),
-                                        usernameInput.trim(),
-                                        passwordInput.trim(),
-                                        pathInput.trim().ifBlank { "reminder_backups" }
+                                        server,
+                                        username,
+                                        password,
+                                        path
                                     )
                                     showServerConfigDialog = false
                                     CustomToast.showSuccess(context, "设置已保存")
+
+                                    if (autoBackupWebDavEnabled) {
+                                        isProcessing = true
+                                        val (success, msg) = viewModel.checkAndCreateWebDavAutoFolder(
+                                            context,
+                                            server,
+                                            username,
+                                            password,
+                                            path
+                                        )
+                                        isProcessing = false
+                                        if (success) {
+                                            
+                                        } else {
+                                            CustomToast.showError(context, msg)
+                                        }
+                                    }
                                 }
                             }
                         ) {

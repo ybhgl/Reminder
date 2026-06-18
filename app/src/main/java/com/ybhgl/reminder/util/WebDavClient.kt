@@ -202,6 +202,11 @@ object WebDavClient {
         }
     }
 
+    fun checkDirectoryExists(serverUrl: String, username: String, password: String, path: String): WebDavResult {
+        val dirUrl = buildFullUrl(serverUrl, path)
+        return listFilesInternal(dirUrl, username, password)
+    }
+
     fun listFilesActual(serverUrl: String, username: String, password: String, path: String): WebDavListResult {
         val dirUrl = buildFullUrl(serverUrl, path)
         var connection: HttpURLConnection? = null

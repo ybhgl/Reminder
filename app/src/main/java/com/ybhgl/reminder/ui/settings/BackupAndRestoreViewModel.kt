@@ -237,6 +237,78 @@ class BackupAndRestoreViewModel(
         }
     }
 
+    suspend fun checkAndCreateWebDavAutoFolder(
+        context: Context,
+        server: String? = null,
+        username: String? = null,
+        password: String? = null,
+        path: String? = null
+    ): Pair<Boolean, String> = withContext(Dispatchers.IO) {
+        val finalServer = server ?: BackupPreferences.webDavServerFlow(context).first()
+        val finalUsername = username ?: BackupPreferences.webDavUsernameFlow(context).first()
+        val finalPassword = password ?: BackupPreferences.webDavPasswordFlow(context).first()
+        val finalPath = path ?: BackupPreferences.webDavPathFlow(context).first()
+
+        if (finalServer.isBlank() || finalUsername.isBlank() || finalPassword.isBlank()) {
+            return@withContext false to "请先设置 WebDAV 服务器信息"
+        }
+
+        val autoPath = if (finalPath.endsWith("/")) "${finalPath}Auto" else "$finalPath/Auto"
+        return@withContext when (val result = WebDavClient.testConnection(finalServer, finalUsername, finalPassword, autoPath)) {
+            is WebDavResult.Success -> true to "Auto 文件夹已存在或创建成功"
+            is WebDavResult.Failure -> {
+                val explanation = when (result.code) {
+                    401 -> "用户名或密码错误"
+                    403 -> "服务器拒绝访问，请检查权限"
+                    404 -> "无法找到该路径，请确保服务器地址正确"
+                    -1 -> "连接超时，请检查网络"
+                    -2 -> "无法解析该服务器地址，请检查格式"
+                    else -> result.message.ifBlank { "未知服务器错误" }
+                }
+                false to "检查/创建 Auto 文件夹失败（错误码: ${result.code}）：$explanation"
+            }
+        }
+    }
+
+    suspend fun checkLocalAutoFolderExists(context: Context, pathStr: String): Boolean = withContext(Dispatchers.IO) {
+        if (pathStr.isBlank()) return@withContext false
+        return@withContext try {
+            val treeUri = android.net.Uri.parse(pathStr)
+            val pickedDir = androidx.documentfile.provider.DocumentFile.fromTreeUri(context, treeUri)
+            if (pickedDir != null && pickedDir.exists() && pickedDir.isDirectory) {
+                val autoDir = pickedDir.findFile("Auto")
+                autoDir != null && autoDir.exists() && autoDir.isDirectory
+            } else {
+                false
+            }
+        } catch (e: Exception) {
+            false
+        }
+    }
+
+    suspend fun checkWebDavAutoFolderExists(
+        context: Context,
+        server: String? = null,
+        username: String? = null,
+        password: String? = null,
+        path: String? = null
+    ): Boolean = withContext(Dispatchers.IO) {
+        val finalServer = server ?: BackupPreferences.webDavServerFlow(context).first()
+        val finalUsername = username ?: BackupPreferences.webDavUsernameFlow(context).first()
+        val finalPassword = password ?: BackupPreferences.webDavPasswordFlow(context).first()
+        val finalPath = path ?: BackupPreferences.webDavPathFlow(context).first()
+
+        if (finalServer.isBlank() || finalUsername.isBlank() || finalPassword.isBlank()) {
+            return@withContext false
+        }
+
+        val autoPath = if (finalPath.endsWith("/")) "${finalPath}Auto" else "$finalPath/Auto"
+        return@withContext when (WebDavClient.checkDirectoryExists(finalServer, finalUsername, finalPassword, autoPath)) {
+            is WebDavResult.Success -> true
+            is WebDavResult.Failure -> false
+        }
+    }
+
     suspend fun listWebDavBackups(context: Context): Pair<List<WebDavFile>?, String> = withContext(Dispatchers.IO) {
         val server = BackupPreferences.webDavServerFlow(context).first()
         val username = BackupPreferences.webDavUsernameFlow(context).first()
