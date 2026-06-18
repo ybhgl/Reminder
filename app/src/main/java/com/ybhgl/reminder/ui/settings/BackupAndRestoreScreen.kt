@@ -199,7 +199,7 @@ fun BackupAndRestoreScreen(
                 coroutineScope.launch {
                     val exists = viewModel.checkLocalAutoFolderExists(context, uri.toString())
                     if (exists) {
-                        autoFolderConfirmTitle = "确认选择目录"
+                        autoFolderConfirmTitle = "文件夹冲突"
                         autoFolderConfirmMessage = "检测到选择的目录下已存在 'Auto' 文件夹，是否确认选择该目录？"
                         onAutoFolderConfirm = {
                             coroutineScope.launch {
@@ -417,14 +417,18 @@ fun BackupAndRestoreScreen(
                                                                 onAutoFolderConfirm = {
                                                                     coroutineScope.launch {
                                                                         viewModel.saveAutoBackupLocalEnabled(context, true)
+                                                                        CustomToast.showSuccess(context, "已开启本地自动备份")
                                                                     }
                                                                 }
                                                                 showAutoFolderConfirmDialog = true
                                                             } else {
                                                                 viewModel.saveAutoBackupLocalEnabled(context, true)
+                                                                CustomToast.showSuccess(context, "已开启本地自动备份")
                                                             }
                                                         } else {
                                                             viewModel.saveAutoBackupLocalEnabled(context, true)
+                                                            autoBackupDirLauncher.launch(null) 
+                                                            CustomToast.showError(context, "请选择本地备份目录")
                                                         }
                                                     } else {
                                                         viewModel.saveAutoBackupLocalEnabled(context, false)
@@ -451,7 +455,7 @@ fun BackupAndRestoreScreen(
                                                                 isProcessing = false
                                                                 if (success) {
                                                                     viewModel.saveAutoBackupWebDavEnabled(context, true)
-                                                                    CustomToast.showSuccess(context, "已创建 'Auto' 目录并开启 WebDAV 自动备份")
+                                                                    CustomToast.showSuccess(context, "已开启 WebDAV 自动备份")
                                                                 } else {
                                                                     CustomToast.showError(context, msg)
                                                                 }
