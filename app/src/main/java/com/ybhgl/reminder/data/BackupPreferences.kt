@@ -247,13 +247,13 @@ object BackupPreferences {
         }
     }
 
-    suspend fun triggerAutoBackup(context: Context, reminderRepository: ReminderRepository): Boolean {
+    suspend fun triggerAutoBackup(context: Context, reminderRepository: ReminderRepository): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val isLocalEnabled = autoBackupLocalEnabledFlow(context).first()
         val isWebDavEnabled = autoBackupWebDavEnabledFlow(context).first()
-        if (!isLocalEnabled && !isWebDavEnabled) return false
+        if (!isLocalEnabled && !isWebDavEnabled) return@withContext false
 
         val reminders = reminderRepository.getAllRemindersStream().first()
-        if (reminders.isEmpty()) return false
+        if (reminders.isEmpty()) return@withContext false
 
         val themeOption = themeOptionFlow(context).first()
         val pureBlackEnabled = pureBlackFlow(context).first()
@@ -388,6 +388,6 @@ object BackupPreferences {
         if (totalSuccess) {
             saveLastBackupTimestamp(context, System.currentTimeMillis())
         }
-        return totalSuccess
+        totalSuccess
     }
 }
