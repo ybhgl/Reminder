@@ -369,13 +369,17 @@ fun ReminderApp() {
                 kotlinx.coroutines.delay(500)
                 val appInstance = context.applicationContext as com.ybhgl.reminder.ReminderApplication
                 val repository = appInstance.container.reminderRepository
-                val success = BackupPreferences.triggerAutoBackup(context, repository)
-                if (success) {
+                val result = BackupPreferences.triggerAutoBackup(context, repository)
+                if (result.success) {
                     autoBackupStatus = AutoBackupStatus.SUCCESS
                     kotlinx.coroutines.delay(3000)
                     autoBackupStatus = AutoBackupStatus.IDLE
                 } else {
                     autoBackupStatus = AutoBackupStatus.FAILED
+                    com.ybhgl.reminder.ui.common.CustomToast.showError(
+                        context = context,
+                        message = "自动备份失败: ${result.errorMessage ?: "未知错误"}"
+                    )
                 }
             }
         } else if (!isAutoBackupActive) {

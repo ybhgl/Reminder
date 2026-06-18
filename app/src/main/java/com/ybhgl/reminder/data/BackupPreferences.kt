@@ -36,6 +36,11 @@ private val Context.backupDataStore: DataStore<Preferences> by preferencesDataSt
     name = BACKUP_DATA_STORE_NAME
 )
 
+data class AutoBackupResult(
+    val success: Boolean,
+    val errorMessage: String? = null
+)
+
 object BackupPreferences {
 
     fun backupReminderEnabledFlow(context: Context): Flow<Boolean> =
@@ -247,13 +252,13 @@ object BackupPreferences {
         }
     }
 
-    suspend fun triggerAutoBackup(context: Context, reminderRepository: ReminderRepository): Boolean = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    suspend fun triggerAutoBackup(context: Context, reminderRepository: ReminderRepository): AutoBackupResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         val isLocalEnabled = autoBackupLocalEnabledFlow(context).first()
         val isWebDavEnabled = autoBackupWebDavEnabledFlow(context).first()
-        if (!isLocalEnabled && !isWebDavEnabled) return@withContext false
+        if (!isLocalEnabled && !isWebDavEnabled) return@withContext AutoBackupResult(success = false, errorMessage = "自动备份未开启")
 
         val reminders = reminderRepository.getAllRemindersStream().first()
-        if (reminders.isEmpty()) return@withContext false
+        if (reminders.isEmpty()) return@withContext AutoBackupResult(success = false, errorMessage = "无提醒事项数据，不进行备份")
 
         val themeOption = themeOptionFlow(context).first()
         val pureBlackEnabled = pureBlackFlow(context).first()
@@ -287,12 +292,15 @@ object BackupPreferences {
         val fileName = "reminder-autobackup-$timestamp"
 
         var localSuccess = true
+        var localError: String? = null
         var webDavSuccess = true
+        var webDavError: String? = null
 
         if (isLocalEnabled) {
             val localPathStr = autoBackupLocalPathFlow(context).first()
             if (localPathStr.isBlank()) {
                 localSuccess = false
+                localError = "本地备份路径为空"
             } else {
                 try {
                     val treeUri = android.net.Uri.parse(localPathStr)
@@ -302,34 +310,45 @@ object BackupPreferences {
                         if (autoDir != null && autoDir.exists() && autoDir.isDirectory) {
                             val newFile = autoDir.createFile("application/json", fileName)
                             if (newFile != null) {
-                                context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
-                                    output.write(json.toByteArray(Charsets.UTF_8))
-                                    output.flush()
+                                try {
+                                    context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
+                                        output.write(json.toByteArray(Charsets.UTF_8))
+                                        output.flush()
+                                    }
+                                } catch (e: Exception) {
+                                    localSuccess = false
+                                    localError = "本地文件写入失败: ${e.localizedMessage}"
                                 }
-                                
-                                val allFiles = autoDir.listFiles()
-                                val autoBackupFiles = allFiles.filter { file ->
-                                    file.isFile && file.name != null && file.name!!.startsWith("reminder-autobackup-") && file.name!!.endsWith(".json")
-                                }.sortedBy { it.name }
 
-                                if (autoBackupFiles.size > maxCount) {
-                                    val filesToDeleteCount = autoBackupFiles.size - maxCount
-                                    for (i in 0 until filesToDeleteCount) {
-                                        autoBackupFiles[i].delete()
+                                if (localSuccess) {
+                                    val allFiles = autoDir.listFiles()
+                                    val autoBackupFiles = allFiles.filter { file ->
+                                        file.isFile && file.name != null && file.name!!.startsWith("reminder-autobackup-") && file.name!!.endsWith(".json")
+                                    }.sortedBy { it.name }
+
+                                    if (autoBackupFiles.size > maxCount) {
+                                        val filesToDeleteCount = autoBackupFiles.size - maxCount
+                                        for (i in 0 until filesToDeleteCount) {
+                                            autoBackupFiles[i].delete()
+                                        }
                                     }
                                 }
                             } else {
                                 localSuccess = false
+                                localError = "创建本地备份文件失败"
                             }
                         } else {
                             localSuccess = false
+                            localError = "创建或访问本地 'Auto' 目录失败"
                         }
                     } else {
                         localSuccess = false
+                        localError = "本地备份目录不存在或无访问权限"
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     localSuccess = false
+                    localError = e.localizedMessage ?: "本地备份发生未知异常"
                 }
             }
         }
@@ -337,6 +356,7 @@ object BackupPreferences {
         if (isWebDavEnabled) {
             if (webDavServer.isBlank() || webDavUsername.isBlank() || webDavPassword.isBlank()) {
                 webDavSuccess = false
+                webDavError = "WebDAV 配置信息不完整"
             } else {
                 try {
                     val fullFileName = "$fileName.json"
@@ -374,20 +394,36 @@ object BackupPreferences {
                                 }
                             }
                         }
+                    } else if (result is com.ybhgl.reminder.util.WebDavResult.Failure) {
+                        webDavSuccess = false
+                        webDavError = "WebDAV 上传失败: ${result.message}"
                     } else {
                         webDavSuccess = false
+                        webDavError = "WebDAV 上传发生未知错误"
                     }
                 } catch (e: Exception) {
                     e.printStackTrace()
                     webDavSuccess = false
+                    webDavError = e.localizedMessage ?: "WebDAV 备份发生未知异常"
                 }
             }
         }
 
         val totalSuccess = (!isLocalEnabled || localSuccess) && (!isWebDavEnabled || webDavSuccess)
+        var errorMsg: String? = null
+        if (!totalSuccess) {
+            val errors = mutableListOf<String>()
+            if (isLocalEnabled && !localSuccess) {
+                errors.add(localError ?: "本地备份失败")
+            }
+            if (isWebDavEnabled && !webDavSuccess) {
+                errors.add(webDavError ?: "WebDAV 备份失败")
+            }
+            errorMsg = errors.joinToString("; ")
+        }
         if (totalSuccess) {
             saveLastBackupTimestamp(context, System.currentTimeMillis())
         }
-        totalSuccess
+        AutoBackupResult(success = totalSuccess, errorMessage = errorMsg)
     }
 }

@@ -70,7 +70,7 @@ class BackupAndRestoreViewModel(
     }
 
     suspend fun triggerAutoBackupManually(context: Context): Boolean {
-        return BackupPreferences.triggerAutoBackup(context, reminderRepository)
+        return BackupPreferences.triggerAutoBackup(context, reminderRepository).success
     }
 
     fun webDavServerFlow(context: Context): Flow<String> =
