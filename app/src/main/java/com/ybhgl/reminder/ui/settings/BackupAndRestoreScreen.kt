@@ -877,7 +877,9 @@ fun BackupAndRestoreScreen(
             // --- ALL DIALOGS IMPLEMENTATION ---
 
             if (showAutoBackupManagerDialog) {
-                var selectedDialogTab by remember { mutableStateOf(0) }
+                var selectedDialogTab by remember {
+                    mutableStateOf(if (autoBackupWebDavEnabled && !autoBackupLocalEnabled) 1 else 0)
+                }
                 
                 var localAutoFiles by remember { mutableStateOf<List<androidx.documentfile.provider.DocumentFile>?>(null) }
                 var isLoadingLocalAuto by remember { mutableStateOf(false) }
