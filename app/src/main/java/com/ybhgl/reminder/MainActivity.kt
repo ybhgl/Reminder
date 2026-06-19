@@ -1002,10 +1002,10 @@ fun ReminderListScreen(
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
 
-    val customNestedScrollConnection = remember(topBarHeightPx) {
+    val customNestedScrollConnection = remember(topBarHeightPx, isSearchActive) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (topBarHeightPx > 0f) {
+                if (!isSearchActive && topBarHeightPx > 0f) {
                     val delta = available.y
                     val oldOffset = titleOffsetPx
                     val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
