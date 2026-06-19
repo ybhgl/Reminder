@@ -166,6 +166,7 @@ import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.AddReminderScreen
 import com.ybhgl.reminder.ui.add.ReminderSettingScreen
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
+import com.ybhgl.reminder.ui.add.FlexibleDateFilterDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
@@ -318,34 +319,148 @@ class MainActivity : ComponentActivity() {
 }
 
 data class SearchDateFilter(
-    val year: Int? = null,
-    val month: Int? = null,
-    val day: Int? = null,
+    val startYear: Int? = null,
+    val startMonth: Int? = null,
+    val startDay: Int? = null,
+    
+    val endYear: Int? = null,
+    val endMonth: Int? = null,
+    val endDay: Int? = null,
+    
     val isLunar: Boolean = false
-)
+) {
+    val isRangeMode: Boolean
+        get() = endYear != null || endMonth != null || endDay != null
+}
 
 fun matchDateFilter(itemDate: java.time.LocalDate, filter: SearchDateFilter): Boolean {
-    if (filter.isLunar) {
-        try {
-            val solar = com.tyme.solar.SolarDay.fromYmd(itemDate.year, itemDate.monthValue, itemDate.dayOfMonth)
-            val lunar = solar.getLunarDay()
-            val lunarYear = lunar.getYear()
-            val lunarMonthObj = lunar.getLunarMonth()
-            val lunarMonth = lunarMonthObj?.getMonthWithLeap() ?: lunar.getMonth()
-            val lunarDay = lunar.getDay()
-            
-            val yearMatch = filter.year == null || filter.year == lunarYear
-            val monthMatch = filter.month == null || filter.month == lunarMonth
-            val dayMatch = filter.day == null || filter.day == lunarDay
-            return yearMatch && monthMatch && dayMatch
-        } catch (e: Exception) {
-            return false
+    val startYr = filter.startYear
+    val startM = filter.startMonth
+    val startD = filter.startDay
+    val endYr = filter.endYear
+    val endM = filter.endMonth
+    val endD = filter.endDay
+
+    val isStartComplete = startYr != null && startM != null && startD != null
+    val isEndComplete = endYr != null && endM != null && endD != null
+
+    if (filter.isRangeMode) {
+        // A. 如果年、月、日全部填全，代表具体连续日期时间轴范围比对
+        if (isStartComplete && isEndComplete) {
+            if (filter.isLunar) {
+                try {
+                    val lunarStart = com.tyme.lunar.LunarDay.fromYmd(startYr!!, startM!!, startD!!)
+                    val solarStart = lunarStart.getSolarDay()
+                    val start = java.time.LocalDate.of(solarStart.getYear(), solarStart.getMonth(), solarStart.getDay())
+                    
+                    val lunarEnd = com.tyme.lunar.LunarDay.fromYmd(endYr!!, endM!!, endD!!)
+                    val solarEnd = lunarEnd.getSolarDay()
+                    val end = java.time.LocalDate.of(solarEnd.getYear(), solarEnd.getMonth(), solarEnd.getDay())
+                    
+                    return !itemDate.isBefore(start) && !itemDate.isAfter(end)
+                } catch (e: Exception) {
+                    return false
+                }
+            } else {
+                try {
+                    val start = java.time.LocalDate.of(startYr!!, startM!!, startD!!)
+                    val end = java.time.LocalDate.of(endYr!!, endM!!, endD!!)
+                    return !itemDate.isBefore(start) && !itemDate.isAfter(end)
+                } catch (e: Exception) {
+                    return false
+                }
+            }
+        } else {
+            // B. 存在部分留空的“分维度独立范围比对”
+            if (filter.isLunar) {
+                try {
+                    val solar = com.tyme.solar.SolarDay.fromYmd(itemDate.year, itemDate.monthValue, itemDate.dayOfMonth)
+                    val lunar = solar.getLunarDay()
+                    val lunarYear = lunar.getYear()
+                    val lunarMonthObj = lunar.getLunarMonth()
+                    val lunarMonth = lunarMonthObj?.getMonthWithLeap() ?: lunar.getMonth()
+                    val lunarDay = lunar.getDay()
+
+                    val yearOk = if (startYr != null && endYr != null) {
+                        lunarYear in startYr..endYr
+                    } else if (startYr != null) {
+                        lunarYear == startYr
+                    } else if (endYr != null) {
+                        lunarYear == endYr
+                    } else true
+
+                    val monthOk = if (startM != null && endM != null) {
+                        lunarMonth in startM..endM
+                    } else if (startM != null) {
+                        lunarMonth == startM
+                    } else if (endM != null) {
+                        lunarMonth == endM
+                    } else true
+
+                    val dayOk = if (startD != null && endD != null) {
+                        lunarDay in startD..endD
+                    } else if (startD != null) {
+                        lunarDay == startD
+                    } else if (endD != null) {
+                        lunarDay == endD
+                    } else true
+
+                    return yearOk && monthOk && dayOk
+                } catch (e: Exception) {
+                    return false
+                }
+            } else {
+                val yearOk = if (startYr != null && endYr != null) {
+                    itemDate.year in startYr..endYr
+                } else if (startYr != null) {
+                    itemDate.year == startYr
+                } else if (endYr != null) {
+                    itemDate.year == endYr
+                } else true
+
+                val monthOk = if (startM != null && endM != null) {
+                    itemDate.monthValue in startM..endM
+                } else if (startM != null) {
+                    itemDate.monthValue == startM
+                } else if (endM != null) {
+                    itemDate.monthValue == endM
+                } else true
+
+                val dayOk = if (startD != null && endD != null) {
+                    itemDate.dayOfMonth in startD..endD
+                } else if (startD != null) {
+                    itemDate.dayOfMonth == startD
+                } else if (endD != null) {
+                    itemDate.dayOfMonth == endD
+                } else true
+
+                return yearOk && monthOk && dayOk
+            }
         }
     } else {
-        val yearMatch = filter.year == null || filter.year == itemDate.year
-        val monthMatch = filter.month == null || filter.month == itemDate.monthValue
-        val dayMatch = filter.day == null || filter.day == itemDate.dayOfMonth
-        return yearMatch && monthMatch && dayMatch
+        // C. 单行模糊过滤 (第二行全空)
+        if (filter.isLunar) {
+            try {
+                val solar = com.tyme.solar.SolarDay.fromYmd(itemDate.year, itemDate.monthValue, itemDate.dayOfMonth)
+                val lunar = solar.getLunarDay()
+                val lunarYear = lunar.getYear()
+                val lunarMonthObj = lunar.getLunarMonth()
+                val lunarMonth = lunarMonthObj?.getMonthWithLeap() ?: lunar.getMonth()
+                val lunarDay = lunar.getDay()
+                
+                val yearMatch = startYr == null || startYr == lunarYear
+                val monthMatch = startM == null || startM == lunarMonth
+                val dayMatch = startD == null || startD == lunarDay
+                return yearMatch && monthMatch && dayMatch
+            } catch (e: Exception) {
+                return false
+            }
+        } else {
+            val yearMatch = startYr == null || startYr == itemDate.year
+            val monthMatch = startM == null || startM == itemDate.monthValue
+            val dayMatch = startD == null || startD == itemDate.dayOfMonth
+            return yearMatch && monthMatch && dayMatch
+        }
     }
 }
 
@@ -1426,15 +1541,11 @@ fun ReminderListScreen(
             }
 
             if (showDatePicker) {
-                UnifiedDatePickerDialog(
-                    initialDate = java.time.LocalDate.now(),
-                    initialIsLunar = selectedDateFilter?.isLunar ?: false,
-                    supportFlexibleFilter = true,
+                FlexibleDateFilterDialog(
                     initialFilter = selectedDateFilter,
                     onDismissRequest = { showDatePicker = false },
-                    onConfirm = { _, _ -> },
-                    onFilterConfirm = { year, month, day, isLunar ->
-                        selectedDateFilter = SearchDateFilter(year, month, day, isLunar)
+                    onConfirm = { filter ->
+                        selectedDateFilter = filter
                         showDatePicker = false
                     }
                 )
@@ -2014,26 +2125,56 @@ class CircularRevealShape(
     }
 }
 
-private val SEARCH_LUNAR_DAY_STRINGS = arrayOf(
-    "初一", "初二", "初三", "初四", "初五",
-    "初六", "初七", "初八", "初九", "初十",
-    "十一", "十二", "十三", "十四", "十五",
-    "十六", "十七", "十八", "十九", "二十",
-    "廿一", "廿二", "廿三", "廿四", "廿五",
-    "廿六", "廿七", "廿八", "廿九", "三十"
-)
-
 fun formatSearchDateFilter(filter: SearchDateFilter): String {
-    val yrStr = if (filter.year != null) "${filter.year}年" else ""
-    val mStr = if (filter.month != null) "${filter.month}月" else ""
-    val dStr = if (filter.day != null) {
-        if (filter.isLunar) {
-            SEARCH_LUNAR_DAY_STRINGS.getOrNull(filter.day - 1) ?: "${filter.day}日"
-        } else "${filter.day}日"
-    } else ""
-    val typeStr = if (filter.isLunar) " (农历)" else ""
-    val combined = listOf(yrStr, mStr, dStr).filter { it.isNotEmpty() }.joinToString("")
-    return if (combined.isEmpty()) "不限" else combined + typeStr
+    val sYr = filter.startYear
+    val sM = filter.startMonth
+    val sD = filter.startDay
+    val eYr = filter.endYear
+    val eM = filter.endMonth
+    val eD = filter.endDay
+
+    val isStartComplete = sYr != null && sM != null && sD != null
+    val isEndComplete = eYr != null && eM != null && eD != null
+
+    if (filter.isRangeMode) {
+        // 1. 如果起止年、月、日全齐，显示完整的连续日期区间
+        if (isStartComplete && isEndComplete) {
+            return "${sYr}-${String.format("%02d", sM)}-${String.format("%02d", sD)} 至 ${eYr}-${String.format("%02d", eM)}-${String.format("%02d", eD)}"
+        }
+        
+        // 2. 否则，将各个具有起止范围的维度用 “至” 拼接表示
+        val parts = mutableListOf<String>()
+        
+        // 年份范围
+        if (sYr != null && eYr != null) {
+            if (sYr == eYr) parts.add("${sYr}年") else parts.add("${sYr} 至 ${eYr}年")
+        } else if (sYr != null) {
+            parts.add("${sYr}年")
+        }
+        
+        // 月份范围
+        if (sM != null && eM != null) {
+            if (sM == eM) parts.add("${sM}月") else parts.add("${sM} 至 ${eM}月")
+        } else if (sM != null) {
+            parts.add("${sM}月")
+        }
+        
+        // 日份范围
+        if (sD != null && eD != null) {
+            if (sD == eD) parts.add("${sD}日") else parts.add("${sD} 至 ${eD}日")
+        } else if (sD != null) {
+            parts.add("${sD}日")
+        }
+        
+        return parts.joinToString(" ")
+    } else {
+        // 单行精确/模糊匹配，仅将第一行的有值字段展示
+        val yrStr = if (sYr != null) "${sYr}年" else ""
+        val mStr = if (sM != null) "${sM}月" else ""
+        val dStr = if (sD != null) "${sD}日" else ""
+        val combined = listOf(yrStr, mStr, dStr).filter { it.isNotEmpty() }.joinToString("")
+        return if (combined.isEmpty()) "不限" else combined
+    }
 }
 
 @OptIn(ExperimentalMaterial3Api::class)
