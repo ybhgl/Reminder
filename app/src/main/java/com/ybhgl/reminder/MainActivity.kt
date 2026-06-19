@@ -73,6 +73,12 @@ import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.CloudUpload
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.DateRange
+import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -90,6 +96,15 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.rememberDatePickerState
+import androidx.compose.material3.OutlinedTextFieldDefaults
+import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.unit.LayoutDirection
+import androidx.compose.ui.unit.Density
 import androidx.compose.material3.contentColorFor
 import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
@@ -113,6 +128,14 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.graphics.Outline
+import androidx.compose.ui.graphics.Shape
+import androidx.compose.ui.graphics.Path
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.CircleShape
@@ -121,6 +144,7 @@ import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -141,6 +165,7 @@ import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.AddReminderScreen
 import com.ybhgl.reminder.ui.add.ReminderSettingScreen
+import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
@@ -289,6 +314,38 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+}
+
+data class SearchDateFilter(
+    val year: Int? = null,
+    val month: Int? = null,
+    val day: Int? = null,
+    val isLunar: Boolean = false
+)
+
+fun matchDateFilter(itemDate: java.time.LocalDate, filter: SearchDateFilter): Boolean {
+    if (filter.isLunar) {
+        try {
+            val solar = com.tyme.solar.SolarDay.fromYmd(itemDate.year, itemDate.monthValue, itemDate.dayOfMonth)
+            val lunar = solar.getLunarDay()
+            val lunarYear = lunar.getYear()
+            val lunarMonthObj = lunar.getLunarMonth()
+            val lunarMonth = lunarMonthObj?.getMonthWithLeap() ?: lunar.getMonth()
+            val lunarDay = lunar.getDay()
+            
+            val yearMatch = filter.year == null || filter.year == lunarYear
+            val monthMatch = filter.month == null || filter.month == lunarMonth
+            val dayMatch = filter.day == null || filter.day == lunarDay
+            return yearMatch && monthMatch && dayMatch
+        } catch (e: Exception) {
+            return false
+        }
+    } else {
+        val yearMatch = filter.year == null || filter.year == itemDate.year
+        val monthMatch = filter.month == null || filter.month == itemDate.monthValue
+        val dayMatch = filter.day == null || filter.day == itemDate.dayOfMonth
+        return yearMatch && monthMatch && dayMatch
     }
 }
 
@@ -775,6 +832,39 @@ fun ReminderListScreen(
     val lastDataChangeTimestamp by remember(context) { BackupPreferences.lastDataChangeTimestampFlow(context) }.collectAsState(initial = 0L)
     val showBackupAlert = backupReminderEnabled && lastDataChangeTimestamp > lastBackupTimestamp
 
+    var isSearchActive by rememberSaveable { mutableStateOf(false) }
+    var searchIconOffset by remember { mutableStateOf(Offset.Zero) }
+    
+    val searchAnimationProgress by animateFloatAsState(
+        targetValue = if (isSearchActive) 1f else 0f,
+        animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
+        label = "SearchCircularReveal"
+    )
+
+    var searchQuery by rememberSaveable { mutableStateOf("") }
+    var selectedDateFilter by remember { mutableStateOf<SearchDateFilter?>(null) }
+    var selectedTypes by remember { mutableStateOf(setOf<ReminderType>()) }
+    var showDatePicker by remember { mutableStateOf(false) }
+
+    val searchedItems = remember(reminderListUiState.itemList, searchQuery, selectedDateFilter, selectedTypes) {
+        reminderListUiState.itemList.filter { item ->
+            val matchQuery = searchQuery.isBlank() || item.title.contains(searchQuery, ignoreCase = true)
+            val matchDate = selectedDateFilter == null || (
+                matchDateFilter(item.date, selectedDateFilter!!) || (
+                    item.type != ReminderType.COUNT_UP && CalendarUtil.calculateNextTargetDate(item)?.let { nextDate ->
+                        matchDateFilter(nextDate, selectedDateFilter!!)
+                    } == true
+                )
+            )
+            val matchType = selectedTypes.isEmpty() || item.type in selectedTypes
+            matchQuery && matchDate && matchType
+        }
+    }
+
+    BackHandler(enabled = isSearchActive) {
+        isSearchActive = false
+    }
+
     val autoBackupLocalEnabled by remember(context) { BackupPreferences.autoBackupLocalEnabledFlow(context) }.collectAsState(initial = false)
     val autoBackupWebDavEnabled by remember(context) { BackupPreferences.autoBackupWebDavEnabledFlow(context) }.collectAsState(initial = false)
     val isAutoBackupActive = autoBackupLocalEnabled || autoBackupWebDavEnabled
@@ -1104,6 +1194,22 @@ fun ReminderListScreen(
                                     }
                                 }
                             }
+                            IconButton(
+                                onClick = { isSearchActive = true },
+                                modifier = Modifier.onGloballyPositioned { coordinates ->
+                                    val position = coordinates.localToRoot(Offset.Zero)
+                                    val size = coordinates.size
+                                    searchIconOffset = Offset(
+                                        position.x + size.width / 2f,
+                                        position.y + size.height / 2f
+                                    )
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Search,
+                                    contentDescription = "搜索"
+                                )
+                            }
                             IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
                                 Icon(
                                     imageVector = Icons.Default.Settings,
@@ -1265,6 +1371,72 @@ fun ReminderListScreen(
                         }
                     },
                     dismissButton = {}
+                )
+            }
+
+            // 1. 遮罩层 (半透明)
+            if (searchAnimationProgress > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .background(Color.Black.copy(alpha = 0.5f * searchAnimationProgress))
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { isSearchActive = false } // 点击遮罩区可关闭搜索
+                        )
+                )
+            }
+
+            // 2. 搜索面板本身
+            if (searchAnimationProgress > 0f) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clip(CircularRevealShape(searchAnimationProgress, searchIconOffset))
+                        .background(MaterialTheme.colorScheme.background)
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = {} // 阻止点击穿透
+                        )
+                ) {
+                    SearchPanelContent(
+                        searchQuery = searchQuery,
+                        onQueryChange = { searchQuery = it },
+                        selectedDateFilter = selectedDateFilter,
+                        onSelectDateClick = { showDatePicker = true },
+                        onClearDate = { selectedDateFilter = null },
+                        selectedTypes = selectedTypes,
+                        onToggleType = { type ->
+                            selectedTypes = if (type in selectedTypes) {
+                                selectedTypes - type
+                            } else {
+                                selectedTypes + type
+                            }
+                        },
+                        searchedItems = searchedItems,
+                        viewMode = viewMode,
+                        onItemClick = { reminder ->
+                            navController.navigate(Routes.detailReminder(reminder.id))
+                        },
+                        onBackClick = { isSearchActive = false }
+                    )
+                }
+            }
+
+            if (showDatePicker) {
+                UnifiedDatePickerDialog(
+                    initialDate = java.time.LocalDate.now(),
+                    initialIsLunar = selectedDateFilter?.isLunar ?: false,
+                    supportFlexibleFilter = true,
+                    initialFilter = selectedDateFilter,
+                    onDismissRequest = { showDatePicker = false },
+                    onConfirm = { _, _ -> },
+                    onFilterConfirm = { year, month, day, isLunar ->
+                        selectedDateFilter = SearchDateFilter(year, month, day, isLunar)
+                        showDatePicker = false
+                    }
                 )
             }
         }
@@ -1793,6 +1965,348 @@ private fun EmptyStateCard(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
+        }
+    }
+}
+
+@Composable
+private fun PickerItemText(text: String, isSelected: Boolean) {
+    Text(
+        text = text,
+        style = MaterialTheme.typography.titleMedium.copy(
+            fontSize = if (isSelected) 20.sp else 16.sp,
+            fontWeight = if (isSelected) FontWeight.Bold else FontWeight.Normal,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface.copy(alpha = 0.4f),
+            textAlign = TextAlign.Center
+        ),
+        modifier = Modifier.fillMaxWidth()
+    )
+}
+
+class CircularRevealShape(
+    private val progress: Float,
+    private val center: Offset
+) : Shape {
+    override fun createOutline(
+        size: Size,
+        layoutDirection: LayoutDirection,
+        density: Density
+    ): Outline {
+        if (progress <= 0f) {
+            return Outline.Generic(Path())
+        }
+        if (progress >= 1f) {
+            return Outline.Rectangle(Rect(0f, 0f, size.width, size.height))
+        }
+        val dx = kotlin.math.max(center.x, size.width - center.x)
+        val dy = kotlin.math.max(center.y, size.height - center.y)
+        val maxRadius = kotlin.math.sqrt((dx * dx + dy * dy).toDouble()).toFloat()
+        val radius = maxRadius * progress
+        val path = Path().apply {
+            addOval(
+                Rect(
+                    center = center,
+                    radius = radius
+                )
+            )
+        }
+        return Outline.Generic(path)
+    }
+}
+
+private val SEARCH_LUNAR_DAY_STRINGS = arrayOf(
+    "初一", "初二", "初三", "初四", "初五",
+    "初六", "初七", "初八", "初九", "初十",
+    "十一", "十二", "十三", "十四", "十五",
+    "十六", "十七", "十八", "十九", "二十",
+    "廿一", "廿二", "廿三", "廿四", "廿五",
+    "廿六", "廿七", "廿八", "廿九", "三十"
+)
+
+fun formatSearchDateFilter(filter: SearchDateFilter): String {
+    val yrStr = if (filter.year != null) "${filter.year}年" else ""
+    val mStr = if (filter.month != null) "${filter.month}月" else ""
+    val dStr = if (filter.day != null) {
+        if (filter.isLunar) {
+            SEARCH_LUNAR_DAY_STRINGS.getOrNull(filter.day - 1) ?: "${filter.day}日"
+        } else "${filter.day}日"
+    } else ""
+    val typeStr = if (filter.isLunar) " (农历)" else ""
+    val combined = listOf(yrStr, mStr, dStr).filter { it.isNotEmpty() }.joinToString("")
+    return if (combined.isEmpty()) "不限" else combined + typeStr
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun SearchPanelContent(
+    searchQuery: String,
+    onQueryChange: (String) -> Unit,
+    selectedDateFilter: SearchDateFilter?,
+    onSelectDateClick: () -> Unit,
+    onClearDate: () -> Unit,
+    selectedTypes: Set<ReminderType>,
+    onToggleType: (ReminderType) -> Unit,
+    searchedItems: List<ReminderItem>,
+    viewMode: ReminderViewMode,
+    onItemClick: (ReminderItem) -> Unit,
+    onBackClick: () -> Unit
+) {
+    Column(
+        modifier = Modifier
+            .fillMaxSize()
+            .windowInsetsPadding(WindowInsets.statusBars)
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            IconButton(onClick = onBackClick) {
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                    contentDescription = "返回",
+                    tint = MaterialTheme.colorScheme.onSurface
+                )
+            }
+            
+            OutlinedTextField(
+                value = searchQuery,
+                onValueChange = onQueryChange,
+                placeholder = {
+                    Text(
+                        text = "搜索提醒标题...",
+                        style = MaterialTheme.typography.bodyLarge.copy(
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                        )
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                },
+                trailingIcon = {
+                    if (searchQuery.isNotEmpty()) {
+                        IconButton(onClick = { onQueryChange("") }) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "清空",
+                                tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                    }
+                },
+                modifier = Modifier
+                    .weight(1f)
+                    .padding(start = 8.dp),
+                shape = RoundedCornerShape(28.dp),
+                colors = OutlinedTextFieldDefaults.colors(
+                    focusedBorderColor = MaterialTheme.colorScheme.primary,
+                    unfocusedBorderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.6f),
+                    focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
+                    unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
+                ),
+                singleLine = true
+            )
+        }
+        
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState())
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            val hasDate = selectedDateFilter != null
+            FilterChip(
+                selected = hasDate,
+                onClick = onSelectDateClick,
+                label = {
+                    Text(
+                        text = if (hasDate) formatSearchDateFilter(selectedDateFilter!!) else "选择日期",
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = if (hasDate) Icons.Default.Check else Icons.Default.DateRange,
+                        contentDescription = null,
+                        modifier = Modifier.size(FilterChipDefaults.IconSize)
+                    )
+                },
+                trailingIcon = {
+                    if (hasDate) {
+                        IconButton(
+                            onClick = {
+                                onClearDate()
+                            },
+                            modifier = Modifier.size(18.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "清除日期",
+                                modifier = Modifier.size(14.dp)
+                            )
+                        }
+                    }
+                },
+                shape = RoundedCornerShape(12.dp)
+            )
+            
+            val typeOptions = listOf(
+                Triple("倒数日", ReminderType.ANNUAL, Icons.Default.Info),
+                Triple("正数日", ReminderType.COUNT_UP, Icons.Default.Info),
+                Triple("生日", ReminderType.BIRTHDAY, Icons.Default.Info)
+            )
+            
+            typeOptions.forEach { (label, type, _) ->
+                val isSelected = type in selectedTypes
+                FilterChip(
+                    selected = isSelected,
+                    onClick = { onToggleType(type) },
+                    label = { Text(label, style = MaterialTheme.typography.labelLarge) },
+                    leadingIcon = if (isSelected) {
+                        {
+                            Icon(
+                                imageVector = Icons.Default.Check,
+                                contentDescription = null,
+                                modifier = Modifier.size(FilterChipDefaults.IconSize)
+                            )
+                        }
+                    } else null,
+                    shape = RoundedCornerShape(12.dp)
+                )
+            }
+        }
+        
+        if (searchQuery.isEmpty() && selectedDateFilter == null && selectedTypes.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 56.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Search,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                    Text(
+                        text = "输入标题或选择筛选条件进行搜索",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        } else if (searchedItems.isEmpty()) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(bottom = 56.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Info,
+                        contentDescription = null,
+                        modifier = Modifier.size(64.dp),
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
+                    )
+                    Text(
+                        text = "没有找到符合条件的提醒",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                    )
+                }
+            }
+        } else {
+            val sections = remember(searchedItems) {
+                buildReminderSections(searchedItems)
+            }
+            
+            LazyColumn(
+                modifier = Modifier.fillMaxSize(),
+                contentPadding = PaddingValues(
+                    start = 16.dp,
+                    end = 16.dp,
+                    top = 8.dp,
+                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
+                ),
+                verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
+            ) {
+                sections.forEach { section ->
+                    item(key = "search_header_${section.key}_${viewMode.name}") {
+                        Text(
+                            text = section.title,
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                            modifier = Modifier.padding(bottom = 8.dp)
+                        )
+                    }
+                    
+                    if (viewMode == ReminderViewMode.CARD) {
+                        val rows = section.items.chunked(2)
+                        items(
+                            count = rows.size,
+                            key = { index -> "search_row_${section.key}_${index}_${viewMode.name}" }
+                        ) { rowIndex ->
+                            val rowItems = rows[rowIndex]
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                rowItems.forEach { reminder ->
+                                    Box(modifier = Modifier.weight(1f)) {
+                                        ReminderSummaryCard(
+                                            reminder = reminder,
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .heightIn(min = 180.dp),
+                                            isSelectionMode = false,
+                                            isSelected = false,
+                                            onClick = { onItemClick(reminder) },
+                                            onLongPress = {},
+                                            onToggleSelection = {}
+                                        )
+                                    }
+                                }
+                                if (rowItems.size < 2) {
+                                    Spacer(modifier = Modifier.weight(1f))
+                                }
+                            }
+                        }
+                    } else {
+                        items(
+                            items = section.items,
+                            key = { "search_item_${it.id}" }
+                        ) { reminder ->
+                            ReminderListItem(
+                                reminder = reminder,
+                                isSelectionMode = false,
+                                isSelected = false,
+                                onClick = { onItemClick(reminder) },
+                                onLongPress = {},
+                                onToggleSelection = {}
+                            )
+                        }
+                    }
+                    
+                    item {
+                        Spacer(modifier = Modifier.height(8.dp))
+                    }
+                }
+            }
         }
     }
 }
