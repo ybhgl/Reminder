@@ -381,60 +381,113 @@ fun matchDateFilter(itemDate: java.time.LocalDate, filter: SearchDateFilter): Bo
                     val lunarMonth = lunarMonthObj?.getMonthWithLeap() ?: lunar.getMonth()
                     val lunarDay = lunar.getDay()
 
-                    val yearOk = if (startYr != null && endYr != null) {
-                        lunarYear in startYr..endYr
-                    } else if (startYr != null) {
-                        lunarYear == startYr
-                    } else if (endYr != null) {
-                        lunarYear == endYr
-                    } else true
+                    val yearMonthOk = if (startYr != null && endYr != null && startM != null && endM != null && startD == null && endD == null) {
+                        val lm = kotlin.math.abs(lunarMonth)
+                        val startVal = startYr * 100 + startM
+                        val endVal = endYr * 100 + endM
+                        val currentVal = lunarYear * 100 + lm
+                        currentVal in startVal..endVal
+                    } else {
+                        val yearOk = if (startYr != null && endYr != null) {
+                            lunarYear in startYr..endYr
+                        } else if (startYr != null) {
+                            lunarYear == startYr
+                        } else if (endYr != null) {
+                            lunarYear == endYr
+                        } else true
 
-                    val monthOk = if (startM != null && endM != null) {
-                        lunarMonth in startM..endM
-                    } else if (startM != null) {
-                        lunarMonth == startM
-                    } else if (endM != null) {
-                        lunarMonth == endM
-                    } else true
+                        val monthDayOk = if (startM != null && startD != null && endM != null && endD != null) {
+                            val startVal = startM * 100 + startD
+                            val endVal = endM * 100 + endD
+                            val lm = kotlin.math.abs(lunarMonth)
+                            val currentVal = lm * 100 + lunarDay
+                            if (startVal <= endVal) {
+                                currentVal in startVal..endVal
+                            } else {
+                                currentVal >= startVal || currentVal <= endVal
+                            }
+                        } else {
+                            val lm = kotlin.math.abs(lunarMonth)
+                            val monthOk = if (startM != null && endM != null) {
+                                lm in startM..endM
+                            } else if (startM != null) {
+                                lm == startM
+                            } else if (endM != null) {
+                                lm == endM
+                        } else true
 
-                    val dayOk = if (startD != null && endD != null) {
-                        lunarDay in startD..endD
-                    } else if (startD != null) {
-                        lunarDay == startD
-                    } else if (endD != null) {
-                        lunarDay == endD
-                    } else true
+                            val dayOk = if (startD != null && endD != null) {
+                                if (startD <= endD) {
+                                    lunarDay in startD..endD
+                                } else {
+                                    lunarDay >= startD || lunarDay <= endD
+                                }
+                            } else if (startD != null) {
+                                lunarDay == startD
+                            } else if (endD != null) {
+                                lunarDay == endD
+                            } else true
 
-                    return yearOk && monthOk && dayOk
+                            monthOk && dayOk
+                        }
+                        yearOk && monthDayOk
+                    }
+
+                    return yearMonthOk
                 } catch (e: Exception) {
                     return false
                 }
             } else {
-                val yearOk = if (startYr != null && endYr != null) {
-                    itemDate.year in startYr..endYr
-                } else if (startYr != null) {
-                    itemDate.year == startYr
-                } else if (endYr != null) {
-                    itemDate.year == endYr
-                } else true
+                val yearMonthOk = if (startYr != null && endYr != null && startM != null && endM != null && startD == null && endD == null) {
+                    val startVal = startYr * 100 + startM
+                    val endVal = endYr * 100 + endM
+                    val currentVal = itemDate.year * 100 + itemDate.monthValue
+                    currentVal in startVal..endVal
+                } else {
+                    val yearOk = if (startYr != null && endYr != null) {
+                        itemDate.year in startYr..endYr
+                    } else if (startYr != null) {
+                        itemDate.year == startYr
+                    } else if (endYr != null) {
+                        itemDate.year == endYr
+                    } else true
 
-                val monthOk = if (startM != null && endM != null) {
-                    itemDate.monthValue in startM..endM
-                } else if (startM != null) {
-                    itemDate.monthValue == startM
-                } else if (endM != null) {
-                    itemDate.monthValue == endM
-                } else true
+                    val monthDayOk = if (startM != null && startD != null && endM != null && endD != null) {
+                        val startVal = startM * 100 + startD
+                        val endVal = endM * 100 + endD
+                        val currentVal = itemDate.monthValue * 100 + itemDate.dayOfMonth
+                        if (startVal <= endVal) {
+                            currentVal in startVal..endVal
+                        } else {
+                            currentVal >= startVal || currentVal <= endVal
+                        }
+                    } else {
+                        val monthOk = if (startM != null && endM != null) {
+                            itemDate.monthValue in startM..endM
+                        } else if (startM != null) {
+                            itemDate.monthValue == startM
+                        } else if (endM != null) {
+                            itemDate.monthValue == endM
+                        } else true
 
-                val dayOk = if (startD != null && endD != null) {
-                    itemDate.dayOfMonth in startD..endD
-                } else if (startD != null) {
-                    itemDate.dayOfMonth == startD
-                } else if (endD != null) {
-                    itemDate.dayOfMonth == endD
-                } else true
+                        val dayOk = if (startD != null && endD != null) {
+                            if (startD <= endD) {
+                                itemDate.dayOfMonth in startD..endD
+                            } else {
+                                itemDate.dayOfMonth >= startD || itemDate.dayOfMonth <= endD
+                            }
+                        } else if (startD != null) {
+                            itemDate.dayOfMonth == startD
+                        } else if (endD != null) {
+                            itemDate.dayOfMonth == endD
+                        } else true
 
-                return yearOk && monthOk && dayOk
+                        monthOk && dayOk
+                    }
+                    yearOk && monthDayOk
+                }
+
+                return yearMonthOk
             }
         }
     } else {
@@ -932,6 +985,36 @@ enum class AutoBackupStatus {
     IDLE, BACKUPING, SUCCESS, FAILED
 }
 
+val SearchDateFilterSaver = androidx.compose.runtime.saveable.Saver<SearchDateFilter?, Map<String, Any?>>(
+    save = { filter ->
+        if (filter == null) null else mapOf(
+            "startYear" to filter.startYear,
+            "startMonth" to filter.startMonth,
+            "startDay" to filter.startDay,
+            "endYear" to filter.endYear,
+            "endMonth" to filter.endMonth,
+            "endDay" to filter.endDay,
+            "isLunar" to filter.isLunar
+        )
+    },
+    restore = { map ->
+        SearchDateFilter(
+            startYear = map["startYear"] as? Int,
+            startMonth = map["startMonth"] as? Int,
+            startDay = map["startDay"] as? Int,
+            endYear = map["endYear"] as? Int,
+            endMonth = map["endMonth"] as? Int,
+            endDay = map["endDay"] as? Int,
+            isLunar = map["isLunar"] as? Boolean ?: false
+        )
+    }
+)
+
+val ReminderTypeSetSaver = androidx.compose.runtime.saveable.Saver<Set<ReminderType>, List<String>>(
+    save = { set -> set.map { it.name } },
+    restore = { list -> list.map { ReminderType.valueOf(it) }.toSet() }
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReminderListScreen(
@@ -957,9 +1040,9 @@ fun ReminderListScreen(
     )
 
     var searchQuery by rememberSaveable { mutableStateOf("") }
-    var selectedDateFilter by remember { mutableStateOf<SearchDateFilter?>(null) }
-    var selectedTypes by remember { mutableStateOf(setOf<ReminderType>()) }
-    var showDatePicker by remember { mutableStateOf(false) }
+    var selectedDateFilter by rememberSaveable(stateSaver = SearchDateFilterSaver) { mutableStateOf<SearchDateFilter?>(null) }
+    var selectedTypes by rememberSaveable(stateSaver = ReminderTypeSetSaver) { mutableStateOf(setOf<ReminderType>()) }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
     val searchedItems = remember(reminderListUiState.itemList, searchQuery, selectedDateFilter, selectedTypes) {
         reminderListUiState.itemList.filter { item ->
@@ -2142,7 +2225,24 @@ fun formatSearchDateFilter(filter: SearchDateFilter): String {
             return "${sYr}-${String.format("%02d", sM)}-${String.format("%02d", sD)} 至 ${eYr}-${String.format("%02d", eM)}-${String.format("%02d", eD)}"
         }
         
-        // 2. 否则，将各个具有起止范围的维度用 “至” 拼接表示
+        // 2. 如果起止月和起止日均全，则拼成 “X月Y日至A月B日”
+        if (sM != null && sD != null && eM != null && eD != null) {
+            val sYrStr = if (sYr != null) "${sYr}年" else ""
+            val eYrStr = if (eYr != null) "${eYr}年" else ""
+            return "${sYrStr}${sM}月${sD}日 至 ${eYrStr}${eM}月${eD}日"
+        }
+
+        // 3. 如果起止年和起止月全，而日期为空，拼成 “A年B月至C年D月”
+        if (sYr != null && eYr != null && sM != null && eM != null && sD == null && eD == null) {
+            return "${sYr}年${sM}月 至 ${eYr}年${eM}月"
+        }
+
+        // 4. 如果起止年和起止日全，而月份为空，拼成 “A年B日至C年D日”
+        if (sYr != null && eYr != null && sM == null && eM == null && sD != null && eD != null) {
+            return "${sYr}年${sD}日 至 ${eYr}年${eD}日"
+        }
+        
+        // 5. 否则，将各个具有起止范围的维度用 “至” 拼接表示
         val parts = mutableListOf<String>()
         
         // 年份范围
