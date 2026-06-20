@@ -4,6 +4,8 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderRepository
+import com.ybhgl.reminder.data.TagItem
+import com.ybhgl.reminder.data.TagRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
@@ -13,7 +15,10 @@ import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 
-class ReminderListViewModel(private val reminderRepository: ReminderRepository) : ViewModel() {
+class ReminderListViewModel(
+    private val reminderRepository: ReminderRepository,
+    private val tagRepository: TagRepository
+) : ViewModel() {
 
     private val selectionMode = MutableStateFlow(false)
     private val selectedIds = MutableStateFlow<Set<Int>>(emptySet())
@@ -30,13 +35,16 @@ class ReminderListViewModel(private val reminderRepository: ReminderRepository) 
             }
         }
 
+    private val tagsFlow = tagRepository.getAllTagsFlow()
+
     val reminderListUiState: StateFlow<ReminderListUiState> =
-        combine(reminderItemsFlow, selectionMode, selectedIds, hasLoaded) { items, isSelectionMode, selected, loaded ->
+        combine(reminderItemsFlow, selectionMode, selectedIds, hasLoaded, tagsFlow) { items, isSelectionMode, selected, loaded, tags ->
             ReminderListUiState(
                 itemList = items,
                 isSelectionMode = isSelectionMode,
                 selectedIds = selected,
-                isLoading = !loaded
+                isLoading = !loaded,
+                tagsList = tags
             )
         }.stateIn(
             scope = viewModelScope,
@@ -87,5 +95,6 @@ data class ReminderListUiState(
     val itemList: List<ReminderItem> = listOf(),
     val isSelectionMode: Boolean = false,
     val selectedIds: Set<Int> = emptySet(),
-    val isLoading: Boolean = true
+    val isLoading: Boolean = true,
+    val tagsList: List<TagItem> = listOf()
 )

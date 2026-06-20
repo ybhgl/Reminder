@@ -12,6 +12,8 @@ import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderNotificationConfig
 import com.ybhgl.reminder.data.ReminderRepository
 import com.ybhgl.reminder.data.ReminderType
+import com.ybhgl.reminder.data.TagRepository
+import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.RepeatInfo
 import com.ybhgl.reminder.data.RepeatUnit
 import com.ybhgl.reminder.util.ReminderScheduler
@@ -29,21 +31,13 @@ import java.util.Locale
 
 class AddReminderViewModel(
     private val reminderRepository: ReminderRepository,
+    private val tagRepository: TagRepository,
     savedStateHandle: SavedStateHandle
 ) : ViewModel() {
 
     private val reminderId: Int? = savedStateHandle.get<Int>("reminderId")
 
-    val categorySuggestions = reminderRepository
-        .getDistinctCategoriesStream()
-        .map { categories ->
-            val locale = Locale.getDefault()
-            categories
-                .map { it.trim() }
-                .filter { it.isNotEmpty() }
-                .distinctBy { it.lowercase(locale) }
-                .sortedWith(compareBy { it.lowercase(locale) })
-        }
+    val categorySuggestions = tagRepository.getAllTagsFlow()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),

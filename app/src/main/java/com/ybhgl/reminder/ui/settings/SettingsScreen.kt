@@ -22,6 +22,7 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Restore
@@ -112,6 +113,7 @@ import kotlinx.coroutines.flow.first
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToBackupAndRestore: () -> Unit,
+    onNavigateToTagManagement: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
@@ -271,6 +273,19 @@ fun SettingsScreen(
                         }
                     }
                 )
+                Text(
+                    text = "数据管理",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider()
+                SettingsActionItem(
+                    title = "标签管理",
+                    description = "管理、自定义颜色与排序您的分类标签",
+                    icon = Icons.AutoMirrored.Filled.Label,
+                    enabled = true
+                ) {
+                    onNavigateToTagManagement()
+                }
                 Text(
                     text = "桌面小部件",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)

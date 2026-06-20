@@ -31,12 +31,13 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
-import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.size
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ArrowDropDown
 import androidx.compose.material.icons.filled.ArrowDropUp
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
@@ -74,11 +75,14 @@ import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material3.HorizontalDivider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.ybhgl.reminder.Routes
+import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.foundation.layout.requiredWidth
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.RepeatInfo
 import com.ybhgl.reminder.data.RepeatUnit
@@ -288,24 +292,17 @@ fun AddReminderScreen(
 
                 // 6. 分类
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    val filteredOptions = remember(uiState.category, categoryOptions) {
-                        val input = uiState.category.trim()
-                        if (input.isEmpty()) categoryOptions else categoryOptions.filter { option ->
-                            option.contains(input, ignoreCase = true)
-                        }
-                    }
-                    val dropdownOptions = remember(filteredOptions, categoryOptions, uiState.category) {
-                        val input = uiState.category.trim()
-                        when {
-                            input.isEmpty() -> categoryOptions
-                            filteredOptions.isNotEmpty() -> filteredOptions
-                            else -> emptyList()
-                        }
-                    }
+                    val dropdownOptions = categoryOptions
                     LaunchedEffect(dropdownOptions) {
                         if (isCategoryMenuExpanded && dropdownOptions.isEmpty()) {
                             isCategoryMenuExpanded = false
                         }
+                    }
+
+                    // 实时匹配到的标签，用于在输入框中高亮颜色
+                    val matchedTag = remember(uiState.category, categoryOptions) {
+                        val trimmed = uiState.category.trim()
+                        categoryOptions.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
                     }
 
                     OutlinedTextField(
@@ -320,6 +317,16 @@ fun AddReminderScreen(
                                 textFieldWidth = with(density) { coordinates.size.width.toDp() }
                             },
                         singleLine = true,
+                        leadingIcon = if (matchedTag != null) {
+                            {
+                                Box(
+                                    modifier = Modifier
+                                        .padding(start = 12.dp)
+                                        .size(12.dp)
+                                        .background(color = matchedTag.color.toComposeColor(), shape = CircleShape)
+                                )
+                            }
+                        } else null,
                         trailingIcon = {
                             if (categoryOptions.isNotEmpty()) {
                                 IconButton(onClick = {
@@ -354,24 +361,66 @@ fun AddReminderScreen(
                             shape = RoundedCornerShape(12.dp)
                         ) {
                             Column {
-                                dropdownOptions.forEachIndexed { index, option ->
-                                    Text(
-                                        text = option,
+                                dropdownOptions.forEachIndexed { index, tagItem ->
+                                    Row(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                viewModel.updateUiState(uiState.copy(category = option))
+                                                viewModel.updateUiState(uiState.copy(category = tagItem.name))
                                                 isCategoryMenuExpanded = false
                                             }
                                             .padding(horizontal = 16.dp, vertical = 12.dp),
-                                        style = MaterialTheme.typography.bodyMedium
-                                    )
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Box(
+                                            modifier = Modifier
+                                                .size(12.dp)
+                                                .background(color = tagItem.color.toComposeColor(), shape = CircleShape)
+                                        )
+                                        Text(
+                                            text = tagItem.name,
+                                            style = MaterialTheme.typography.bodyMedium.copy(
+                                                fontWeight = FontWeight.Medium
+                                            ),
+                                            color = MaterialTheme.colorScheme.onSurface
+                                        )
+                                    }
                                     if (index < dropdownOptions.lastIndex) {
                                         HorizontalDivider(
                                             thickness = 0.5.dp,
                                             color = MaterialTheme.colorScheme.outlineVariant
                                         )
                                     }
+                                }
+                                HorizontalDivider(
+                                    thickness = 0.5.dp,
+                                    color = MaterialTheme.colorScheme.outlineVariant
+                                )
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clickable {
+                                            isCategoryMenuExpanded = false
+                                            navController.navigate(Routes.tagManagement())
+                                        }
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Edit,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                    Text(
+                                        text = "管理标签...",
+                                        style = MaterialTheme.typography.bodyMedium.copy(
+                                            color = MaterialTheme.colorScheme.primary,
+                                            fontWeight = FontWeight.SemiBold
+                                        )
+                                    )
                                 }
                             }
                         }
@@ -634,5 +683,13 @@ private fun repeatInfoToString(repeatInfo: RepeatInfo?): String {
             }
             "每 ${repeatInfo.interval} $unitString"
         }
+    }
+}
+
+private fun String.toComposeColor(): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(this))
+    } catch (e: Exception) {
+        Color(0xFF2196F3)
     }
 }

@@ -181,6 +181,8 @@ import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.SettingsScreen
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
+import com.ybhgl.reminder.ui.tag.TagManagementScreen
+import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.BackupPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.ReminderTheme
@@ -533,6 +535,8 @@ object Routes {
     const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}"
     const val SETTINGS = "settings"
     const val BACKUP_AND_RESTORE = "backup_and_restore"
+    const val TAG_MANAGEMENT = "tag_management"
+    const val TAG_MANAGEMENT_PATTERN = "$TAG_MANAGEMENT?isSortMode={isSortMode}"
     const val DETAIL_REMINDER_BASE = "detail_reminder"
     const val DETAIL_REMINDER_PATTERN = "$DETAIL_REMINDER_BASE/{reminderId}"
     const val BIRTHDAY_LIST_BASE = "birthday_list"
@@ -554,6 +558,7 @@ object Routes {
         val datePart = if (eventDate != null) "eventDate=$eventDate" else ""
         return base + listOf(idPart, configPart, typePart, datePart).filter { it.isNotEmpty() }.joinToString("&")
     }
+    fun tagManagement(isSortMode: Boolean = false): String = "$TAG_MANAGEMENT?isSortMode=$isSortMode"
 }
 
 @OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class)
@@ -730,11 +735,27 @@ fun ReminderApp() {
             composable(route = Routes.SETTINGS) {
                 SettingsScreen(
                     onNavigateBack = { navController.navigateUp() },
-                    onNavigateToBackupAndRestore = { navController.navigate(Routes.BACKUP_AND_RESTORE) }
+                    onNavigateToBackupAndRestore = { navController.navigate(Routes.BACKUP_AND_RESTORE) },
+                    onNavigateToTagManagement = { navController.navigate(Routes.tagManagement()) }
                 )
             }
             composable(route = Routes.BACKUP_AND_RESTORE) {
                 BackupAndRestoreScreen(onNavigateBack = { navController.navigateUp() })
+            }
+            composable(
+                route = Routes.TAG_MANAGEMENT_PATTERN,
+                arguments = listOf(
+                    navArgument("isSortMode") {
+                        type = NavType.BoolType
+                        defaultValue = false
+                    }
+                )
+            ) { backStackEntry ->
+                val isSortMode = backStackEntry.arguments?.getBoolean("isSortMode") ?: false
+                TagManagementScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    initialSortMode = isSortMode
+                )
             }
         }
 
@@ -1161,8 +1182,8 @@ fun ReminderListScreen(
                 val filteredItems = remember(reminderListUiState.itemList, page) {
                     reminderListUiState.itemList.filter(tabs[page].filter)
                 }
-                val sections = remember(filteredItems) {
-                    buildReminderSections(filteredItems)
+                val sections = remember(filteredItems, reminderListUiState.tagsList) {
+                    buildReminderSections(filteredItems, reminderListUiState.tagsList)
                 }
                 val handleItemClick = remember(isSelectionMode) {
                     { item: ReminderItem ->
@@ -1224,6 +1245,10 @@ fun ReminderListScreen(
                                             collapsedSections + collapsedKey
                                         }
                                     },
+                                    onLongClick = {
+                                        navController.navigate(Routes.tagManagement(isSortMode = true))
+                                    },
+                                    tagColorHex = section.tagColorHex,
                                     modifier = Modifier.padding(bottom = if (collapsedKey in collapsedSections) 0.dp else 4.dp)
                                 )
                             }
@@ -1626,7 +1651,8 @@ fun ReminderListScreen(
                         onItemClick = { reminder ->
                             navController.navigate(Routes.detailReminder(reminder.id))
                         },
-                        onBackClick = { isSearchActive = false }
+                        onBackClick = { isSearchActive = false },
+                        tagsList = reminderListUiState.tagsList
                     )
                 }
             }
@@ -1650,17 +1676,14 @@ fun ReminderListScreen(
 private data class ReminderSectionData(
     val key: String,
     val title: String,
-    val items: List<ReminderItem>
+    val items: List<ReminderItem>,
+    val tagColorHex: String? = null
 )
 
-private fun buildReminderSections(reminders: List<ReminderItem>): List<ReminderSectionData> {
+private fun buildReminderSections(reminders: List<ReminderItem>, tags: List<TagItem> = emptyList()): List<ReminderSectionData> {
     if (reminders.isEmpty()) return emptyList()
 
     val locale = Locale.getDefault()
-    compareBy<ReminderItem> { normalizeCategory(it.category).lowercase(locale) }
-        .thenBy { it.title.lowercase(locale) }
-        .thenBy { it.id }
-
     val result = mutableListOf<ReminderSectionData>()
     val pinned = reminders.filter { it.isPinned }.sortedWith(
         compareBy<ReminderItem> { reminderSortValue(it) }.thenBy { it.id }
@@ -1676,6 +1699,9 @@ private fun buildReminderSections(reminders: List<ReminderItem>): List<ReminderS
     val nonPinned = reminders.filterNot { it.isPinned }
     val grouped = nonPinned.groupBy { normalizeCategory(it.category) }
 
+    val tagOrderMap = tags.associate { it.name.trim().lowercase(locale) to it.sortOrder }
+    val tagColorMap = tags.associate { it.name.trim().lowercase(locale) to it.color }
+
     val sortedGroups = grouped.keys.sortedWith { cat1, cat2 ->
         val isBlank1 = cat1.isBlank()
         val isBlank2 = cat2.isBlank()
@@ -1684,12 +1710,25 @@ private fun buildReminderSections(reminders: List<ReminderItem>): List<ReminderS
         } else if (!isBlank1 && isBlank2) {
             -1
         } else {
-            val sortKey1 = groupSortKey(cat1).lowercase(locale)
-            val sortKey2 = groupSortKey(cat2).lowercase(locale)
-            if (sortKey1 != sortKey2) {
-                sortKey1.compareTo(sortKey2)
+            val key1 = cat1.trim().lowercase(locale)
+            val key2 = cat2.trim().lowercase(locale)
+            val order1 = tagOrderMap[key1]
+            val order2 = tagOrderMap[key2]
+            
+            if (order1 != null && order2 != null) {
+                order1.compareTo(order2)
+            } else if (order1 != null) {
+                -1
+            } else if (order2 != null) {
+                1
             } else {
-                cat1.lowercase(locale).compareTo(cat2.lowercase(locale))
+                val sortKey1 = groupSortKey(cat1).lowercase(locale)
+                val sortKey2 = groupSortKey(cat2).lowercase(locale)
+                if (sortKey1 != sortKey2) {
+                    sortKey1.compareTo(sortKey2)
+                } else {
+                    cat1.lowercase(locale).compareTo(cat2.lowercase(locale))
+                }
             }
         }
     }
@@ -1703,10 +1742,13 @@ private fun buildReminderSections(reminders: List<ReminderItem>): List<ReminderS
         if (items.isNotEmpty()) {
             val title = category.ifBlank { "无标签" }
             val key = if (category.isBlank()) "group_uncategorized" else "group_${category.lowercase(locale)}"
+            val trimmedLower = category.trim().lowercase(locale)
+            val tagColor = tagColorMap[trimmedLower]
             result += ReminderSectionData(
                 key = key,
                 title = title,
-                items = items
+                items = items,
+                tagColorHex = tagColor
             )
         }
     }
@@ -2165,6 +2207,8 @@ private fun SectionHeader(
     itemCount: Int,
     isExpanded: Boolean,
     onToggleExpand: () -> Unit,
+    onLongClick: (() -> Unit)? = null,
+    tagColorHex: String? = null,
     modifier: Modifier = Modifier
 ) {
     val rotationAngle by animateFloatAsState(
@@ -2178,12 +2222,40 @@ private fun SectionHeader(
 
     val icon = if (key == "pinned") Icons.Filled.PushPin else Icons.AutoMirrored.Filled.Label
 
+    val customColor = remember(tagColorHex) { tagColorHex?.toComposeColor() }
+    val isCustom = customColor != null && key != "pinned"
+
+    val surfaceColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
+
+    val iconBgColor = if (isCustom) {
+        customColor!!.copy(alpha = 0.22f)
+    } else if (key == "pinned") {
+        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+    } else {
+        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+    }
+
+    val iconColor = if (isCustom) {
+        customColor!!
+    } else if (key == "pinned") {
+        MaterialTheme.colorScheme.onErrorContainer
+    } else {
+        MaterialTheme.colorScheme.onPrimaryContainer
+    }
+
+    val textColor = MaterialTheme.colorScheme.onSurface
+
+    val arrowTint = MaterialTheme.colorScheme.onSurfaceVariant
+
     Surface(
         modifier = modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .clickable(onClick = onToggleExpand),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+            .combinedClickable(
+                onClick = onToggleExpand,
+                onLongClick = if (key != "pinned") onLongClick else null
+            ),
+        color = surfaceColor,
         contentColor = MaterialTheme.colorScheme.onSurface
     ) {
         Row(
@@ -2192,18 +2264,6 @@ private fun SectionHeader(
                 .padding(horizontal = 14.dp, vertical = 12.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            // Icon container with primary/secondary container color for expression
-            val iconBgColor = if (key == "pinned") {
-                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
-            } else {
-                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
-            }
-            val iconColor = if (key == "pinned") {
-                MaterialTheme.colorScheme.onErrorContainer
-            } else {
-                MaterialTheme.colorScheme.onPrimaryContainer
-            }
-
             Box(
                 modifier = Modifier
                     .size(32.dp)
@@ -2228,7 +2288,7 @@ private fun SectionHeader(
                     fontWeight = FontWeight.Bold,
                     letterSpacing = 0.1.sp
                 ),
-                color = MaterialTheme.colorScheme.onSurface,
+                color = textColor,
                 modifier = Modifier.weight(1f)
             )
 
@@ -2250,7 +2310,7 @@ private fun SectionHeader(
             Icon(
                 imageVector = Icons.Default.KeyboardArrowUp,
                 contentDescription = if (isExpanded) "收起" else "展开",
-                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                tint = arrowTint,
                 modifier = Modifier
                     .size(24.dp)
                     .graphicsLayer {
@@ -2258,6 +2318,14 @@ private fun SectionHeader(
                     }
             )
         }
+    }
+}
+
+private fun String.toComposeColor(): Color {
+    return try {
+        Color(android.graphics.Color.parseColor(this))
+    } catch (e: Exception) {
+        Color(0xFF2196F3)
     }
 }
 
@@ -2415,7 +2483,8 @@ private fun SearchPanelContent(
     searchedItems: List<ReminderItem>,
     viewMode: ReminderViewMode,
     onItemClick: (ReminderItem) -> Unit,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    tagsList: List<TagItem> = emptyList()
 ) {
     Column(
         modifier = Modifier
@@ -2598,8 +2667,8 @@ private fun SearchPanelContent(
                 }
             }
         } else {
-            val sections = remember(searchedItems) {
-                buildReminderSections(searchedItems)
+            val sections = remember(searchedItems, tagsList) {
+                buildReminderSections(searchedItems, tagsList)
             }
             var collapsedSections by remember { mutableStateOf(setOf<String>()) }
             
@@ -2627,6 +2696,7 @@ private fun SearchPanelContent(
                                     collapsedSections + section.key
                                 }
                             },
+                            tagColorHex = section.tagColorHex,
                             modifier = Modifier.padding(bottom = if (section.key in collapsedSections) 0.dp else 4.dp)
                         )
                     }
