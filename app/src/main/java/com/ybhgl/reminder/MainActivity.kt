@@ -585,31 +585,12 @@ fun ReminderApp() {
     val autoBackupLocalEnabled by remember(context) { BackupPreferences.autoBackupLocalEnabledFlow(context) }.collectAsState(initial = false)
     val autoBackupWebDavEnabled by remember(context) { BackupPreferences.autoBackupWebDavEnabledFlow(context) }.collectAsState(initial = false)
     val isAutoBackupActive = autoBackupLocalEnabled || autoBackupWebDavEnabled
-    var autoBackupStatus by remember { mutableStateOf(AutoBackupStatus.IDLE) }
-
-    LaunchedEffect(lastDataChangeTimestamp, autoBackupLocalEnabled, autoBackupWebDavEnabled) {
-        if (isAutoBackupActive && lastDataChangeTimestamp > lastBackupTimestamp) {
-            if (autoBackupStatus == AutoBackupStatus.IDLE || autoBackupStatus == AutoBackupStatus.FAILED) {
-                autoBackupStatus = AutoBackupStatus.BACKUPING
-                kotlinx.coroutines.delay(500)
-                val appInstance = context.applicationContext as com.ybhgl.reminder.ReminderApplication
-                val repository = appInstance.container.reminderRepository
-                val result = BackupPreferences.triggerAutoBackup(context, repository)
-                if (result.success) {
-                    autoBackupStatus = AutoBackupStatus.SUCCESS
-                    kotlinx.coroutines.delay(3000)
-                    autoBackupStatus = AutoBackupStatus.IDLE
-                } else {
-                    autoBackupStatus = AutoBackupStatus.FAILED
-                    com.ybhgl.reminder.ui.common.CustomToast.showError(
-                        context = context,
-                        message = "自动备份失败: ${result.errorMessage ?: "未知错误"}"
-                    )
-                }
-            }
-        } else if (!isAutoBackupActive) {
-            autoBackupStatus = AutoBackupStatus.IDLE
-        }
+    val autoBackupStatusStr by remember(context) { BackupPreferences.autoBackupStatusFlow }.collectAsState()
+    val autoBackupStatus = when (autoBackupStatusStr) {
+        "BACKUPING" -> AutoBackupStatus.BACKUPING
+        "SUCCESS" -> AutoBackupStatus.SUCCESS
+        "FAILED" -> AutoBackupStatus.FAILED
+        else -> AutoBackupStatus.IDLE
     }
 
     val activity = context as? MainActivity
