@@ -267,7 +267,7 @@ object BackupPreferences {
         }
     }
 
-    suspend fun triggerAutoBackup(context: Context, reminderRepository: ReminderRepository, force: Boolean = false): AutoBackupResult {
+    suspend fun triggerAutoBackup(context: Context, reminderRepository: ReminderRepository? = null, force: Boolean = false): AutoBackupResult {
         if (!force) {
             backupScope.launch {
                 triggerAutoBackupInternal(context, reminderRepository, force = false)
@@ -278,7 +278,7 @@ object BackupPreferences {
         }
     }
 
-    private suspend fun triggerAutoBackupInternal(context: Context, reminderRepository: ReminderRepository, force: Boolean): AutoBackupResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    private suspend fun triggerAutoBackupInternal(context: Context, reminderRepository: ReminderRepository?, force: Boolean): AutoBackupResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         backupMutex.withLock {
             val isLocalEnabled = autoBackupLocalEnabledFlow(context).first()
             val isWebDavEnabled = autoBackupWebDavEnabledFlow(context).first()
@@ -298,7 +298,10 @@ object BackupPreferences {
 
             autoBackupStatusFlow.value = "BACKUPING"
 
-            val reminders = reminderRepository.getAllRemindersStream().first()
+            val actualRepository = reminderRepository ?: (context.applicationContext as? com.ybhgl.reminder.ReminderApplication)?.container?.reminderRepository
+            val reminders = actualRepository?.getAllRemindersStream()?.first() 
+                ?: ReminderDatabase.getDatabase(context).reminderDao().getAllRemindersList()
+
             if (reminders.isEmpty()) return@withLock AutoBackupResult(success = false, errorMessage = "无提醒事项数据，不进行备份")
 
             val themeOption = themeOptionFlow(context).first()
@@ -312,8 +315,11 @@ object BackupPreferences {
             val webDavPassword = webDavPasswordFlow(context).first()
             val webDavPath = webDavPathFlow(context).first()
 
+            val tags = ReminderDatabase.getDatabase(context).tagDao().getAllTags()
+
             val backupData = BackupData(
                 reminders = reminders,
+                tags = tags,
                 themeOption = themeOption,
                 pureBlackEnabled = pureBlackEnabled,
                 defaultPage = defaultPage,

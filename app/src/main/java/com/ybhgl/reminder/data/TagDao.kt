@@ -26,6 +26,9 @@ interface TagDao {
     @Delete
     suspend fun delete(tag: TagItem)
 
+    @Query("DELETE FROM tags")
+    suspend fun deleteAll()
+
     @Transaction
     suspend fun updateTagSortOrders(tags: List<TagItem>) {
         tags.forEachIndexed { index, tag ->

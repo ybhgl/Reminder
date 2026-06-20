@@ -24,7 +24,8 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 class BackupAndRestoreViewModel(
-    private val reminderRepository: ReminderRepository
+    private val reminderRepository: ReminderRepository,
+    private val tagRepository: TagRepository
 ) : ViewModel() {
 
     fun generateBackupFileName(): String {
@@ -117,8 +118,11 @@ class BackupAndRestoreViewModel(
             val webDavPassword = BackupPreferences.webDavPasswordFlow(context).first()
             val webDavPath = BackupPreferences.webDavPathFlow(context).first()
 
+            val tags = tagRepository.getAllTags()
+
             val backupData = BackupData(
                 reminders = reminders,
+                tags = tags,
                 themeOption = themeOption,
                 pureBlackEnabled = pureBlackEnabled,
                 defaultPage = defaultPage,
@@ -209,8 +213,11 @@ class BackupAndRestoreViewModel(
         val webDavPassword = BackupPreferences.webDavPasswordFlow(context).first()
         val webDavPath = BackupPreferences.webDavPathFlow(context).first()
 
+        val tags = tagRepository.getAllTags()
+
         val backupData = BackupData(
             reminders = reminders,
+            tags = tags,
             themeOption = themeOption,
             pureBlackEnabled = pureBlackEnabled,
             defaultPage = defaultPage,
@@ -422,6 +429,28 @@ class BackupAndRestoreViewModel(
                     }
                 }
             }
+
+            backupData.tags?.let { tags ->
+                val existingTags = tagRepository.getAllTags()
+                for (newTag in tags) {
+                    val matched = existingTags.find { it.name == newTag.name }
+                    if (matched == null) {
+                        tagRepository.insertTag(newTag.copy(id = 0))
+                    } else {
+                        if (matched.color != newTag.color || matched.sortOrder != newTag.sortOrder) {
+                            tagRepository.updateTag(matched.copy(color = newTag.color, sortOrder = newTag.sortOrder))
+                        }
+                    }
+                }
+            } ?: run {
+                val categoriesToCreate = backupData.reminders.map { it.category }.filter { it.isNotBlank() }.distinct()
+                val existingTags = tagRepository.getAllTags()
+                for (cat in categoriesToCreate) {
+                    if (existingTags.none { it.name == cat }) {
+                        tagRepository.insertTag(TagItem(name = cat, color = "#2196F3"))
+                    }
+                }
+            }
             
             // For merge, we don't overwrite user's preference options to avoid disrupting their current theme/layout.
             // Update last backup to clear warning
@@ -434,7 +463,18 @@ class BackupAndRestoreViewModel(
             }
         } else {
             reminderRepository.deleteAllReminders()
+            tagRepository.deleteAllTags()
+
             backupData.reminders.forEach { reminderRepository.insertReminder(it.copy(id = 0)) }
+
+            backupData.tags?.let { tags ->
+                tags.forEach { tagRepository.insertTag(it.copy(id = 0)) }
+            } ?: run {
+                val categoriesToCreate = backupData.reminders.map { it.category }.filter { it.isNotBlank() }.distinct()
+                categoriesToCreate.forEach { cat ->
+                    tagRepository.insertTag(TagItem(name = cat, color = "#2196F3"))
+                }
+            }
 
             backupData.themeOption?.let { saveThemeOption(context, it) }
             backupData.pureBlackEnabled?.let { savePureBlack(context, it) }

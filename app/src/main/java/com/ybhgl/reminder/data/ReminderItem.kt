@@ -96,6 +96,7 @@ object LocalTimeSerializer {
 @Serializable
 data class BackupData(
     val reminders: List<ReminderItem>,
+    val tags: List<TagItem>? = null,
     val themeOption: AppThemeOption? = null,
     val pureBlackEnabled: Boolean? = null,
     val defaultPage: AppDefaultPage? = null,

@@ -20,6 +20,6 @@ class DefaultAppContainer(private val context: Context) : AppContainer {
 
     override val tagRepository: TagRepository by lazy {
         val database = ReminderDatabase.getDatabase(context)
-        TagRepository(database.tagDao(), database.reminderDao())
+        TagRepository(database.tagDao(), database.reminderDao(), context)
     }
 }

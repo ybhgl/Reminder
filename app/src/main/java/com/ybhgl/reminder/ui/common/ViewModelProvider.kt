@@ -21,7 +21,11 @@ object AppViewModelProvider {
     val Factory = viewModelFactory {
         // Initializer for BackupAndRestoreViewModel
         initializer {
-            BackupAndRestoreViewModel(reminderApplication().container.reminderRepository)
+            val app = reminderApplication()
+            BackupAndRestoreViewModel(
+                reminderRepository = app.container.reminderRepository,
+                tagRepository = app.container.tagRepository
+            )
         }
 
         // Initializer for ReminderSettingViewModel
