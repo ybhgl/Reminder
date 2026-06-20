@@ -267,7 +267,18 @@ object BackupPreferences {
         }
     }
 
-    suspend fun triggerAutoBackup(context: Context, reminderRepository: ReminderRepository, force: Boolean = false): AutoBackupResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
+    suspend fun triggerAutoBackup(context: Context, reminderRepository: ReminderRepository, force: Boolean = false): AutoBackupResult {
+        if (!force) {
+            backupScope.launch {
+                triggerAutoBackupInternal(context, reminderRepository, force = false)
+            }
+            return AutoBackupResult(success = true)
+        } else {
+            return triggerAutoBackupInternal(context, reminderRepository, force = true)
+        }
+    }
+
+    private suspend fun triggerAutoBackupInternal(context: Context, reminderRepository: ReminderRepository, force: Boolean): AutoBackupResult = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.IO) {
         backupMutex.withLock {
             val isLocalEnabled = autoBackupLocalEnabledFlow(context).first()
             val isWebDavEnabled = autoBackupWebDavEnabledFlow(context).first()
