@@ -78,14 +78,15 @@ class DetailViewModel(
                     getSortValue = { getBirthdaySortValue(it, today) }
                 )
 
-                annualList + countUpList + birthdayList
+                Pair(annualList + countUpList + birthdayList, tags)
             }
-            .onEach { sortedReminders ->
+            .onEach { (sortedReminders, tags) ->
                 val current = sortedReminders.find { it.id == reminderId }
                 _uiState.update {
                     it.copy(
                         reminderItems = sortedReminders,
-                        reminderItem = current ?: it.reminderItem
+                        reminderItem = current ?: it.reminderItem,
+                        tags = tags
                     )
                 }
             }
@@ -94,6 +95,12 @@ class DetailViewModel(
 
     fun updateCurrentReminder(reminder: ReminderItem) {
         _uiState.update { it.copy(reminderItem = reminder) }
+    }
+
+    fun updateReminderTag(reminder: ReminderItem, newTag: String) {
+        viewModelScope.launch {
+            reminderRepository.updateReminder(reminder.copy(tag = newTag))
+        }
     }
 
     suspend fun shareReminder(bitmap: Bitmap, context: Context) {
@@ -279,6 +286,7 @@ class DetailViewModel(
 data class DetailUiState(
     val reminderItem: ReminderItem? = null,
     val reminderItems: List<ReminderItem> = emptyList(),
+    val tags: List<TagItem> = emptyList(),
     val pendingBirthdayItem: BirthdayListItem? = null
 )
 

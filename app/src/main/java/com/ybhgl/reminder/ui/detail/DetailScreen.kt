@@ -59,6 +59,10 @@ import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.withFrameNanos
 import java.time.LocalDate
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.foundation.shape.CircleShape
+import com.ybhgl.reminder.ui.tag.toComposeColor
+import com.ybhgl.reminder.data.TagItem
 
 enum class CaptureAction { SHARE, SAVE }
 
@@ -70,6 +74,7 @@ fun DetailScreen(
     viewModel: DetailViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val uiState by viewModel.uiState.collectAsState()
+    var editingReminderForTag by remember { mutableStateOf<ReminderItem?>(null) }
     val reminderItems = uiState.reminderItems
     val captureController = rememberCaptureController()
     val coroutineScope = rememberCoroutineScope()
@@ -180,6 +185,21 @@ fun DetailScreen(
                 )
             }
         ) { paddingValues ->
+            if (editingReminderForTag != null) {
+                val item = editingReminderForTag!!
+                ModifyTagDialog(
+                    currentTag = item.tag,
+                    tagsList = uiState.tags,
+                    onDismiss = { editingReminderForTag = null },
+                    onSelectTag = { newTag ->
+                        viewModel.updateReminderTag(item, newTag)
+                    },
+                    onNavigateToTagManagement = {
+                        navController.navigate(Routes.tagManagement())
+                    }
+                )
+            }
+
             // The invisible composable for capture
             if (captureAction != null && currentReminder != null) {
                 Box(modifier = Modifier.offset(y = (10000).dp)) {
@@ -238,6 +258,19 @@ fun DetailScreen(
                                     BirthdayInfoChip(label = "星座", value = birthdayInfo.zodiac)
                                 }
                             }
+
+                            // 标签 Badge 显示
+                            val matchedTag = remember(pageItem.tag, uiState.tags) {
+                                uiState.tags.find { it.name.trim() == pageItem.tag.trim() }
+                            }
+                            Spacer(modifier = Modifier.height(16.dp))
+                            TagBadge(
+                                tagName = pageItem.tag,
+                                tagColorHex = matchedTag?.color,
+                                onClick = {
+                                    editingReminderForTag = pageItem
+                                }
+                            )
                             Spacer(modifier = Modifier.weight(0.1f))
                         }
                     }
@@ -581,4 +614,171 @@ fun DetailScreenPreview() {
             )
         }
     }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TagBadge(
+    tagName: String,
+    tagColorHex: String?,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    if (tagName.isBlank()) {
+        SuggestionChip(
+            onClick = onClick,
+            label = {
+                Text(
+                    text = "添加标签",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium)
+                )
+            },
+            icon = {
+                Icon(
+                    imageVector = Icons.Default.Add,
+                    contentDescription = null,
+                    modifier = Modifier.size(14.dp)
+                )
+            },
+            colors = SuggestionChipDefaults.suggestionChipColors(
+                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
+                labelColor = MaterialTheme.colorScheme.onSurfaceVariant
+            ),
+            border = SuggestionChipDefaults.suggestionChipBorder(
+                enabled = true,
+                borderColor = MaterialTheme.colorScheme.outline.copy(alpha = 0.3f),
+                borderWidth = 1.dp
+            ),
+            shape = CircleShape,
+            modifier = modifier
+        )
+    } else {
+        val baseColor = remember(tagColorHex) { 
+            tagColorHex?.toComposeColor() ?: Color(0xFF2196F3) 
+        }
+        val containerColor = baseColor.copy(alpha = 0.15f)
+        val contentColor = baseColor
+        
+        SuggestionChip(
+            onClick = onClick,
+            label = {
+                Text(
+                    text = tagName,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold)
+                )
+            },
+            colors = SuggestionChipDefaults.suggestionChipColors(
+                containerColor = containerColor,
+                labelColor = contentColor
+            ),
+            border = SuggestionChipDefaults.suggestionChipBorder(
+                enabled = true,
+                borderColor = baseColor.copy(alpha = 0.3f),
+                borderWidth = 1.dp
+            ),
+            shape = CircleShape,
+            modifier = modifier
+        )
+    }
+}
+
+@OptIn(ExperimentalLayoutApi::class, ExperimentalMaterial3Api::class)
+@Composable
+fun ModifyTagDialog(
+    currentTag: String,
+    tagsList: List<TagItem>,
+    onDismiss: () -> Unit,
+    onSelectTag: (String) -> Unit,
+    onNavigateToTagManagement: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = {
+            Text(
+                text = "修改标签",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier.fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                FlowRow(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    val isNoTagSelected = currentTag.trim().isBlank()
+                    FilterChip(
+                        selected = isNoTagSelected,
+                        onClick = {
+                            onSelectTag("")
+                            onDismiss()
+                        },
+                        label = { Text("无标签") },
+                        colors = FilterChipDefaults.filterChipColors(
+                            selectedContainerColor = MaterialTheme.colorScheme.secondaryContainer,
+                            selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
+                        )
+                    )
+                    
+                    tagsList.forEach { tagItem ->
+                        val isSelected = tagItem.name.trim() == currentTag.trim()
+                        val baseColor = remember(tagItem.color) { tagItem.color.toComposeColor() }
+                        FilterChip(
+                            selected = isSelected,
+                            onClick = {
+                                onSelectTag(tagItem.name)
+                                onDismiss()
+                            },
+                            label = { Text(tagItem.name) },
+                            leadingIcon = {
+                                Box(
+                                    modifier = Modifier
+                                        .size(12.dp)
+                                        .background(baseColor, shape = CircleShape)
+                                )
+                            },
+                            colors = FilterChipDefaults.filterChipColors(
+                                selectedContainerColor = baseColor.copy(alpha = 0.2f),
+                                selectedLabelColor = baseColor,
+                                containerColor = Color.Transparent,
+                                labelColor = MaterialTheme.colorScheme.onSurface
+                            ),
+                            border = FilterChipDefaults.filterChipBorder(
+                                enabled = true,
+                                selected = isSelected,
+                                borderColor = if (isSelected) baseColor else MaterialTheme.colorScheme.outline.copy(alpha = 0.5f),
+                                selectedBorderColor = baseColor,
+                                borderWidth = 1.dp,
+                                selectedBorderWidth = 1.5.dp
+                            )
+                        )
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            TextButton(
+                onClick = {
+                    onDismiss()
+                    onNavigateToTagManagement()
+                }
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Edit,
+                    contentDescription = null,
+                    modifier = Modifier.size(18.dp)
+                )
+                Spacer(modifier = Modifier.width(4.dp))
+                Text("管理标签")
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) {
+                Text("取消")
+            }
+        }
+    )
 }
