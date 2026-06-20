@@ -106,6 +106,24 @@ class AddReminderViewModel(
         if (!validateInput()) return
 
         viewModelScope.launch {
+            val trimmedCategory = reminderUiState.category.trim()
+            if (trimmedCategory.isNotBlank()) {
+                val existingTags = tagRepository.getAllTags()
+                val matchedTag = existingTags.firstOrNull { it.name.equals(trimmedCategory, ignoreCase = true) }
+                if (matchedTag == null) {
+                    val maxSortOrder = existingTags.maxOfOrNull { it.sortOrder } ?: 0
+                    tagRepository.insertTag(
+                        TagItem(
+                            name = trimmedCategory,
+                            color = "#2196F3",
+                            sortOrder = maxSortOrder + 1
+                        )
+                    )
+                } else if (matchedTag.name != reminderUiState.category) {
+                    reminderUiState = reminderUiState.copy(category = matchedTag.name)
+                }
+            }
+
             val reminder = reminderUiState.toReminderItem()
             val savedReminder = if (reminder.id == 0) {
                 val generatedId = reminderRepository.insertReminder(reminder)

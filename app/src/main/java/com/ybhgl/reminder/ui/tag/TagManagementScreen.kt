@@ -820,7 +820,7 @@ private fun CustomColorPanel(
         }
 
         Text(
-            text = "滑动彩虹条调节色相",
+            text = "滑动选择颜色",
             style = MaterialTheme.typography.bodySmall.copy(color = MaterialTheme.colorScheme.onSurfaceVariant)
         )
 
