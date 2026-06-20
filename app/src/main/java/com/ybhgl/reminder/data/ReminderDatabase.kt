@@ -11,7 +11,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ReminderItem::class, TagItem::class], version = 4, exportSchema = false)
+@Database(entities = [ReminderItem::class, TagItem::class], version = 5, exportSchema = false)
 @TypeConverters(com.ybhgl.reminder.data.TypeConverters::class)
 abstract class ReminderDatabase : RoomDatabase() {
 
@@ -58,6 +58,12 @@ abstract class ReminderDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reminders RENAME COLUMN category TO tag")
+            }
+        }
+
         fun getDatabase(context: Context): ReminderDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -65,7 +71,7 @@ abstract class ReminderDatabase : RoomDatabase() {
                     ReminderDatabase::class.java,
                     "reminder_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

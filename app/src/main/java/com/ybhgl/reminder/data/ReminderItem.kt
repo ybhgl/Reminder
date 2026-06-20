@@ -65,7 +65,7 @@ data class ReminderItem(
     val date: LocalDate,
     val type: ReminderType,
     val isLunar: Boolean,
-    val category: String,
+    val tag: String,
     val isPinned: Boolean,
     val repeatInfo: RepeatInfo? = null,
     val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig()

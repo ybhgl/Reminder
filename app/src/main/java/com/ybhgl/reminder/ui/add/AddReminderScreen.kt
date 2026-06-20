@@ -109,8 +109,8 @@ fun AddReminderScreen(
     val isEditing = uiState.id != 0
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showUnsavedChangesDialog by remember { mutableStateOf(false) }
-    val categoryOptions by viewModel.categorySuggestions.collectAsState()
-    var isCategoryMenuExpanded by remember { mutableStateOf(false) }
+    val tagOptions by viewModel.tagSuggestions.collectAsState()
+    var isTagMenuExpanded by remember { mutableStateOf(false) }
     val density = LocalDensity.current
     var textFieldWidth by remember { mutableStateOf(0.dp) }
     val zoneId = ZoneId.systemDefault()
@@ -292,30 +292,30 @@ fun AddReminderScreen(
 
                 // 6. 分类
                 Column(modifier = Modifier.fillMaxWidth()) {
-                    val dropdownOptions = categoryOptions
+                    val dropdownOptions = tagOptions
                     LaunchedEffect(dropdownOptions) {
-                        if (isCategoryMenuExpanded && dropdownOptions.isEmpty()) {
-                            isCategoryMenuExpanded = false
+                        if (isTagMenuExpanded && dropdownOptions.isEmpty()) {
+                            isTagMenuExpanded = false
                         }
                     }
 
                     // 实时匹配到的标签，用于在输入框中高亮颜色
-                    val matchedTag = remember(uiState.category, categoryOptions) {
-                        val trimmed = uiState.category.trim()
-                        categoryOptions.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
+                    val matchedTag = remember(uiState.tag, tagOptions) {
+                        val trimmed = uiState.tag.trim()
+                        tagOptions.firstOrNull { it.name.equals(trimmed, ignoreCase = true) }
                     }
 
                     OutlinedTextField(
-                        value = uiState.category,
+                        value = uiState.tag,
                         onValueChange = { newValue ->
-                            viewModel.updateUiState(uiState.copy(category = newValue))
+                            viewModel.updateUiState(uiState.copy(tag = newValue))
                         },
                         label = { Text("标签（可选）") },
                         modifier = Modifier
-                            .fillMaxWidth()
-                            .onGloballyPositioned { coordinates ->
-                                textFieldWidth = with(density) { coordinates.size.width.toDp() }
-                            },
+                             .fillMaxWidth()
+                             .onGloballyPositioned { coordinates ->
+                                 textFieldWidth = with(density) { coordinates.size.width.toDp() }
+                             },
                         singleLine = true,
                         leadingIcon = if (matchedTag != null) {
                             {
@@ -328,25 +328,25 @@ fun AddReminderScreen(
                             }
                         } else null,
                         trailingIcon = {
-                            if (categoryOptions.isNotEmpty()) {
+                            if (tagOptions.isNotEmpty()) {
                                 IconButton(onClick = {
                                     val hasOptions = dropdownOptions.isNotEmpty()
-                                    isCategoryMenuExpanded = if (isCategoryMenuExpanded) {
+                                    isTagMenuExpanded = if (isTagMenuExpanded) {
                                         false
                                     } else {
                                         hasOptions
                                     }
                                 }) {
                                     Icon(
-                                        imageVector = if (isCategoryMenuExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
-                                        contentDescription = if (isCategoryMenuExpanded) "收起标签列表" else "展开标签列表"
+                                        imageVector = if (isTagMenuExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
+                                        contentDescription = if (isTagMenuExpanded) "收起标签列表" else "展开标签列表"
                                     )
                                 }
                             }
                         }
                     )
 
-                    if (isCategoryMenuExpanded && dropdownOptions.isNotEmpty()) {
+                    if (isTagMenuExpanded && dropdownOptions.isNotEmpty()) {
                         val dropdownModifier = if (textFieldWidth > 0.dp) {
                             Modifier.width(textFieldWidth)
                         } else {
@@ -366,8 +366,8 @@ fun AddReminderScreen(
                                         modifier = Modifier
                                             .fillMaxWidth()
                                             .clickable {
-                                                viewModel.updateUiState(uiState.copy(category = tagItem.name))
-                                                isCategoryMenuExpanded = false
+                                                viewModel.updateUiState(uiState.copy(tag = tagItem.name))
+                                                isTagMenuExpanded = false
                                             }
                                             .padding(horizontal = 16.dp, vertical = 12.dp),
                                         verticalAlignment = Alignment.CenterVertically,
@@ -401,7 +401,7 @@ fun AddReminderScreen(
                                     modifier = Modifier
                                         .fillMaxWidth()
                                         .clickable {
-                                            isCategoryMenuExpanded = false
+                                            isTagMenuExpanded = false
                                             navController.navigate(Routes.tagManagement())
                                         }
                                         .padding(horizontal = 16.dp, vertical = 12.dp),

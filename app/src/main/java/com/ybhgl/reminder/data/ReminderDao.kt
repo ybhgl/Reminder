@@ -39,15 +39,15 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getReminderById(id: Int): ReminderItem?
 
-    @Query("SELECT DISTINCT category FROM reminders WHERE category != '' ORDER BY category COLLATE NOCASE")
-    fun getDistinctCategories(): Flow<List<String>>
+    @Query("SELECT DISTINCT tag FROM reminders WHERE tag != '' ORDER BY tag COLLATE NOCASE")
+    fun getDistinctTags(): Flow<List<String>>
 
     @Query("DELETE FROM reminders")
     suspend fun deleteAll()
 
-    @Query("UPDATE reminders SET category = :newCategory WHERE category = :oldCategory")
-    suspend fun updateReminderCategories(oldCategory: String, newCategory: String)
+    @Query("UPDATE reminders SET tag = :newTag WHERE tag = :oldTag")
+    suspend fun updateReminderTags(oldTag: String, newTag: String)
 
-    @Query("UPDATE reminders SET category = '' WHERE category = :category")
-    suspend fun clearReminderCategories(category: String)
+    @Query("UPDATE reminders SET tag = '' WHERE tag = :tag")
+    suspend fun clearReminderTags(tag: String)
 }

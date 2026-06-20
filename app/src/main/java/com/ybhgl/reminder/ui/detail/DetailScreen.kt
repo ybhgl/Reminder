@@ -575,7 +575,7 @@ fun DetailScreenPreview() {
                     date = LocalDate.now().plusDays(4),
                     type = ReminderType.ANNUAL,
                     isLunar = false,
-                    category = "Default",
+                    tag = "Default",
                     isPinned = false
                 )
             )

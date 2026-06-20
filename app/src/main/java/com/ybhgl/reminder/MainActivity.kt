@@ -1697,21 +1697,21 @@ private fun buildReminderSections(reminders: List<ReminderItem>, tags: List<TagI
     }
 
     val nonPinned = reminders.filterNot { it.isPinned }
-    val grouped = nonPinned.groupBy { normalizeCategory(it.category) }
+    val grouped = nonPinned.groupBy { normalizeTag(it.tag) }
 
     val tagOrderMap = tags.associate { it.name.trim().lowercase(locale) to it.sortOrder }
     val tagColorMap = tags.associate { it.name.trim().lowercase(locale) to it.color }
 
-    val sortedGroups = grouped.keys.sortedWith { cat1, cat2 ->
-        val isBlank1 = cat1.isBlank()
-        val isBlank2 = cat2.isBlank()
+    val sortedGroups = grouped.keys.sortedWith { tag1, tag2 ->
+        val isBlank1 = tag1.isBlank()
+        val isBlank2 = tag2.isBlank()
         if (isBlank1 && !isBlank2) {
             1
         } else if (!isBlank1 && isBlank2) {
             -1
         } else {
-            val key1 = cat1.trim().lowercase(locale)
-            val key2 = cat2.trim().lowercase(locale)
+            val key1 = tag1.trim().lowercase(locale)
+            val key2 = tag2.trim().lowercase(locale)
             val order1 = tagOrderMap[key1]
             val order2 = tagOrderMap[key2]
             
@@ -1722,27 +1722,27 @@ private fun buildReminderSections(reminders: List<ReminderItem>, tags: List<TagI
             } else if (order2 != null) {
                 1
             } else {
-                val sortKey1 = groupSortKey(cat1).lowercase(locale)
-                val sortKey2 = groupSortKey(cat2).lowercase(locale)
+                val sortKey1 = groupSortKey(tag1).lowercase(locale)
+                val sortKey2 = groupSortKey(tag2).lowercase(locale)
                 if (sortKey1 != sortKey2) {
                     sortKey1.compareTo(sortKey2)
                 } else {
-                    cat1.lowercase(locale).compareTo(cat2.lowercase(locale))
+                    tag1.lowercase(locale).compareTo(tag2.lowercase(locale))
                 }
             }
         }
     }
 
-    sortedGroups.forEach { category ->
-        val items = grouped[category]
+    sortedGroups.forEach { tag ->
+        val items = grouped[tag]
             .orEmpty()
             .sortedWith(compareBy<ReminderItem> { reminderSortValue(it) }
                 .thenBy { it.title.lowercase(locale) }
                 .thenBy { it.id })
         if (items.isNotEmpty()) {
-            val title = category.ifBlank { "无标签" }
-            val key = if (category.isBlank()) "group_uncategorized" else "group_${category.lowercase(locale)}"
-            val trimmedLower = category.trim().lowercase(locale)
+            val title = tag.ifBlank { "无标签" }
+            val key = if (tag.isBlank()) "group_uncategorized" else "group_${tag.lowercase(locale)}"
+            val trimmedLower = tag.trim().lowercase(locale)
             val tagColor = tagColorMap[trimmedLower]
             result += ReminderSectionData(
                 key = key,
@@ -1756,11 +1756,11 @@ private fun buildReminderSections(reminders: List<ReminderItem>, tags: List<TagI
     return result
 }
 
-private fun normalizeCategory(category: String): String = category.trim()
+private fun normalizeTag(tag: String): String = tag.trim()
 
-private fun groupSortKey(category: String): String {
-    if (category.isBlank()) return "#"
-    return category.first().toString()
+private fun groupSortKey(tag: String): String {
+    if (tag.isBlank()) return "#"
+    return tag.first().toString()
 }
 
 private fun reminderSortValue(reminder: ReminderItem): Int {

@@ -418,7 +418,7 @@ class BackupAndRestoreViewModel(
                     insertedCount++
                 } else {
                     val isAllSettingsEqual = matched.isLunar == newItem.isLunar &&
-                            matched.category == newItem.category &&
+                            matched.tag == newItem.tag &&
                             matched.isPinned == newItem.isPinned &&
                             matched.repeatInfo == newItem.repeatInfo &&
                             matched.notificationConfig == newItem.notificationConfig
@@ -443,9 +443,9 @@ class BackupAndRestoreViewModel(
                     }
                 }
             } ?: run {
-                val categoriesToCreate = backupData.reminders.map { it.category }.filter { it.isNotBlank() }.distinct()
+                val tagsToCreate = backupData.reminders.map { it.tag }.filter { it.isNotBlank() }.distinct()
                 val existingTags = tagRepository.getAllTags()
-                for (cat in categoriesToCreate) {
+                for (cat in tagsToCreate) {
                     if (existingTags.none { it.name == cat }) {
                         tagRepository.insertTag(TagItem(name = cat, color = "#2196F3"))
                     }
@@ -470,8 +470,8 @@ class BackupAndRestoreViewModel(
             backupData.tags?.let { tags ->
                 tags.forEach { tagRepository.insertTag(it.copy(id = 0)) }
             } ?: run {
-                val categoriesToCreate = backupData.reminders.map { it.category }.filter { it.isNotBlank() }.distinct()
-                categoriesToCreate.forEach { cat ->
+                val tagsToCreate = backupData.reminders.map { it.tag }.filter { it.isNotBlank() }.distinct()
+                tagsToCreate.forEach { cat ->
                     tagRepository.insertTag(TagItem(name = cat, color = "#2196F3"))
                 }
             }

@@ -185,7 +185,7 @@ class DetailViewModel(
             date = item.targetDate,
             type = ReminderType.ANNUAL,
             isLunar = false,
-            category = currentReminder.category,
+            tag = currentReminder.tag,
             isPinned = false,
             repeatInfo = null
         )

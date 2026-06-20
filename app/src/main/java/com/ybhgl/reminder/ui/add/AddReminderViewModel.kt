@@ -37,7 +37,7 @@ class AddReminderViewModel(
 
     private val reminderId: Int? = savedStateHandle.get<Int>("reminderId")
 
-    val categorySuggestions = tagRepository.getAllTagsFlow()
+    val tagSuggestions = tagRepository.getAllTagsFlow()
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
@@ -106,21 +106,21 @@ class AddReminderViewModel(
         if (!validateInput()) return
 
         viewModelScope.launch {
-            val trimmedCategory = reminderUiState.category.trim()
-            if (trimmedCategory.isNotBlank()) {
+            val trimmedTag = reminderUiState.tag.trim()
+            if (trimmedTag.isNotBlank()) {
                 val existingTags = tagRepository.getAllTags()
-                val matchedTag = existingTags.firstOrNull { it.name.equals(trimmedCategory, ignoreCase = true) }
+                val matchedTag = existingTags.firstOrNull { it.name.equals(trimmedTag, ignoreCase = true) }
                 if (matchedTag == null) {
                     val maxSortOrder = existingTags.maxOfOrNull { it.sortOrder } ?: 0
                     tagRepository.insertTag(
                         TagItem(
-                            name = trimmedCategory,
+                            name = trimmedTag,
                             color = "#2196F3",
                             sortOrder = maxSortOrder + 1
                         )
                     )
-                } else if (matchedTag.name != reminderUiState.category) {
-                    reminderUiState = reminderUiState.copy(category = matchedTag.name)
+                } else if (matchedTag.name != reminderUiState.tag) {
+                    reminderUiState = reminderUiState.copy(tag = matchedTag.name)
                 }
             }
 
@@ -193,7 +193,7 @@ data class ReminderUiState(
     val date: LocalDate = LocalDate.now(),
     val type: ReminderType = ReminderType.ANNUAL,
     val isLunar: Boolean = false,
-    val category: String = "",
+    val tag: String = "",
     val isPinned: Boolean = false,
     val repeatInfo: RepeatInfo? = null,
     val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig(),
@@ -206,7 +206,7 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     date = date,
     type = type,
     isLunar = isLunar,
-    category = category,
+    tag = tag,
     isPinned = isPinned,
     repeatInfo = repeatInfo,
     notificationConfig = notificationConfig
@@ -218,7 +218,7 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     date = date,
     type = type,
     isLunar = isLunar,
-    category = category,
+    tag = tag,
     isPinned = isPinned,
     repeatInfo = repeatInfo,
     notificationConfig = notificationConfig

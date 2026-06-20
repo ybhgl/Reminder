@@ -35,14 +35,14 @@ class TagRepository(
 
     suspend fun deleteTagAndClearReminders(tag: TagItem) {
         tagDao.delete(tag)
-        reminderDao.clearReminderCategories(tag.name)
+        reminderDao.clearReminderTags(tag.name)
         notifyDataChanged()
     }
 
     suspend fun renameTagAndSyncReminders(oldName: String, tag: TagItem) {
         tagDao.update(tag)
         if (oldName != tag.name) {
-            reminderDao.updateReminderCategories(oldName, tag.name)
+            reminderDao.updateReminderTags(oldName, tag.name)
         }
         notifyDataChanged()
     }
