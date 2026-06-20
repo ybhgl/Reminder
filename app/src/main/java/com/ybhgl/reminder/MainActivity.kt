@@ -31,6 +31,9 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -1225,57 +1228,59 @@ fun ReminderListScreen(
                                 )
                             }
 
-                            if (collapsedKey !in collapsedSections) {
-                                if (viewMode == ReminderViewMode.CARD) {
-                                    val rows = section.items.chunked(2)
-                                    items(
-                                        count = rows.size,
-                                        key = { index -> "row_${section.key}_${index}_${viewMode.name}" }
-                                    ) { rowIndex ->
-                                        val rowItems = rows[rowIndex]
-                                        Row(
-                                            modifier = Modifier.fillMaxWidth(),
-                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                        ) {
-                                            rowItems.forEach { reminder ->
-                                                Box(modifier = Modifier.weight(1f)) {
-                                                    ReminderSummaryCard(
-                                                        reminder = reminder,
-                                                        modifier = Modifier
-                                                            .fillMaxWidth()
-                                                            .heightIn(min = 180.dp),
-                                                        isSelectionMode = isSelectionMode,
-                                                        isSelected = reminder.id in selectedIds,
-                                                        onClick = { handleItemClick(reminder) },
-                                                        onLongPress = { handleItemLongPress(reminder) },
-                                                        onToggleSelection = { viewModel.toggleSelection(reminder.id) }
-                                                    )
+                            item(key = "content_${section.key}_${viewMode.name}") {
+                                AnimatedVisibility(
+                                    visible = collapsedKey !in collapsedSections,
+                                    enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                                    exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+                                ) {
+                                    Column(
+                                        verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp),
+                                        modifier = Modifier.fillMaxWidth()
+                                    ) {
+                                        if (viewMode == ReminderViewMode.CARD) {
+                                            val rows = section.items.chunked(2)
+                                            rows.forEach { rowItems ->
+                                                Row(
+                                                    modifier = Modifier.fillMaxWidth(),
+                                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                                ) {
+                                                    rowItems.forEach { reminder ->
+                                                        Box(modifier = Modifier.weight(1f)) {
+                                                            ReminderSummaryCard(
+                                                                reminder = reminder,
+                                                                modifier = Modifier
+                                                                    .fillMaxWidth()
+                                                                    .heightIn(min = 180.dp),
+                                                                isSelectionMode = isSelectionMode,
+                                                                isSelected = reminder.id in selectedIds,
+                                                                onClick = { handleItemClick(reminder) },
+                                                                onLongPress = { handleItemLongPress(reminder) },
+                                                                onToggleSelection = { viewModel.toggleSelection(reminder.id) }
+                                                            )
+                                                        }
+                                                    }
+                                                    if (rowItems.size < 2) {
+                                                        Spacer(modifier = Modifier.weight(1f))
+                                                    }
                                                 }
                                             }
-                                            if (rowItems.size < 2) {
-                                                Spacer(modifier = Modifier.weight(1f))
+                                        } else {
+                                            section.items.forEach { reminder ->
+                                                ReminderListItem(
+                                                    reminder = reminder,
+                                                    isSelectionMode = isSelectionMode,
+                                                    isSelected = reminder.id in selectedIds,
+                                                    onClick = { handleItemClick(reminder) },
+                                                    onLongPress = { handleItemLongPress(reminder) },
+                                                    onToggleSelection = { viewModel.toggleSelection(reminder.id) }
+                                                )
                                             }
                                         }
-                                    }
-                                } else {
-                                    items(
-                                        items = section.items,
-                                        key = { it.id }
-                                    ) { reminder ->
-                                        ReminderListItem(
-                                            reminder = reminder,
-                                            isSelectionMode = isSelectionMode,
-                                            isSelected = reminder.id in selectedIds,
-                                            onClick = { handleItemClick(reminder) },
-                                            onLongPress = { handleItemLongPress(reminder) },
-                                            onToggleSelection = { viewModel.toggleSelection(reminder.id) }
-                                        )
-                                    }
-                                }
 
-                                // 节之间留出一些间距
-                                item {
-                                    Spacer(modifier = Modifier.height(8.dp))
+                                        // 节之间留出一些间距
+                                        Spacer(modifier = Modifier.height(8.dp))
+                                    }
                                 }
                             }
                         }
@@ -2626,56 +2631,58 @@ private fun SearchPanelContent(
                         )
                     }
                     
-                    if (section.key !in collapsedSections) {
-                        if (viewMode == ReminderViewMode.CARD) {
-                            val rows = section.items.chunked(2)
-                            items(
-                                count = rows.size,
-                                key = { index -> "search_row_${section.key}_${index}_${viewMode.name}" }
-                            ) { rowIndex ->
-                                val rowItems = rows[rowIndex]
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                ) {
-                                    rowItems.forEach { reminder ->
-                                        Box(modifier = Modifier.weight(1f)) {
-                                            ReminderSummaryCard(
-                                                reminder = reminder,
-                                                modifier = Modifier
-                                                    .fillMaxWidth()
-                                                    .heightIn(min = 180.dp),
-                                                isSelectionMode = false,
-                                                isSelected = false,
-                                                onClick = { onItemClick(reminder) },
-                                                onLongPress = {},
-                                                onToggleSelection = {}
-                                            )
+                    item(key = "search_content_${section.key}_${viewMode.name}") {
+                        AnimatedVisibility(
+                            visible = section.key !in collapsedSections,
+                            enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                            exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+                        ) {
+                            Column(
+                                verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                if (viewMode == ReminderViewMode.CARD) {
+                                    val rows = section.items.chunked(2)
+                                    rows.forEach { rowItems ->
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            rowItems.forEach { reminder ->
+                                                Box(modifier = Modifier.weight(1f)) {
+                                                    ReminderSummaryCard(
+                                                        reminder = reminder,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .heightIn(min = 180.dp),
+                                                        isSelectionMode = false,
+                                                        isSelected = false,
+                                                        onClick = { onItemClick(reminder) },
+                                                        onLongPress = {},
+                                                        onToggleSelection = {}
+                                                    )
+                                                }
+                                            }
+                                            if (rowItems.size < 2) {
+                                                Spacer(modifier = Modifier.weight(1f))
+                                            }
                                         }
                                     }
-                                    if (rowItems.size < 2) {
-                                        Spacer(modifier = Modifier.weight(1f))
+                                } else {
+                                    section.items.forEach { reminder ->
+                                        ReminderListItem(
+                                            reminder = reminder,
+                                            isSelectionMode = false,
+                                            isSelected = false,
+                                            onClick = { onItemClick(reminder) },
+                                            onLongPress = {},
+                                            onToggleSelection = {}
+                                        )
                                     }
                                 }
-                            }
-                        } else {
-                            items(
-                                items = section.items,
-                                key = { "search_item_${it.id}" }
-                            ) { reminder ->
-                                ReminderListItem(
-                                    reminder = reminder,
-                                    isSelectionMode = false,
-                                    isSelected = false,
-                                    onClick = { onItemClick(reminder) },
-                                    onLongPress = {},
-                                    onToggleSelection = {}
-                                )
-                            }
-                        }
 
-                        item {
-                            Spacer(modifier = Modifier.height(8.dp))
+                                Spacer(modifier = Modifier.height(8.dp))
+                            }
                         }
                     }
                 }
