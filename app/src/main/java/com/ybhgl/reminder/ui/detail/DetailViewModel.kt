@@ -17,6 +17,8 @@ import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderRepository
 import com.ybhgl.reminder.data.ReminderType
+import com.ybhgl.reminder.data.TagItem
+import com.ybhgl.reminder.data.TagRepository
 import com.ybhgl.reminder.util.BirthdayListItem
 import com.ybhgl.reminder.util.CalendarUtil
 import java.time.LocalDate
@@ -31,7 +33,8 @@ import java.io.IOException
 
 class DetailViewModel(
     savedStateHandle: SavedStateHandle,
-    private val reminderRepository: ReminderRepository
+    private val reminderRepository: ReminderRepository,
+    private val tagRepository: TagRepository
 ) : ViewModel() {
 
     val reminderId: Int = checkNotNull(savedStateHandle["reminderId"])
@@ -46,59 +49,47 @@ class DetailViewModel(
     val snackbarMessage = _snackbarMessage.asSharedFlow()
 
     init {
-        viewModelScope.launch {
-            reminderRepository.getAllRemindersStream()
-                .collect { reminders ->
-                    val today = LocalDate.now()
+        reminderRepository.getAllRemindersStream()
+            .combine(tagRepository.getAllTagsFlow()) { reminders, tags ->
+                val today = LocalDate.now()
+                val locale = java.util.Locale.getDefault()
 
-                    val annualList = reminders.filter { it.type == ReminderType.ANNUAL }.sortedWith(
-                        compareBy<ReminderItem> { if (it.isPinned) 0 else 1 }
-                            .thenBy { reminder ->
-                                val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
-                                if (nextDate != null) {
-                                    ChronoUnit.DAYS.between(today, nextDate).toInt()
-                                } else {
-                                    val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt()
-                                    1000000 - daysPassed
-                                }
-                            }
-                            .thenBy { it.id }
+                val annualList = sortReminders(
+                    reminders = reminders.filter { it.type == ReminderType.ANNUAL },
+                    tags = tags,
+                    today = today,
+                    locale = locale,
+                    getSortValue = { getAnnualSortValue(it, today) }
+                )
+
+                val countUpList = sortReminders(
+                    reminders = reminders.filter { it.type == ReminderType.COUNT_UP },
+                    tags = tags,
+                    today = today,
+                    locale = locale,
+                    getSortValue = { getCountUpSortValue(it, today) }
+                )
+
+                val birthdayList = sortReminders(
+                    reminders = reminders.filter { it.type == ReminderType.BIRTHDAY },
+                    tags = tags,
+                    today = today,
+                    locale = locale,
+                    getSortValue = { getBirthdaySortValue(it, today) }
+                )
+
+                annualList + countUpList + birthdayList
+            }
+            .onEach { sortedReminders ->
+                val current = sortedReminders.find { it.id == reminderId }
+                _uiState.update {
+                    it.copy(
+                        reminderItems = sortedReminders,
+                        reminderItem = current ?: it.reminderItem
                     )
-
-                    val countUpList = reminders.filter { it.type == ReminderType.COUNT_UP }.sortedWith(
-                        compareBy<ReminderItem> { if (it.isPinned) 0 else 1 }
-                            .thenBy { reminder ->
-                                val days = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
-                                if (reminder.notificationConfig.includeStartDay) days + 1 else days
-                            }
-                            .thenBy { it.id }
-                    )
-
-                    val birthdayList = reminders.filter { it.type == ReminderType.BIRTHDAY }.sortedWith(
-                        compareBy<ReminderItem> { if (it.isPinned) 0 else 1 }
-                            .thenBy { reminder ->
-                                val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
-                                if (nextDate != null) {
-                                    ChronoUnit.DAYS.between(today, nextDate).toInt()
-                                } else {
-                                    val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt()
-                                    1000000 - daysPassed
-                                }
-                            }
-                            .thenBy { it.id }
-                    )
-
-                    val sortedReminders = annualList + countUpList + birthdayList
-
-                    val current = sortedReminders.find { it.id == reminderId }
-                    _uiState.update {
-                        it.copy(
-                            reminderItems = sortedReminders,
-                            reminderItem = current ?: it.reminderItem
-                        )
-                    }
                 }
-        }
+            }
+            .launchIn(viewModelScope)
     }
 
     fun updateCurrentReminder(reminder: ReminderItem) {
@@ -198,6 +189,90 @@ class DetailViewModel(
 
     fun showAddBirthdayDialog(item: BirthdayListItem?) {
         _uiState.update { it.copy(pendingBirthdayItem = item) }
+    }
+
+    private fun getAnnualSortValue(reminder: ReminderItem, today: LocalDate): Int {
+        val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
+        return if (nextDate != null) {
+            ChronoUnit.DAYS.between(today, nextDate).toInt()
+        } else {
+            val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt()
+            1000000 - daysPassed
+        }
+    }
+
+    private fun getCountUpSortValue(reminder: ReminderItem, today: LocalDate): Int {
+        val days = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
+        return if (reminder.notificationConfig.includeStartDay) days + 1 else days
+    }
+
+    private fun getBirthdaySortValue(reminder: ReminderItem, today: LocalDate): Int {
+        val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
+        return if (nextDate != null) {
+            ChronoUnit.DAYS.between(today, nextDate).toInt()
+        } else {
+            val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt()
+            1000000 - daysPassed
+        }
+    }
+
+    private fun sortReminders(
+        reminders: List<ReminderItem>,
+        tags: List<TagItem>,
+        today: LocalDate,
+        locale: java.util.Locale,
+        getSortValue: (ReminderItem) -> Int
+    ): List<ReminderItem> {
+        val pinned = reminders.filter { it.isPinned }.sortedWith(
+            compareBy<ReminderItem> { getSortValue(it) }.thenBy { it.id }
+        )
+
+        val nonPinned = reminders.filterNot { it.isPinned }
+        val grouped = nonPinned.groupBy { it.tag.trim() }
+
+        val tagOrderMap = tags.associate { it.name.trim().lowercase(locale) to it.sortOrder }
+
+        val sortedTags = grouped.keys.filter { it.isNotBlank() }.sortedWith { tag1, tag2 ->
+            val key1 = tag1.trim().lowercase(locale)
+            val key2 = tag2.trim().lowercase(locale)
+            val order1 = tagOrderMap[key1]
+            val order2 = tagOrderMap[key2]
+
+            if (order1 != null && order2 != null) {
+                order1.compareTo(order2)
+            } else if (order1 != null) {
+                -1
+            } else if (order2 != null) {
+                1
+            } else {
+                val sortKey1 = groupSortKey(tag1).lowercase(locale)
+                val sortKey2 = groupSortKey(tag2).lowercase(locale)
+                if (sortKey1 != sortKey2) {
+                    sortKey1.compareTo(sortKey2)
+                } else {
+                    tag1.lowercase(locale).compareTo(tag2.lowercase(locale))
+                }
+            }
+        }
+
+        val labeledItems = mutableListOf<ReminderItem>()
+        sortedTags.forEach { tag ->
+            val itemsInTag = grouped[tag].orEmpty().sortedWith(
+                compareBy<ReminderItem> { getSortValue(it) }.thenBy { it.id }
+            )
+            labeledItems.addAll(itemsInTag)
+        }
+
+        val unlabeledItems = nonPinned.filter { it.tag.trim().isBlank() }.sortedWith(
+            compareBy<ReminderItem> { getSortValue(it) }.thenBy { it.id }
+        )
+
+        return pinned + labeledItems + unlabeledItems
+    }
+
+    private fun groupSortKey(tag: String): String {
+        if (tag.isBlank()) return "#"
+        return tag.first().toString()
     }
 }
 

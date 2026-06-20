@@ -51,7 +51,8 @@ object AppViewModelProvider {
         initializer {
             DetailViewModel(
                 savedStateHandle = this.createSavedStateHandle(),
-                reminderRepository = reminderApplication().container.reminderRepository
+                reminderRepository = reminderApplication().container.reminderRepository,
+                tagRepository = reminderApplication().container.tagRepository
             )
         }
 
