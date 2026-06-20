@@ -12,6 +12,7 @@ import com.ybhgl.reminder.ui.detail.DetailViewModel
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.SettingsViewModel
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreViewModel
+import com.ybhgl.reminder.ui.tag.TagManagementViewModel
 
 /**
  * Provides Factory to create instance of ViewModel for the entire Reminder app
@@ -37,6 +38,7 @@ object AppViewModelProvider {
             val application = reminderApplication()
             AddReminderViewModel(
                 reminderRepository = application.container.reminderRepository,
+                tagRepository = application.container.tagRepository,
                 savedStateHandle = createSavedStateHandle()
             )
         }
@@ -51,12 +53,20 @@ object AppViewModelProvider {
 
         // Initializer for ReminderListViewModel
         initializer {
-            ReminderListViewModel(reminderApplication().container.reminderRepository)
+            ReminderListViewModel(
+                reminderRepository = reminderApplication().container.reminderRepository,
+                tagRepository = reminderApplication().container.tagRepository
+            )
         }
 
         // Initializer for SettingsViewModel
         initializer {
             SettingsViewModel(reminderApplication().container.reminderRepository)
+        }
+
+        // Initializer for TagManagementViewModel
+        initializer {
+            TagManagementViewModel(reminderApplication().container.tagRepository)
         }
     }
 }

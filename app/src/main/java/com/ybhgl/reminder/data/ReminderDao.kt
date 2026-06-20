@@ -44,4 +44,10 @@ interface ReminderDao {
 
     @Query("DELETE FROM reminders")
     suspend fun deleteAll()
+
+    @Query("UPDATE reminders SET category = :newCategory WHERE category = :oldCategory")
+    suspend fun updateReminderCategories(oldCategory: String, newCategory: String)
+
+    @Query("UPDATE reminders SET category = '' WHERE category = :category")
+    suspend fun clearReminderCategories(category: String)
 }

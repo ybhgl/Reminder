@@ -7,6 +7,7 @@ import android.content.Context
  */
 interface AppContainer {
     val reminderRepository: ReminderRepository
+    val tagRepository: TagRepository
 }
 
 /**
@@ -15,5 +16,10 @@ interface AppContainer {
 class DefaultAppContainer(private val context: Context) : AppContainer {
     override val reminderRepository: ReminderRepository by lazy {
         ReminderRepository(ReminderDatabase.getDatabase(context).reminderDao(), context)
+    }
+
+    override val tagRepository: TagRepository by lazy {
+        val database = ReminderDatabase.getDatabase(context)
+        TagRepository(database.tagDao(), database.reminderDao())
     }
 }
