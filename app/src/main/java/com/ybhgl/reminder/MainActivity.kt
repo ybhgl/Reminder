@@ -1,4 +1,4 @@
-@file:OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class, ExperimentalPermissionsApi::class, ExperimentalComposeUiApi::class)
+@file:OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class, ExperimentalPermissionsApi::class, ExperimentalComposeUiApi::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 
 package com.ybhgl.reminder
 
@@ -141,6 +141,7 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
@@ -212,6 +213,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.activity.SystemBarStyle
@@ -1056,9 +1058,10 @@ fun ReminderListScreen(
     var searchQuery by rememberSaveable { mutableStateOf("") }
     var selectedDateFilter by rememberSaveable(stateSaver = SearchDateFilterSaver) { mutableStateOf<SearchDateFilter?>(null) }
     var selectedTypes by rememberSaveable(stateSaver = ReminderTypeSetSaver) { mutableStateOf(setOf<ReminderType>()) }
+    var selectedTags by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(setOf<String>()) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
 
-    val searchedItems = remember(reminderListUiState.itemList, searchQuery, selectedDateFilter, selectedTypes) {
+    val searchedItems = remember(reminderListUiState.itemList, searchQuery, selectedDateFilter, selectedTypes, selectedTags) {
         reminderListUiState.itemList.filter { item ->
             val matchQuery = searchQuery.isBlank() || item.title.contains(searchQuery, ignoreCase = true)
             val matchDate = selectedDateFilter == null || (
@@ -1069,7 +1072,8 @@ fun ReminderListScreen(
                 )
             )
             val matchType = selectedTypes.isEmpty() || item.type in selectedTypes
-            matchQuery && matchDate && matchType
+            val matchTag = selectedTags.isEmpty() || item.tag.trim() in selectedTags
+            matchQuery && matchDate && matchType && matchTag
         }
     }
 
@@ -1639,12 +1643,10 @@ fun ReminderListScreen(
                         onSelectDateClick = { showDatePicker = true },
                         onClearDate = { selectedDateFilter = null },
                         selectedTypes = selectedTypes,
-                        onToggleType = { type ->
-                            selectedTypes = if (type in selectedTypes) {
-                                selectedTypes - type
-                            } else {
-                                selectedTypes + type
-                            }
+                        selectedTags = selectedTags,
+                        onFilterChanged = { types, tags ->
+                            selectedTypes = types
+                            selectedTags = tags
                         },
                         searchedItems = searchedItems,
                         viewMode = viewMode,
@@ -2479,7 +2481,8 @@ private fun SearchPanelContent(
     onSelectDateClick: () -> Unit,
     onClearDate: () -> Unit,
     selectedTypes: Set<ReminderType>,
-    onToggleType: (ReminderType) -> Unit,
+    selectedTags: Set<String>,
+    onFilterChanged: (Set<ReminderType>, Set<String>) -> Unit,
     searchedItems: List<ReminderItem>,
     viewMode: ReminderViewMode,
     onItemClick: (ReminderItem) -> Unit,
@@ -2592,28 +2595,74 @@ private fun SearchPanelContent(
                 shape = RoundedCornerShape(12.dp)
             )
             
-            val typeOptions = listOf(
-                Triple("倒数日", ReminderType.ANNUAL, Icons.Default.Info),
-                Triple("正数日", ReminderType.COUNT_UP, Icons.Default.Info),
-                Triple("生日", ReminderType.BIRTHDAY, Icons.Default.Info)
-            )
+            var showFilterDialog by remember { mutableStateOf(false) }
+            val hasFilters = selectedTypes.isNotEmpty() || selectedTags.isNotEmpty()
             
-            typeOptions.forEach { (label, type, _) ->
-                val isSelected = type in selectedTypes
-                FilterChip(
-                    selected = isSelected,
-                    onClick = { onToggleType(type) },
-                    label = { Text(label, style = MaterialTheme.typography.labelLarge) },
-                    leadingIcon = if (isSelected) {
-                        {
+            val filterChipLabel = remember(selectedTypes, selectedTags) {
+                val totalCount = selectedTypes.size + selectedTags.size
+                when {
+                    totalCount == 0 -> "类型与标签"
+                    totalCount == 1 -> {
+                        if (selectedTypes.isNotEmpty()) {
+                            when (selectedTypes.first()) {
+                                ReminderType.ANNUAL -> "倒数日"
+                                ReminderType.COUNT_UP -> "正数日"
+                                ReminderType.BIRTHDAY -> "生日"
+                            }
+                        } else {
+                            val tag = selectedTags.first()
+                            if (tag.isEmpty()) "无标签" else tag
+                        }
+                    }
+                    else -> "已选 $totalCount 项"
+                }
+            }
+
+            FilterChip(
+                selected = hasFilters,
+                onClick = { showFilterDialog = true },
+                label = {
+                    Text(
+                        text = filterChipLabel,
+                        style = MaterialTheme.typography.labelLarge
+                    )
+                },
+                leadingIcon = {
+                    Icon(
+                        imageVector = if (hasFilters) Icons.Default.Check else Icons.AutoMirrored.Filled.Label,
+                        contentDescription = null,
+                        modifier = Modifier.size(FilterChipDefaults.IconSize)
+                    )
+                },
+                trailingIcon = {
+                    if (hasFilters) {
+                        IconButton(
+                            onClick = {
+                                onFilterChanged(emptySet(), emptySet())
+                            },
+                            modifier = Modifier.size(18.dp)
+                        ) {
                             Icon(
-                                imageVector = Icons.Default.Check,
-                                contentDescription = null,
-                                modifier = Modifier.size(FilterChipDefaults.IconSize)
+                                imageVector = Icons.Default.Close,
+                                contentDescription = "清除筛选",
+                                modifier = Modifier.size(14.dp)
                             )
                         }
-                    } else null,
-                    shape = RoundedCornerShape(12.dp)
+                    }
+                },
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            if (showFilterDialog) {
+                FilterDialog(
+                    initialTypes = selectedTypes,
+                    initialTags = selectedTags,
+                    tagsList = tagsList,
+                    onDismissRequest = { showFilterDialog = false },
+                    onConfirm = { types, tags ->
+                        onFilterChanged(types, tags)
+                        showFilterDialog = false
+                    }
                 )
             }
         }
@@ -2759,4 +2808,158 @@ private fun SearchPanelContent(
             }
         }
     }
+}
+
+@Composable
+private fun FilterDialog(
+    initialTypes: Set<ReminderType>,
+    initialTags: Set<String>,
+    tagsList: List<TagItem>,
+    onDismissRequest: () -> Unit,
+    onConfirm: (Set<ReminderType>, Set<String>) -> Unit
+) {
+    var tempTypes by remember { mutableStateOf(initialTypes) }
+    var tempTags by remember { mutableStateOf(initialTags) }
+
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = {
+            Text(
+                text = "筛选类型与标签",
+                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+            )
+        },
+        text = {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                // 1. 类型选择
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "类型",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        val typeOptions = listOf(
+                            "倒数日" to ReminderType.ANNUAL,
+                            "正数日" to ReminderType.COUNT_UP,
+                            "生日" to ReminderType.BIRTHDAY
+                        )
+                        typeOptions.forEach { (label, type) ->
+                            val isSelected = type in tempTypes
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    tempTypes = if (isSelected) tempTypes - type else tempTypes + type
+                                },
+                                label = { Text(label) },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize)
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+                }
+
+                // 2. 标签选择
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        text = "标签",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        // "无标签" option
+                        val isNoTagSelected = "" in tempTags
+                        FilterChip(
+                            selected = isNoTagSelected,
+                            onClick = {
+                                tempTags = if (isNoTagSelected) tempTags - "" else tempTags + ""
+                            },
+                            label = { Text("无标签") },
+                            leadingIcon = if (isNoTagSelected) {
+                                {
+                                    Icon(
+                                        imageVector = Icons.Default.Check,
+                                        contentDescription = null,
+                                        modifier = Modifier.size(FilterChipDefaults.IconSize)
+                                    )
+                                }
+                            } else null,
+                            shape = RoundedCornerShape(12.dp)
+                        )
+
+                        tagsList.forEach { tagItem ->
+                            val tagText = tagItem.name.trim()
+                            val isSelected = tagText in tempTags
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    tempTags = if (isSelected) tempTags - tagText else tempTags + tagText
+                                },
+                                label = { Text(tagText) },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize)
+                                        )
+                                    }
+                                } else null,
+                                shape = RoundedCornerShape(12.dp)
+                            )
+                        }
+                    }
+                }
+            }
+        },
+        confirmButton = {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                TextButton(
+                    onClick = {
+                        tempTypes = emptySet()
+                        tempTags = emptySet()
+                    }
+                ) {
+                    Text("重置", color = MaterialTheme.colorScheme.error)
+                }
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TextButton(onClick = onDismissRequest) {
+                        Text("取消")
+                    }
+                    TextButton(
+                        onClick = {
+                            onConfirm(tempTypes, tempTags)
+                        }
+                    ) {
+                        Text("确定")
+                    }
+                }
+            }
+        }
+    )
 }
