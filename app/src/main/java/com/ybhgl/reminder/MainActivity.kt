@@ -79,6 +79,9 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.DateRange
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
+import androidx.compose.material.icons.filled.PushPin
+import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -145,6 +148,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -996,6 +1000,11 @@ val ReminderTypeSetSaver = androidx.compose.runtime.saveable.Saver<Set<ReminderT
     restore = { list -> list.map { ReminderType.valueOf(it) }.toSet() }
 )
 
+val StringSetSaver = androidx.compose.runtime.saveable.Saver<Set<String>, List<String>>(
+    save = { set -> set.toList() },
+    restore = { list -> list.toSet() }
+)
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReminderListScreen(
@@ -1062,6 +1071,7 @@ fun ReminderListScreen(
     var viewMode by rememberSaveable { mutableStateOf(ReminderViewMode.CARD) }
     var hasLoaded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
+    var collapsedSections by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(setOf<String>()) }
     
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
@@ -1194,67 +1204,79 @@ fun ReminderListScreen(
                             top = dynamicTopPadding,
                             bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                         ),
-                        verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
+                        verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         sections.forEach { section ->
+                            val collapsedKey = "${tabs[page].name}_${section.key}"
                             item(key = "header_${section.key}_${viewMode.name}") {
-                                Text(
-                                    text = section.title,
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                                    modifier = Modifier.padding(bottom = 8.dp)
+                                SectionHeader(
+                                    title = section.title,
+                                    key = section.key,
+                                    itemCount = section.items.size,
+                                    isExpanded = collapsedKey !in collapsedSections,
+                                    onToggleExpand = {
+                                        collapsedSections = if (collapsedKey in collapsedSections) {
+                                            collapsedSections - collapsedKey
+                                        } else {
+                                            collapsedSections + collapsedKey
+                                        }
+                                    },
+                                    modifier = Modifier.padding(bottom = if (collapsedKey in collapsedSections) 0.dp else 4.dp)
                                 )
                             }
 
-                            if (viewMode == ReminderViewMode.CARD) {
-                                val rows = section.items.chunked(2)
-                                items(
-                                    count = rows.size,
-                                    key = { index -> "row_${section.key}_${index}_${viewMode.name}" }
-                                ) { rowIndex ->
-                                    val rowItems = rows[rowIndex]
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                                    ) {
-                                        rowItems.forEach { reminder ->
-                                            Box(modifier = Modifier.weight(1f)) {
-                                                ReminderSummaryCard(
-                                                    reminder = reminder,
-                                                    modifier = Modifier
-                                                        .fillMaxWidth()
-                                                        .heightIn(min = 180.dp),
-                                                    isSelectionMode = isSelectionMode,
-                                                    isSelected = reminder.id in selectedIds,
-                                                    onClick = { handleItemClick(reminder) },
-                                                    onLongPress = { handleItemLongPress(reminder) },
-                                                    onToggleSelection = { viewModel.toggleSelection(reminder.id) }
-                                                )
+                            if (collapsedKey !in collapsedSections) {
+                                if (viewMode == ReminderViewMode.CARD) {
+                                    val rows = section.items.chunked(2)
+                                    items(
+                                        count = rows.size,
+                                        key = { index -> "row_${section.key}_${index}_${viewMode.name}" }
+                                    ) { rowIndex ->
+                                        val rowItems = rows[rowIndex]
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                        ) {
+                                            rowItems.forEach { reminder ->
+                                                Box(modifier = Modifier.weight(1f)) {
+                                                    ReminderSummaryCard(
+                                                        reminder = reminder,
+                                                        modifier = Modifier
+                                                            .fillMaxWidth()
+                                                            .heightIn(min = 180.dp),
+                                                        isSelectionMode = isSelectionMode,
+                                                        isSelected = reminder.id in selectedIds,
+                                                        onClick = { handleItemClick(reminder) },
+                                                        onLongPress = { handleItemLongPress(reminder) },
+                                                        onToggleSelection = { viewModel.toggleSelection(reminder.id) }
+                                                    )
+                                                }
+                                            }
+                                            if (rowItems.size < 2) {
+                                                Spacer(modifier = Modifier.weight(1f))
                                             }
                                         }
-                                        if (rowItems.size < 2) {
-                                            Spacer(modifier = Modifier.weight(1f))
-                                        }
+                                    }
+                                } else {
+                                    items(
+                                        items = section.items,
+                                        key = { it.id }
+                                    ) { reminder ->
+                                        ReminderListItem(
+                                            reminder = reminder,
+                                            isSelectionMode = isSelectionMode,
+                                            isSelected = reminder.id in selectedIds,
+                                            onClick = { handleItemClick(reminder) },
+                                            onLongPress = { handleItemLongPress(reminder) },
+                                            onToggleSelection = { viewModel.toggleSelection(reminder.id) }
+                                        )
                                     }
                                 }
-                            } else {
-                                items(
-                                    items = section.items,
-                                    key = { it.id }
-                                ) { reminder ->
-                                    ReminderListItem(
-                                        reminder = reminder,
-                                        isSelectionMode = isSelectionMode,
-                                        isSelected = reminder.id in selectedIds,
-                                        onClick = { handleItemClick(reminder) },
-                                        onLongPress = { handleItemLongPress(reminder) },
-                                        onToggleSelection = { viewModel.toggleSelection(reminder.id) }
-                                    )
-                                }
-                            }
 
-                            // 节之间留出一些间距
-                            item {
-                                Spacer(modifier = Modifier.height(8.dp))
+                                // 节之间留出一些间距
+                                item {
+                                    Spacer(modifier = Modifier.height(8.dp))
+                                }
                             }
                         }
                     }
@@ -1649,10 +1671,23 @@ private fun buildReminderSections(reminders: List<ReminderItem>): List<ReminderS
     val nonPinned = reminders.filterNot { it.isPinned }
     val grouped = nonPinned.groupBy { normalizeCategory(it.category) }
 
-    val sortedGroups = grouped.keys.sortedWith(
-        compareBy<String> { groupSortKey(it).lowercase(locale) }
-            .thenBy { it.lowercase(locale) }
-    )
+    val sortedGroups = grouped.keys.sortedWith { cat1, cat2 ->
+        val isBlank1 = cat1.isBlank()
+        val isBlank2 = cat2.isBlank()
+        if (isBlank1 && !isBlank2) {
+            1
+        } else if (!isBlank1 && isBlank2) {
+            -1
+        } else {
+            val sortKey1 = groupSortKey(cat1).lowercase(locale)
+            val sortKey2 = groupSortKey(cat2).lowercase(locale)
+            if (sortKey1 != sortKey2) {
+                sortKey1.compareTo(sortKey2)
+            } else {
+                cat1.lowercase(locale).compareTo(cat2.lowercase(locale))
+            }
+        }
+    }
 
     sortedGroups.forEach { category ->
         val items = grouped[category]
@@ -1661,7 +1696,7 @@ private fun buildReminderSections(reminders: List<ReminderItem>): List<ReminderS
                 .thenBy { it.title.lowercase(locale) }
                 .thenBy { it.id })
         if (items.isNotEmpty()) {
-            val title = category.ifBlank { "未分类" }
+            val title = category.ifBlank { "无标签" }
             val key = if (category.isBlank()) "group_uncategorized" else "group_${category.lowercase(locale)}"
             result += ReminderSectionData(
                 key = key,
@@ -2119,6 +2154,110 @@ private fun ReminderSummaryCard(
 
 
 @Composable
+private fun SectionHeader(
+    title: String,
+    key: String,
+    itemCount: Int,
+    isExpanded: Boolean,
+    onToggleExpand: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val rotationAngle by animateFloatAsState(
+        targetValue = if (isExpanded) 0f else -180f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioMediumBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "HeaderArrowRotation"
+    )
+
+    val icon = if (key == "pinned") Icons.Filled.PushPin else Icons.AutoMirrored.Filled.Label
+
+    Surface(
+        modifier = modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .clickable(onClick = onToggleExpand),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+        contentColor = MaterialTheme.colorScheme.onSurface
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 14.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Icon container with primary/secondary container color for expression
+            val iconBgColor = if (key == "pinned") {
+                MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
+            } else {
+                MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
+            }
+            val iconColor = if (key == "pinned") {
+                MaterialTheme.colorScheme.onErrorContainer
+            } else {
+                MaterialTheme.colorScheme.onPrimaryContainer
+            }
+
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(iconBgColor),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = iconColor,
+                    modifier = Modifier.size(16.dp)
+                )
+            }
+
+            Spacer(modifier = Modifier.width(12.dp))
+
+            // Title
+            Text(
+                text = title,
+                style = MaterialTheme.typography.titleMedium.copy(
+                    fontWeight = FontWeight.Bold,
+                    letterSpacing = 0.1.sp
+                ),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.weight(1f)
+            )
+
+            // Item count badge/chip
+            Surface(
+                color = MaterialTheme.colorScheme.secondaryContainer,
+                shape = RoundedCornerShape(10.dp),
+                modifier = Modifier.padding(horizontal = 8.dp)
+            ) {
+                Text(
+                    text = "$itemCount",
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                    color = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.padding(horizontal = 8.dp, vertical = 2.dp)
+                )
+            }
+
+            // Expand/collapse arrow
+            Icon(
+                imageVector = Icons.Default.KeyboardArrowUp,
+                contentDescription = if (isExpanded) "收起" else "展开",
+                tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier
+                    .size(24.dp)
+                    .graphicsLayer {
+                        rotationZ = rotationAngle
+                    }
+            )
+        }
+    }
+}
+
+
+@Composable
 private fun EmptyStateCard(modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
@@ -2457,6 +2596,7 @@ private fun SearchPanelContent(
             val sections = remember(searchedItems) {
                 buildReminderSections(searchedItems)
             }
+            var collapsedSections by remember { mutableStateOf(setOf<String>()) }
             
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -2466,66 +2606,77 @@ private fun SearchPanelContent(
                     top = 8.dp,
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
                 ),
-                verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp)
+                verticalArrangement = Arrangement.spacedBy(8.dp)
             ) {
                 sections.forEach { section ->
                     item(key = "search_header_${section.key}_${viewMode.name}") {
-                        Text(
-                            text = section.title,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
-                            modifier = Modifier.padding(bottom = 8.dp)
+                        SectionHeader(
+                            title = section.title,
+                            key = section.key,
+                            itemCount = section.items.size,
+                            isExpanded = section.key !in collapsedSections,
+                            onToggleExpand = {
+                                collapsedSections = if (section.key in collapsedSections) {
+                                    collapsedSections - section.key
+                                } else {
+                                    collapsedSections + section.key
+                                }
+                            },
+                            modifier = Modifier.padding(bottom = if (section.key in collapsedSections) 0.dp else 4.dp)
                         )
                     }
                     
-                    if (viewMode == ReminderViewMode.CARD) {
-                        val rows = section.items.chunked(2)
-                        items(
-                            count = rows.size,
-                            key = { index -> "search_row_${section.key}_${index}_${viewMode.name}" }
-                        ) { rowIndex ->
-                            val rowItems = rows[rowIndex]
-                            Row(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(16.dp)
-                            ) {
-                                rowItems.forEach { reminder ->
-                                    Box(modifier = Modifier.weight(1f)) {
-                                        ReminderSummaryCard(
-                                            reminder = reminder,
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .heightIn(min = 180.dp),
-                                            isSelectionMode = false,
-                                            isSelected = false,
-                                            onClick = { onItemClick(reminder) },
-                                            onLongPress = {},
-                                            onToggleSelection = {}
-                                        )
+                    if (section.key !in collapsedSections) {
+                        if (viewMode == ReminderViewMode.CARD) {
+                            val rows = section.items.chunked(2)
+                            items(
+                                count = rows.size,
+                                key = { index -> "search_row_${section.key}_${index}_${viewMode.name}" }
+                            ) { rowIndex ->
+                                val rowItems = rows[rowIndex]
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    rowItems.forEach { reminder ->
+                                        Box(modifier = Modifier.weight(1f)) {
+                                            ReminderSummaryCard(
+                                                reminder = reminder,
+                                                modifier = Modifier
+                                                    .fillMaxWidth()
+                                                    .heightIn(min = 180.dp),
+                                                isSelectionMode = false,
+                                                isSelected = false,
+                                                onClick = { onItemClick(reminder) },
+                                                onLongPress = {},
+                                                onToggleSelection = {}
+                                            )
+                                        }
+                                    }
+                                    if (rowItems.size < 2) {
+                                        Spacer(modifier = Modifier.weight(1f))
                                     }
                                 }
-                                if (rowItems.size < 2) {
-                                    Spacer(modifier = Modifier.weight(1f))
-                                }
+                            }
+                        } else {
+                            items(
+                                items = section.items,
+                                key = { "search_item_${it.id}" }
+                            ) { reminder ->
+                                ReminderListItem(
+                                    reminder = reminder,
+                                    isSelectionMode = false,
+                                    isSelected = false,
+                                    onClick = { onItemClick(reminder) },
+                                    onLongPress = {},
+                                    onToggleSelection = {}
+                                )
                             }
                         }
-                    } else {
-                        items(
-                            items = section.items,
-                            key = { "search_item_${it.id}" }
-                        ) { reminder ->
-                            ReminderListItem(
-                                reminder = reminder,
-                                isSelectionMode = false,
-                                isSelected = false,
-                                onClick = { onItemClick(reminder) },
-                                onLongPress = {},
-                                onToggleSelection = {}
-                            )
+
+                        item {
+                            Spacer(modifier = Modifier.height(8.dp))
                         }
-                    }
-                    
-                    item {
-                        Spacer(modifier = Modifier.height(8.dp))
                     }
                 }
             }

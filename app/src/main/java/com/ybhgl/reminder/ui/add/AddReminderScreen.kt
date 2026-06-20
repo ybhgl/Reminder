@@ -313,7 +313,7 @@ fun AddReminderScreen(
                         onValueChange = { newValue ->
                             viewModel.updateUiState(uiState.copy(category = newValue))
                         },
-                        label = { Text("分类（可选）") },
+                        label = { Text("标签（可选）") },
                         modifier = Modifier
                             .fillMaxWidth()
                             .onGloballyPositioned { coordinates ->
@@ -332,7 +332,7 @@ fun AddReminderScreen(
                                 }) {
                                     Icon(
                                         imageVector = if (isCategoryMenuExpanded) Icons.Filled.ArrowDropUp else Icons.Filled.ArrowDropDown,
-                                        contentDescription = if (isCategoryMenuExpanded) "收起分类列表" else "展开分类列表"
+                                        contentDescription = if (isCategoryMenuExpanded) "收起标签列表" else "展开标签列表"
                                     )
                                 }
                             }
