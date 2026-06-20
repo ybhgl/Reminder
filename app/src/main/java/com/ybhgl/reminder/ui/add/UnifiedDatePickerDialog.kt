@@ -4,6 +4,8 @@ import kotlinx.coroutines.launch
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -1431,33 +1433,53 @@ fun FlexibleDateFilterDialog(
         }
     }
 
-    Dialog(
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        properties = DialogProperties(usePlatformDefaultWidth = false)
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        containerColor = MaterialTheme.colorScheme.surface
     ) {
-        Surface(
-            shape = RoundedCornerShape(24.dp),
-            color = MaterialTheme.colorScheme.surface,
-            tonalElevation = 6.dp,
+        Column(
             modifier = Modifier
-                .padding(horizontal = 16.dp)
-                .widthIn(min = 320.dp, max = 360.dp)
                 .fillMaxWidth()
-                .wrapContentHeight()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
             ) {
                 Text(
                     text = "输入日期",
-                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.padding(bottom = 20.dp)
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                 )
+                TextButton(
+                    onClick = {
+                        // 仅清空所有输入框内容，不退出对话框
+                        startYearInput = ""
+                        startMonthInput = ""
+                        startDayInput = ""
+                        endYearInput = ""
+                        endMonthInput = ""
+                        endDayInput = ""
+                    }
+                ) {
+                    Text("清空", color = MaterialTheme.colorScheme.error)
+                }
+            }
 
+            Spacer(modifier = Modifier.height(16.dp))
+
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally
+            ) {
                 // 开始日期 row
                 FilterDateRow(
                     year = startYearInput,
@@ -1511,61 +1533,45 @@ fun FlexibleDateFilterDialog(
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
+            }
 
-                Spacer(modifier = Modifier.height(24.dp))
+            Spacer(modifier = Modifier.height(24.dp))
 
-                // 按钮排版
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.SpaceBetween,
-                    verticalAlignment = Alignment.CenterVertically
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                OutlinedButton(
+                    onClick = onDismissRequest,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    TextButton(
-                        onClick = {
-                            // 仅清空所有输入框内容，不退出对话框
-                            startYearInput = ""
-                            startMonthInput = ""
-                            startDayInput = ""
-                            endYearInput = ""
-                            endMonthInput = ""
-                            endDayInput = ""
+                    Text("取消")
+                }
+                Button(
+                    onClick = {
+                        if (!hasAnyError) {
+                            val filter = if (!startHasAny && !endHasAny) {
+                                null
+                            } else {
+                                com.ybhgl.reminder.SearchDateFilter(
+                                    startYear = startYearInput.toIntOrNull(),
+                                    startMonth = startMonthInput.toIntOrNull(),
+                                    startDay = startDayInput.toIntOrNull(),
+                                    endYear = endYearInput.toIntOrNull(),
+                                    endMonth = endMonthInput.toIntOrNull(),
+                                    endDay = endDayInput.toIntOrNull(),
+                                    isLunar = false
+                                )
+                            }
+                            onConfirm(filter)
                         }
-                    ) {
-                        Text("清空", color = MaterialTheme.colorScheme.error)
-                    }
-
-                    Row(
-                        horizontalArrangement = Arrangement.spacedBy(8.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        TextButton(onClick = onDismissRequest) {
-                            Text("取消")
-                        }
-                        Button(
-                            onClick = {
-                                if (!hasAnyError) {
-                                    val filter = if (!startHasAny && !endHasAny) {
-                                        null
-                                    } else {
-                                        com.ybhgl.reminder.SearchDateFilter(
-                                            startYear = startYearInput.toIntOrNull(),
-                                            startMonth = startMonthInput.toIntOrNull(),
-                                            startDay = startDayInput.toIntOrNull(),
-                                            endYear = endYearInput.toIntOrNull(),
-                                            endMonth = endMonthInput.toIntOrNull(),
-                                            endDay = endDayInput.toIntOrNull(),
-                                            isLunar = false
-                                        )
-                                    }
-                                    onConfirm(filter)
-                                }
-                            },
-                            enabled = !hasAnyError,
-                            shape = RoundedCornerShape(12.dp)
-                        ) {
-                            Text("确定")
-                        }
-                    }
+                    },
+                    enabled = !hasAnyError,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("确定")
                 }
             }
         }

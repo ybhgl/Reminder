@@ -104,6 +104,10 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.DatePicker
 import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.rememberDatePickerState
@@ -141,8 +145,8 @@ import androidx.compose.ui.graphics.Outline
 import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.Path
 import androidx.compose.foundation.horizontalScroll
-import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.foundation.shape.CircleShape
@@ -213,7 +217,6 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.activity.SystemBarStyle
@@ -2489,6 +2492,8 @@ private fun SearchPanelContent(
     onBackClick: () -> Unit,
     tagsList: List<TagItem> = emptyList()
 ) {
+    var showFilterDialog by remember { mutableStateOf(false) }
+
     Column(
         modifier = Modifier
             .fillMaxSize()
@@ -2595,47 +2600,37 @@ private fun SearchPanelContent(
                 shape = RoundedCornerShape(12.dp)
             )
             
-            var showFilterDialog by remember { mutableStateOf(false) }
-            val hasFilters = selectedTypes.isNotEmpty() || selectedTags.isNotEmpty()
-            
-            val filterChipLabel = remember(selectedTypes, selectedTags) {
-                val totalCount = selectedTypes.size + selectedTags.size
-                when {
-                    totalCount == 0 -> "类型与标签"
-                    totalCount == 1 -> {
-                        if (selectedTypes.isNotEmpty()) {
-                            when (selectedTypes.first()) {
-                                ReminderType.ANNUAL -> "倒数日"
-                                ReminderType.COUNT_UP -> "正数日"
-                                ReminderType.BIRTHDAY -> "生日"
-                            }
-                        } else {
-                            val tag = selectedTags.first()
-                            if (tag.isEmpty()) "无标签" else tag
+            val totalSelected = selectedTypes.size + selectedTags.size
+            val chipText = when (totalSelected) {
+                0 -> "类型与标签"
+                1 -> {
+                    if (selectedTypes.isNotEmpty()) {
+                        when (selectedTypes.first()) {
+                            ReminderType.ANNUAL -> "倒数日"
+                            ReminderType.COUNT_UP -> "正数日"
+                            ReminderType.BIRTHDAY -> "生日"
                         }
+                    } else {
+                        val tag = selectedTags.first()
+                        if (tag.isEmpty()) "无标签" else tag
                     }
-                    else -> "已选 $totalCount 项"
                 }
+                else -> "已选 ${totalSelected} 项"
             }
 
             FilterChip(
-                selected = hasFilters,
+                selected = totalSelected > 0,
                 onClick = { showFilterDialog = true },
-                label = {
-                    Text(
-                        text = filterChipLabel,
-                        style = MaterialTheme.typography.labelLarge
-                    )
-                },
+                label = { Text(chipText, style = MaterialTheme.typography.labelLarge) },
                 leadingIcon = {
                     Icon(
-                        imageVector = if (hasFilters) Icons.Default.Check else Icons.AutoMirrored.Filled.Label,
+                        imageVector = Icons.AutoMirrored.Filled.Label,
                         contentDescription = null,
                         modifier = Modifier.size(FilterChipDefaults.IconSize)
                     )
                 },
                 trailingIcon = {
-                    if (hasFilters) {
+                    if (totalSelected > 0) {
                         IconButton(
                             onClick = {
                                 onFilterChanged(emptySet(), emptySet())
@@ -2652,22 +2647,9 @@ private fun SearchPanelContent(
                 },
                 shape = RoundedCornerShape(12.dp)
             )
-
-            if (showFilterDialog) {
-                FilterDialog(
-                    initialTypes = selectedTypes,
-                    initialTags = selectedTags,
-                    tagsList = tagsList,
-                    onDismissRequest = { showFilterDialog = false },
-                    onConfirm = { types, tags ->
-                        onFilterChanged(types, tags)
-                        showFilterDialog = false
-                    }
-                )
-            }
         }
         
-        if (searchQuery.isEmpty() && selectedDateFilter == null && selectedTypes.isEmpty()) {
+        if (searchQuery.isEmpty() && selectedDateFilter == null && selectedTypes.isEmpty() && selectedTags.isEmpty()) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -2808,10 +2790,24 @@ private fun SearchPanelContent(
             }
         }
     }
+
+    if (showFilterDialog) {
+        FilterBottomSheet(
+            initialTypes = selectedTypes,
+            initialTags = selectedTags,
+            tagsList = tagsList,
+            onDismissRequest = { showFilterDialog = false },
+            onConfirm = { types, tags ->
+                onFilterChanged(types, tags)
+                showFilterDialog = false
+            }
+        )
+    }
 }
 
+@OptIn(ExperimentalMaterial3Api::class, androidx.compose.foundation.layout.ExperimentalLayoutApi::class)
 @Composable
-private fun FilterDialog(
+private fun FilterBottomSheet(
     initialTypes: Set<ReminderType>,
     initialTags: Set<String>,
     tagsList: List<TagItem>,
@@ -2820,21 +2816,46 @@ private fun FilterDialog(
 ) {
     var tempTypes by remember { mutableStateOf(initialTypes) }
     var tempTags by remember { mutableStateOf(initialTags) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
 
-    AlertDialog(
+    ModalBottomSheet(
         onDismissRequest = onDismissRequest,
-        title = {
-            Text(
-                text = "筛选类型与标签",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
-        },
-        text = {
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        containerColor = MaterialTheme.colorScheme.surface
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(start = 20.dp, end = 20.dp, bottom = 24.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "筛选类型与标签",
+                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                )
+                TextButton(
+                    onClick = {
+                        tempTypes = emptySet()
+                        tempTags = emptySet()
+                    }
+                ) {
+                    Text("重置", color = MaterialTheme.colorScheme.error)
+                }
+            }
+
+            Spacer(modifier = Modifier.height(16.dp))
+
             Column(
                 modifier = Modifier
-                    .fillMaxWidth()
+                    .weight(1f, fill = false)
                     .verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                verticalArrangement = Arrangement.spacedBy(20.dp)
             ) {
                 // 1. 类型选择
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -2843,24 +2864,23 @@ private fun FilterDialog(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    androidx.compose.foundation.layout.FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
                         val typeOptions = listOf(
-                            "倒数日" to ReminderType.ANNUAL,
-                            "正数日" to ReminderType.COUNT_UP,
-                            "生日" to ReminderType.BIRTHDAY
+                            Triple("倒数日", ReminderType.ANNUAL, Icons.Default.Info),
+                            Triple("正数日", ReminderType.COUNT_UP, Icons.Default.Info),
+                            Triple("生日", ReminderType.BIRTHDAY, Icons.Default.Info)
                         )
-                        typeOptions.forEach { (label, type) ->
+                        typeOptions.forEach { (label, type, _) ->
                             val isSelected = type in tempTypes
                             FilterChip(
                                 selected = isSelected,
                                 onClick = {
                                     tempTypes = if (isSelected) tempTypes - type else tempTypes + type
                                 },
-                                label = { Text(label) },
+                                label = { Text(label, style = MaterialTheme.typography.labelLarge) },
                                 leadingIcon = if (isSelected) {
                                     {
                                         Icon(
@@ -2883,19 +2903,17 @@ private fun FilterDialog(
                         style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                    FlowRow(
-                        modifier = Modifier.fillMaxWidth(),
+                    androidx.compose.foundation.layout.FlowRow(
                         horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        // "无标签" option
                         val isNoTagSelected = "" in tempTags
                         FilterChip(
                             selected = isNoTagSelected,
                             onClick = {
                                 tempTags = if (isNoTagSelected) tempTags - "" else tempTags + ""
                             },
-                            label = { Text("无标签") },
+                            label = { Text("无标签", style = MaterialTheme.typography.labelLarge) },
                             leadingIcon = if (isNoTagSelected) {
                                 {
                                     Icon(
@@ -2909,14 +2927,13 @@ private fun FilterDialog(
                         )
 
                         tagsList.forEach { tagItem ->
-                            val tagText = tagItem.name.trim()
-                            val isSelected = tagText in tempTags
+                            val isSelected = tagItem.name in tempTags
                             FilterChip(
                                 selected = isSelected,
                                 onClick = {
-                                    tempTags = if (isSelected) tempTags - tagText else tempTags + tagText
+                                    tempTags = if (isSelected) tempTags - tagItem.name else tempTags + tagItem.name
                                 },
-                                label = { Text(tagText) },
+                                label = { Text(tagItem.name, style = MaterialTheme.typography.labelLarge) },
                                 leadingIcon = if (isSelected) {
                                     {
                                         Icon(
@@ -2932,34 +2949,30 @@ private fun FilterDialog(
                     }
                 }
             }
-        },
-        confirmButton = {
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Row(
                 modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceBetween,
-                verticalAlignment = Alignment.CenterVertically
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                TextButton(
-                    onClick = {
-                        tempTypes = emptySet()
-                        tempTags = emptySet()
-                    }
+                OutlinedButton(
+                    onClick = onDismissRequest,
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp)
                 ) {
-                    Text("重置", color = MaterialTheme.colorScheme.error)
+                    Text("取消")
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    TextButton(onClick = onDismissRequest) {
-                        Text("取消")
-                    }
-                    TextButton(
-                        onClick = {
-                            onConfirm(tempTypes, tempTags)
-                        }
-                    ) {
-                        Text("确定")
-                    }
+                Button(
+                    onClick = {
+                        onConfirm(tempTypes, tempTags)
+                    },
+                    modifier = Modifier.weight(1f),
+                    shape = RoundedCornerShape(14.dp)
+                ) {
+                    Text("确定")
                 }
             }
         }
-    )
+    }
 }
