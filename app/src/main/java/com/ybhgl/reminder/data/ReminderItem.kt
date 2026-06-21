@@ -68,7 +68,8 @@ data class ReminderItem(
     val tag: String,
     val isPinned: Boolean,
     val repeatInfo: RepeatInfo? = null,
-    val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig()
+    val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig(),
+    val notes: String = ""
 )
 
 @Serializer(forClass = LocalDate::class)
