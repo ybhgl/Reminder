@@ -421,7 +421,8 @@ class BackupAndRestoreViewModel(
                             matched.tag == newItem.tag &&
                             matched.isPinned == newItem.isPinned &&
                             matched.repeatInfo == newItem.repeatInfo &&
-                            matched.notificationConfig == newItem.notificationConfig
+                            matched.notificationConfig == newItem.notificationConfig &&
+                            matched.notes == newItem.notes
 
                     if (!isAllSettingsEqual) {
                         reminderRepository.updateReminder(newItem.copy(id = matched.id))

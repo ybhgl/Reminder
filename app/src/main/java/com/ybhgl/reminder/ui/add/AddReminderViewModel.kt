@@ -197,7 +197,8 @@ data class ReminderUiState(
     val isPinned: Boolean = false,
     val repeatInfo: RepeatInfo? = null,
     val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig(),
-    val showRepeatDialog: Boolean = false
+    val showRepeatDialog: Boolean = false,
+    val notes: String = ""
 )
 
 fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
@@ -209,7 +210,8 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     tag = tag,
     isPinned = isPinned,
     repeatInfo = repeatInfo,
-    notificationConfig = notificationConfig
+    notificationConfig = notificationConfig,
+    notes = notes
 )
 
 fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
@@ -221,5 +223,6 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     tag = tag,
     isPinned = isPinned,
     repeatInfo = repeatInfo,
-    notificationConfig = notificationConfig
+    notificationConfig = notificationConfig,
+    notes = notes
 )
