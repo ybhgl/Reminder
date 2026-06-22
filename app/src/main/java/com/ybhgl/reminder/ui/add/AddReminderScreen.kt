@@ -49,6 +49,17 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import kotlinx.coroutines.delay
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.BottomSheetDefaults
+import com.ybhgl.reminder.ui.common.smoothImePadding
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
@@ -105,6 +116,7 @@ fun AddReminderScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var showDatePicker by remember { mutableStateOf(false) }
+    var showNotesSheet by remember { mutableStateOf(false) }
     val uiState = viewModel.reminderUiState
     val isEditing = uiState.id != 0
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -470,6 +482,13 @@ fun AddReminderScreen(
                     }
                 )
 
+                // 9. 备注
+                SettingItem(
+                    title = "备注",
+                    value = uiState.notes.ifBlank { "点击添加备注" },
+                    onClick = { showNotesSheet = true }
+                )
+
                 if (isEditing) {
                     OutlinedButton(
                         onClick = { showDeleteConfirmDialog = true },
@@ -619,6 +638,17 @@ fun AddReminderScreen(
                     }
                 )
             }
+
+            if (showNotesSheet) {
+                NotesEditDialog(
+                    initialNotes = uiState.notes,
+                    onDismiss = { showNotesSheet = false },
+                    onSave = { updatedNotes ->
+                        viewModel.updateUiState(uiState.copy(notes = updatedNotes))
+                        showNotesSheet = false
+                    }
+                )
+            }
         }
     }
 }
@@ -633,11 +663,15 @@ private fun SettingItem(title: String, value: String, onClick: () -> Unit) {
             .padding(vertical = 4.dp)
     ) {
         Text(title, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.weight(1f))
+        Spacer(Modifier.width(16.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.End
         )
         Spacer(Modifier.width(8.dp))
         Icon(
@@ -691,5 +725,111 @@ private fun String.toComposeColor(): Color {
         Color(android.graphics.Color.parseColor(this))
     } catch (e: Exception) {
         Color(0xFF2196F3)
+    }
+}
+
+@Composable
+fun NotesEditDialog(
+    initialNotes: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var notesText by rememberSaveable { mutableStateOf(initialNotes) }
+    val focusRequester = remember { FocusRequester() }
+    var showConfirmCancelDialog by remember { mutableStateOf(false) }
+    val isDirty = notesText != initialNotes
+
+    LaunchedEffect(focusRequester) {
+        focusRequester.requestFocus()
+    }
+
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(
+            usePlatformDefaultWidth = true,
+            dismissOnBackPress = !isDirty,
+            dismissOnClickOutside = !isDirty
+        )
+    ) {
+        Surface(
+            shape = RoundedCornerShape(28.dp),
+            tonalElevation = 6.dp,
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(vertical = 16.dp)
+        ) {
+            Column(
+                modifier = Modifier
+                    .padding(24.dp)
+                    .fillMaxWidth(),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Text(
+                    text = "编辑备注",
+                    style = MaterialTheme.typography.titleLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+
+                OutlinedTextField(
+                    value = notesText,
+                    onValueChange = { notesText = it },
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .defaultMinSize(minHeight = 120.dp)
+                        .focusRequester(focusRequester),
+                    placeholder = { Text("在此输入备注内容...") },
+                    maxLines = 10,
+                    shape = RoundedCornerShape(12.dp)
+                )
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(
+                        onClick = {
+                            if (isDirty) {
+                                showConfirmCancelDialog = true
+                            } else {
+                                onDismiss()
+                            }
+                        }
+                    ) {
+                        Text("取消")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    TextButton(
+                        onClick = { onSave(notesText) }
+                    ) {
+                        Text("确定", fontWeight = FontWeight.Bold)
+                    }
+                }
+            }
+        }
+    }
+
+    if (showConfirmCancelDialog) {
+        AlertDialog(
+            onDismissRequest = { showConfirmCancelDialog = false },
+            title = { Text("确认取消？") },
+            text = { Text("您有未保存的内容，确定要退出吗？") },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        showConfirmCancelDialog = false
+                        onDismiss()
+                    }
+                ) {
+                    Text("确定", color = MaterialTheme.colorScheme.error)
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showConfirmCancelDialog = false }) {
+                    Text("取消")
+                }
+            }
+        )
     }
 }
