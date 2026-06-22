@@ -28,6 +28,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.height
@@ -57,7 +58,22 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.ListItem
+import androidx.compose.material3.ListItemDefaults
+import androidx.compose.material3.OutlinedCard
+import androidx.compose.material3.ModalBottomSheet
+import androidx.compose.material3.rememberModalBottomSheetState
+import androidx.compose.material3.SheetValue
+import androidx.compose.material3.BottomSheetDefaults
+import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.imePadding
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.union
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.runtime.Composable
@@ -82,6 +98,9 @@ import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
 import com.ybhgl.reminder.Routes
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.style.TextAlign
+import kotlinx.coroutines.delay
 import androidx.compose.foundation.layout.requiredWidth
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.RepeatInfo
@@ -105,6 +124,7 @@ fun AddReminderScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var showDatePicker by remember { mutableStateOf(false) }
+    var showNotesSheet by remember { mutableStateOf(false) }
     val uiState = viewModel.reminderUiState
     val isEditing = uiState.id != 0
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -470,6 +490,24 @@ fun AddReminderScreen(
                     }
                 )
 
+                // 8.5 备注
+                SettingItem(
+                    title = "备注",
+                    value = uiState.notes.ifBlank { "无" },
+                    onClick = { showNotesSheet = true }
+                )
+
+                if (showNotesSheet) {
+                    NotesEditBottomSheet(
+                        initialNotes = uiState.notes,
+                        onDismiss = { showNotesSheet = false },
+                        onSave = { updatedNotes ->
+                            viewModel.updateUiState(uiState.copy(notes = updatedNotes))
+                            showNotesSheet = false
+                        }
+                    )
+                }
+
                 if (isEditing) {
                     OutlinedButton(
                         onClick = { showDeleteConfirmDialog = true },
@@ -624,7 +662,12 @@ fun AddReminderScreen(
 }
 
 @Composable
-private fun SettingItem(title: String, value: String, onClick: () -> Unit) {
+private fun SettingItem(
+    title: String,
+    value: String,
+    onClick: () -> Unit,
+    maxLines: Int = 1
+) {
     Row(
         verticalAlignment = Alignment.CenterVertically,
         modifier = Modifier
@@ -632,12 +675,19 @@ private fun SettingItem(title: String, value: String, onClick: () -> Unit) {
             .clickable(onClick = onClick)
             .padding(vertical = 4.dp)
     ) {
-        Text(title, style = MaterialTheme.typography.bodyLarge)
-        Spacer(Modifier.weight(1f))
+        Text(
+            text = title,
+            style = MaterialTheme.typography.bodyLarge
+        )
+        Spacer(Modifier.width(16.dp))
         Text(
             text = value,
             style = MaterialTheme.typography.bodyMedium,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            maxLines = maxLines,
+            overflow = TextOverflow.Ellipsis,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.End
         )
         Spacer(Modifier.width(8.dp))
         Icon(
@@ -668,6 +718,68 @@ fun SettingSwitch(
             checked = checked,
             onCheckedChange = onCheckedChange
         )
+    }
+}
+
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun NotesEditBottomSheet(
+    initialNotes: String,
+    onDismiss: () -> Unit,
+    onSave: (String) -> Unit
+) {
+    var notesText by rememberSaveable { mutableStateOf(initialNotes) }
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+    val focusRequester = remember { FocusRequester() }
+
+    // Delay slightly before requesting focus so the sheet has time to attach and start sliding up,
+    // ensuring the soft keyboard and sheet slide up simultaneously and seamlessly.
+    LaunchedEffect(Unit) {
+        delay(150)
+        focusRequester.requestFocus()
+    }
+
+    ModalBottomSheet(
+        onDismissRequest = onDismiss,
+        sheetState = sheetState,
+        dragHandle = { BottomSheetDefaults.DragHandle() },
+        contentWindowInsets = { WindowInsets.ime.union(WindowInsets.navigationBars) }
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = 20.dp, vertical = 16.dp),
+            verticalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Text(
+                    text = "编辑备注",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                TextButton(onClick = { onSave(notesText) }) {
+                    Text("保存", fontWeight = FontWeight.Bold)
+                }
+            }
+
+            OutlinedTextField(
+                value = notesText,
+                onValueChange = { notesText = it },
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .defaultMinSize(minHeight = 150.dp)
+                    .focusRequester(focusRequester),
+                placeholder = { Text("在此输入提醒的备注内容...") },
+                maxLines = 10,
+                shape = RoundedCornerShape(12.dp)
+            )
+
+            Spacer(modifier = Modifier.height(16.dp))
+        }
     }
 }
 
