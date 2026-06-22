@@ -103,6 +103,12 @@ class DetailViewModel(
         }
     }
 
+    fun updateReminderNotes(reminder: ReminderItem, newNotes: String) {
+        viewModelScope.launch {
+            reminderRepository.updateReminder(reminder.copy(notes = newNotes))
+        }
+    }
+
     suspend fun shareReminder(bitmap: Bitmap, context: Context) {
         val imageUri = withContext(Dispatchers.IO) {
             val cachePath = File(context.cacheDir, "images").apply { mkdirs() }

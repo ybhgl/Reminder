@@ -60,7 +60,14 @@ import kotlinx.coroutines.launch
 import androidx.compose.runtime.withFrameNanos
 import java.time.LocalDate
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Description
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import com.ybhgl.reminder.ui.tag.toComposeColor
 import com.ybhgl.reminder.data.TagItem
 
@@ -123,6 +130,7 @@ fun DetailScreen(
         }
 
         val showLunarMap = remember { mutableStateMapOf<Int, Boolean>() }
+        val showNotesMap = remember { mutableStateMapOf<Int, Boolean>() }
 
         val currentReminder = reminderItems.getOrNull(pagerState.currentPage)
         val latestReminderItems by rememberUpdatedState(reminderItems)
@@ -235,11 +243,19 @@ fun DetailScreen(
                         ) {
                             Spacer(modifier = Modifier.weight(0.1f))
                             val isLunarEnabled = showLunarMap[pageItem.id] ?: pageItem.isLunar
+                            val isFlipped = showNotesMap[pageItem.id] ?: false
                             ReminderDetailCard(
                                 reminderItem = pageItem,
                                 useLunar = isLunarEnabled,
                                 onDateClick = {
                                     showLunarMap[pageItem.id] = !isLunarEnabled
+                                },
+                                isFlipped = isFlipped,
+                                onFlippedChange = { flipped ->
+                                    showNotesMap[pageItem.id] = flipped
+                                },
+                                onNotesSave = { updatedNotes ->
+                                    viewModel.updateReminderNotes(pageItem, updatedNotes)
                                 }
                             )
                             
@@ -264,13 +280,56 @@ fun DetailScreen(
                                 uiState.tags.find { it.name.trim() == pageItem.tag.trim() }
                             }
                             Spacer(modifier = Modifier.height(16.dp))
-                            TagBadge(
-                                tagName = pageItem.tag,
-                                tagColorHex = matchedTag?.color,
-                                onClick = {
-                                    editingReminderForTag = pageItem
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.Center
+                            ) {
+                                TagBadge(
+                                    tagName = pageItem.tag,
+                                    tagColorHex = matchedTag?.color,
+                                    onClick = {
+                                        editingReminderForTag = pageItem
+                                    }
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                                val isNotesFlipped = showNotesMap[pageItem.id] ?: false
+                                val hasNotes = pageItem.notes.isNotBlank()
+                                val baseColor = MaterialTheme.colorScheme.primary
+                                val (containerColor, contentColor, borderColor) = if (hasNotes) {
+                                    Triple(
+                                        baseColor.copy(alpha = 0.15f),
+                                        baseColor,
+                                        baseColor.copy(alpha = 0.3f)
+                                    )
+                                } else {
+                                    Triple(
+                                        Color.Transparent,
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                    )
                                 }
-                            )
+
+                                OutlinedIconButton(
+                                    onClick = {
+                                        showNotesMap[pageItem.id] = !isNotesFlipped
+                                    },
+                                    modifier = Modifier.size(32.dp),
+                                    colors = IconButtonDefaults.outlinedIconButtonColors(
+                                        containerColor = containerColor,
+                                        contentColor = contentColor
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = borderColor
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Description,
+                                        contentDescription = "备注",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                            }
                             Spacer(modifier = Modifier.weight(0.1f))
                         }
                     }
@@ -445,99 +504,179 @@ fun ReminderDetailCard(
     reminderItem: ReminderItem,
     modifier: Modifier = Modifier,
     useLunar: Boolean = reminderItem.isLunar,
-    onDateClick: (() -> Unit)? = null
+    onDateClick: (() -> Unit)? = null,
+    isFlipped: Boolean = false,
+    onFlippedChange: (Boolean) -> Unit = {},
+    onNotesSave: (String) -> Unit = {}
 ) {
     val displayInfo = reminderDisplayInfo(reminderItem, useLunar = useLunar)
     val visuals = displayInfo.visuals
+    val density = androidx.compose.ui.platform.LocalDensity.current.density
 
-    Card(
+    val rotation by animateFloatAsState(
+        targetValue = if (isFlipped) 180f else 0f,
+        animationSpec = spring(
+            dampingRatio = Spring.DampingRatioLowBouncy,
+            stiffness = Spring.StiffnessLow
+        ),
+        label = "CardFlip"
+    )
+
+    Box(
         modifier = modifier
             .fillMaxWidth()
-            .aspectRatio(1f),
-        elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-        colors = CardDefaults.cardColors(containerColor = visuals.cardBackground)
+            .aspectRatio(1f)
+            .graphicsLayer {
+                rotationY = rotation
+                cameraDistance = 12f * density
+            }
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally
-        ) {
-            // Top section
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.22f)
-                    .heightIn(min = 88.dp)
-                    .background(visuals.headerColor),
-                contentAlignment = Alignment.Center
+        if (rotation <= 90f) {
+            Card(
+                modifier = Modifier.fillMaxSize(),
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(containerColor = visuals.cardBackground)
             ) {
-                val title = displayInfo.headerTitle
-                val fontSize = if (title.length > 12) 22.sp else 30.sp
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleLarge.copy(
-                        fontWeight = FontWeight.Medium,
-                        fontSize = fontSize,
-                        letterSpacing = 0.sp,
-                        textAlign = TextAlign.Center
-                    ),
-                    color = visuals.headerContentColor,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(horizontal = 20.dp, vertical = 8.dp),
-                    maxLines = 3,
-                    overflow = TextOverflow.Ellipsis
-                )
-            }
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    // Top section
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.22f)
+                            .heightIn(min = 88.dp)
+                            .background(visuals.headerColor),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        val title = displayInfo.headerTitle
+                        val fontSize = if (title.length > 12) 22.sp else 30.sp
+                        Text(
+                            text = title,
+                            style = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontSize = fontSize,
+                                letterSpacing = 0.sp,
+                                textAlign = TextAlign.Center
+                            ),
+                            color = visuals.headerContentColor,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 20.dp, vertical = 8.dp),
+                            maxLines = 3,
+                            overflow = TextOverflow.Ellipsis
+                        )
+                    }
 
-            // Middle content section
-            Column(
+                    // Middle content section
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.56f)
+                            .background(visuals.cardBackground)
+                            .padding(24.dp),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.Center
+                    ) {
+                        DayCountRow(
+                            dayCount = displayInfo.dayCount,
+                            visuals = visuals,
+                            isCountUp = reminderItem.type == ReminderType.COUNT_UP
+                        )
+                    }
+
+                    val clickableModifier = if (onDateClick != null) {
+                        Modifier.clickable(onClick = onDateClick)
+                    } else {
+                        Modifier
+                    }
+
+                    // Bottom date section
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(0.22f)
+                            .background(visuals.footerBackground)
+                            .then(clickableModifier),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        AnimatedContent(
+                            targetState = displayInfo.referenceText,
+                            transitionSpec = {
+                                (slideInVertically { height -> height } + fadeIn()) togetherWith
+                                (slideOutVertically { height -> -height } + fadeOut())
+                            },
+                            label = "DateTransition"
+                        ) { targetText ->
+                            Text(
+                                text = if (reminderItem.type == ReminderType.COUNT_UP) {
+                                    "自 ${targetText} 起"
+                                } else {
+                                    "目标日: ${targetText}"
+                                },
+                                color = visuals.secondaryTextColor,
+                                fontSize = 18.sp,
+                                textAlign = TextAlign.Center,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
+                    }
+                }
+            }
+        } else {
+            Card(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.56f)
-                    .background(visuals.cardBackground)
-                    .padding(24.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.Center
-            ) {
-                DayCountRow(
-                    dayCount = displayInfo.dayCount,
-                    visuals = visuals,
-                    isCountUp = reminderItem.type == ReminderType.COUNT_UP
-                )
-            }
-
-            val clickableModifier = if (onDateClick != null) {
-                Modifier.clickable(onClick = onDateClick)
-            } else {
-                Modifier
-            }
-
-            // Bottom date section
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(0.22f)
-                    .background(visuals.footerBackground)
-                    .then(clickableModifier),
-                contentAlignment = Alignment.Center
-            ) {
-                AnimatedContent(
-                    targetState = displayInfo.referenceText,
-                    transitionSpec = {
-                        (slideInVertically { height -> height } + fadeIn()) togetherWith
-                        (slideOutVertically { height -> -height } + fadeOut())
+                    .fillMaxSize()
+                    .graphicsLayer {
+                        rotationY = 180f
                     },
-                    label = "DateTransition"
-                ) { targetText ->
+                elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceContainer
+                ),
+                border = androidx.compose.foundation.BorderStroke(
+                    width = 1.dp,
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(20.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
                     Text(
-                        text = if (reminderItem.type == ReminderType.COUNT_UP) {
-                            "自 ${targetText} 起"
-                        } else {
-                            "目标日: ${targetText}"
-                        },
-                        color = visuals.secondaryTextColor,
-                        fontSize = 18.sp,
-                        textAlign = TextAlign.Center,
-                        modifier = Modifier.fillMaxWidth()
+                        text = "备注",
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    
+                    var localNotes by remember(reminderItem.id, reminderItem.notes) { 
+                        mutableStateOf(reminderItem.notes) 
+                    }
+
+                    LaunchedEffect(localNotes) {
+                        kotlinx.coroutines.delay(500)
+                        if (localNotes != reminderItem.notes) {
+                            onNotesSave(localNotes)
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = localNotes,
+                        onValueChange = { localNotes = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        placeholder = { Text("点击添加备注...", color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)) },
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
+                            unfocusedBorderColor = Color.Transparent,
+                            focusedContainerColor = Color.Transparent,
+                            unfocusedContainerColor = Color.Transparent
+                        ),
+                        shape = RoundedCornerShape(8.dp),
+                        textStyle = MaterialTheme.typography.bodyLarge
                     )
                 }
             }
