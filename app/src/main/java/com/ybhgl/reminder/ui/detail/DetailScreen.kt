@@ -254,8 +254,8 @@ fun DetailScreen(
                                 onFlippedChange = { flipped ->
                                     showNotesMap[pageItem.id] = flipped
                                 },
-                                onNotesSave = { updatedNotes ->
-                                    viewModel.updateReminderNotes(pageItem, updatedNotes)
+                                 onNotesSave = { updatedNotes ->
+                                    viewModel.updateReminderNotes(context, pageItem, updatedNotes)
                                 }
                             )
                             

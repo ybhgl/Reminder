@@ -20,7 +20,9 @@ import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.TagRepository
 import com.ybhgl.reminder.util.BirthdayListItem
+import com.ybhgl.reminder.util.CalendarManager
 import com.ybhgl.reminder.util.CalendarUtil
+import com.ybhgl.reminder.util.ReminderScheduler
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 import kotlinx.coroutines.Dispatchers
@@ -103,9 +105,13 @@ class DetailViewModel(
         }
     }
 
-    fun updateReminderNotes(reminder: ReminderItem, newNotes: String) {
+    fun updateReminderNotes(context: Context, reminder: ReminderItem, newNotes: String) {
         viewModelScope.launch {
-            reminderRepository.updateReminder(reminder.copy(notes = newNotes))
+            val updatedReminder = reminder.copy(notes = newNotes)
+            reminderRepository.updateReminder(updatedReminder)
+            val app = context.applicationContext
+            ReminderScheduler.scheduleReminder(app, updatedReminder)
+            CalendarManager.addOrUpdateEvent(app, updatedReminder)
         }
     }
 
