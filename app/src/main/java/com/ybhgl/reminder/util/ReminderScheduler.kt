@@ -1,14 +1,19 @@
 package com.ybhgl.reminder.util
 
 import android.app.AlarmManager
+import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.os.Build
+import androidx.core.app.NotificationCompat
+import com.ybhgl.reminder.MainActivity
+import com.ybhgl.reminder.R
 import com.ybhgl.reminder.data.ReminderItem
 import java.time.LocalDate
 import java.time.LocalDateTime
 import java.time.ZoneId
+import java.time.temporal.ChronoUnit
 
 object ReminderScheduler {
     fun scheduleReminder(context: Context, item: ReminderItem, forceNext: Boolean = false) {
@@ -47,6 +52,7 @@ object ReminderScheduler {
                     putExtra("REMINDER_START_DATE", item.date.toString())
                     putExtra("REMINDER_TARGET_DATE", targetDate.toString())
                     putExtra("INCLUDE_START_DAY", item.notificationConfig.includeStartDay)
+                    putExtra("REMINDER_NOTES", item.notes)
                 }
                 
                 val requestCode = item.id * 100 + index
@@ -89,6 +95,70 @@ object ReminderScheduler {
             val pendingIntent = PendingIntent.getBroadcast(context, requestCode, intent, flags)
             alarmManager.cancel(pendingIntent)
             pendingIntent.cancel()
+        }
+    }
+
+    fun updateActiveNotification(context: Context, item: ReminderItem) {
+        val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val activeNotifications = notificationManager.activeNotifications
+            val hasActive = activeNotifications.any { it.id == item.id }
+            if (hasActive) {
+                val launchIntent = Intent(context, MainActivity::class.java).apply {
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+                    putExtra("reminderId", item.id)
+                }
+                val pendingIntent = PendingIntent.getActivity(
+                    context,
+                    item.id,
+                    launchIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+
+                var subtitle = "来自 Reminder 的提醒"
+                try {
+                    val today = LocalDate.now()
+                    val startDate = item.date
+                    val targetDate = CalendarUtil.calculateNextTargetDate(item, today) ?: item.date
+
+                    subtitle = when (item.type) {
+                        com.ybhgl.reminder.data.ReminderType.COUNT_UP -> {
+                            val isIncludeStartDay = item.notificationConfig.includeStartDay
+                            val days = ChronoUnit.DAYS.between(startDate, today).toInt()
+                            val displayDays = if (isIncludeStartDay) days + 1 else days
+                            "第${displayDays}天"
+                        }
+                        com.ybhgl.reminder.data.ReminderType.ANNUAL, com.ybhgl.reminder.data.ReminderType.BIRTHDAY -> {
+                            val days = ChronoUnit.DAYS.between(today, targetDate).toInt()
+                            if (days == 0) "就是今天" else "还有${days}天"
+                        }
+                    }
+                } catch (e: Exception) {
+                    e.printStackTrace()
+                }
+
+                val builder = NotificationCompat.Builder(context, "reminder_channel")
+                    .setSmallIcon(R.mipmap.ic_launcher)
+                    .setPriority(NotificationCompat.PRIORITY_HIGH)
+                    .setAutoCancel(true)
+                    .setContentIntent(pendingIntent)
+
+                if (item.notes.isNotBlank()) {
+                    val titleWithStatus = "${item.title} ($subtitle)"
+                    builder.setContentTitle(titleWithStatus)
+                    builder.setContentText(item.notes)
+                    builder.setStyle(
+                        NotificationCompat.BigTextStyle()
+                            .setBigContentTitle(titleWithStatus)
+                            .bigText(item.notes)
+                    )
+                } else {
+                    builder.setContentTitle(item.title)
+                    builder.setContentText(subtitle)
+                }
+
+                notificationManager.notify(item.id, builder.build())
+            }
         }
     }
 }

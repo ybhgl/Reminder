@@ -25,6 +25,7 @@ class ReminderReceiver : BroadcastReceiver() {
         val reminderType = intent.getStringExtra("REMINDER_TYPE")
         val startDateStr = intent.getStringExtra("REMINDER_START_DATE")
         val targetDateStr = intent.getStringExtra("REMINDER_TARGET_DATE")
+        val notes = intent.getStringExtra("REMINDER_NOTES") ?: ""
 
         val notificationManager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
 
@@ -42,13 +43,18 @@ class ReminderReceiver : BroadcastReceiver() {
 
         val launchIntent = Intent(context, MainActivity::class.java).apply {
             flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            putExtra("reminderId", reminderId)
         }
         
         val pendingIntent = PendingIntent.getActivity(
             context,
             if (reminderId > 0) reminderId else 0,
             launchIntent,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) PendingIntent.FLAG_IMMUTABLE else 0
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            } else {
+                PendingIntent.FLAG_UPDATE_CURRENT
+            }
         )
 
         var subtitle = "来自 Reminder 的提醒"
@@ -78,11 +84,23 @@ class ReminderReceiver : BroadcastReceiver() {
 
         val builder = NotificationCompat.Builder(context, "reminder_channel")
             .setSmallIcon(R.mipmap.ic_launcher) // 使用现成的图标
-            .setContentTitle(reminderTitle)
-            .setContentText(subtitle)
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(pendingIntent)
+
+        if (notes.isNotBlank()) {
+            val titleWithStatus = "$reminderTitle $subtitle"
+            builder.setContentTitle(titleWithStatus)
+            builder.setContentText(notes)
+            builder.setStyle(
+                NotificationCompat.BigTextStyle()
+                    .setBigContentTitle(titleWithStatus)
+                    .bigText(notes)
+            )
+        } else {
+            builder.setContentTitle(reminderTitle)
+            builder.setContentText(subtitle)
+        }
 
         val notifyId = if (reminderId > 0) reminderId else System.currentTimeMillis().toInt()
         notificationManager.notify(notifyId, builder.build())
