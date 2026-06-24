@@ -112,6 +112,7 @@ class DetailViewModel(
             val app = context.applicationContext
             ReminderScheduler.scheduleReminder(app, updatedReminder)
             CalendarManager.addOrUpdateEvent(app, updatedReminder)
+            ReminderScheduler.updateActiveNotification(app, updatedReminder)
         }
     }
 

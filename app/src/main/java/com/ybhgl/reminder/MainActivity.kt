@@ -611,15 +611,31 @@ fun ReminderApp() {
     }
 
     val activity = context as? MainActivity
+    val coroutineScope = rememberCoroutineScope()
     DisposableEffect(navController, activity) {
-        val callback = { intent: Intent ->
+        val callback: (Intent) -> Unit = { intent ->
             val reminderId = intent.getIntExtra("reminderId", -1)
             if (reminderId != -1) {
                 intent.removeExtra("reminderId")
-                navController.navigate(Routes.detailReminder(reminderId))
+                coroutineScope.launch {
+                    // 延迟一小段时间，确保 navController 和 NavHost 状态已绑定就绪
+                    kotlinx.coroutines.delay(150)
+                    try {
+                        navController.navigate(Routes.detailReminder(reminderId))
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             } else if (intent.getStringExtra("action") == "add") {
                 intent.removeExtra("action")
-                navController.navigate(Routes.addReminder())
+                coroutineScope.launch {
+                    kotlinx.coroutines.delay(150)
+                    try {
+                        navController.navigate(Routes.addReminder())
+                    } catch (e: Exception) {
+                        e.printStackTrace()
+                    }
+                }
             }
         }
         activity?.onNewIntentCallback = callback

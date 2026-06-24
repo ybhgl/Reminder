@@ -135,6 +135,7 @@ class AddReminderViewModel(
             // Trigger scheduling and calendar update with the correct ID
             ReminderScheduler.scheduleReminder(context, savedReminder)
             CalendarManager.addOrUpdateEvent(context, savedReminder)
+            ReminderScheduler.updateActiveNotification(context, savedReminder)
         }
     }
 
