@@ -131,6 +131,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
@@ -190,6 +191,7 @@ import com.ybhgl.reminder.ui.tag.TagManagementScreen
 import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.BackupPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
+import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.CalendarUtil
 import com.ybhgl.reminder.data.viewModeFlow
@@ -199,6 +201,7 @@ import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.data.defaultPageFlow
 import com.ybhgl.reminder.data.pureBlackFlow
 import com.ybhgl.reminder.data.themeOptionFlow
+import com.ybhgl.reminder.data.cardColoringFlow
 import com.ybhgl.reminder.ui.detail.BirthdayListScreen
 import com.ybhgl.reminder.ui.detail.DetailScreen
 import kotlinx.coroutines.launch
@@ -264,6 +267,8 @@ class MainActivity : ComponentActivity() {
             val themeOption by themeFlow.collectAsState(initial = AppThemeOption.SYSTEM)
             val pureBlackModeFlow = remember(context) { pureBlackFlow(context) }
             val usePureBlack by pureBlackModeFlow.collectAsState(initial = false)
+            val cardColoringFlowInstance = remember(context) { cardColoringFlow(context) }
+            val cardColoringEnabled by cardColoringFlowInstance.collectAsState(initial = true)
 
             LaunchedEffect(themeOption) {
                 com.ybhgl.reminder.ui.common.CustomToast.currentAppTheme = themeOption
@@ -294,7 +299,7 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            ReminderTheme(themeOption = themeOption, usePureBlack = usePureBlack) {
+            ReminderTheme(themeOption = themeOption, usePureBlack = usePureBlack, cardColoringEnabled = cardColoringEnabled) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background
@@ -931,36 +936,67 @@ private fun buildHeaderTitle(title: String, suffix: String): String {
 @Composable
 private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
     val isDark = LocalAppDarkTheme.current
+    val isCardColoringEnabled = LocalCardColoringEnabled.current
 
-    val headerColor = when {
-        !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
-        !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
-        !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
-        isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
-        isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
-        else -> Color(0xFFF7A03A) // isDark && COUNT_UP
-    }
+    return if (isCardColoringEnabled) {
+        // Material Design 3 Color Harmonization 配色方案：在保留经典蓝橙红主色调的同时，融入系统当前主题的 Primary 进行色彩和谐化。
+        val colorScheme = MaterialTheme.colorScheme
+        val systemPrimary = colorScheme.primary
 
-    return if (!isDark) {
+        val rawBaseColor = when {
+            !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
+            !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
+            !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
+            isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
+            isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
+            else -> Color(0xFFF7A03A) // isDark && COUNT_UP
+        }
+
+        // 78% 经典原色 + 22% 系统主题 Primary 进行色彩和谐化（Harmonization）
+        val headerColor = lerp(rawBaseColor, systemPrimary, 0.22f)
+        val headerContentColor = Color.White // 白色保证蓝黄红在插值混合后具有最顶级的对比度与易读性
+
         ReminderCardVisuals(
             headerColor = headerColor,
-            headerContentColor = Color.White,
-            cardBackground = Color.White,
-            footerBackground = Color(0xFFF4F4F4),
-            footerDividerColor = Color(0xFFE0E0E0),
-            numberColor = Color(0xFF2C2C2C),
-            secondaryTextColor = Color(0xFF666666)
+            headerContentColor = headerContentColor,
+            cardBackground = colorScheme.surfaceContainerLow,
+            footerBackground = colorScheme.surfaceContainerHigh,
+            footerDividerColor = colorScheme.outlineVariant,
+            numberColor = colorScheme.onSurface,
+            secondaryTextColor = colorScheme.onSurfaceVariant
         )
     } else {
-        ReminderCardVisuals(
-            headerColor = headerColor,
-            headerContentColor = Color.White,
-            cardBackground = Color(0xFF1F1F1F),
-            footerBackground = Color(0xFF2B2B2B),
-            footerDividerColor = Color(0xFF353535),
-            numberColor = Color(0xFFECEFF1),
-            secondaryTextColor = Color(0xFFB0BEC5)
-        )
+        // 经典配色方案：保留原有设计与写死颜色
+        val headerColor = when {
+            !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
+            !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
+            !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
+            isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
+            isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
+            else -> Color(0xFFF7A03A) // isDark && COUNT_UP
+        }
+
+        if (!isDark) {
+            ReminderCardVisuals(
+                headerColor = headerColor,
+                headerContentColor = Color.White,
+                cardBackground = Color.White,
+                footerBackground = Color(0xFFF4F4F4),
+                footerDividerColor = Color(0xFFE0E0E0),
+                numberColor = Color(0xFF2C2C2C),
+                secondaryTextColor = Color(0xFF666666)
+            )
+        } else {
+            ReminderCardVisuals(
+                headerColor = headerColor,
+                headerContentColor = Color.White,
+                cardBackground = Color(0xFF1F1F1F),
+                footerBackground = Color(0xFF2B2B2B),
+                footerDividerColor = Color(0xFF353535),
+                numberColor = Color(0xFFECEFF1),
+                secondaryTextColor = Color(0xFFB0BEC5)
+            )
+        }
     }
 }
 

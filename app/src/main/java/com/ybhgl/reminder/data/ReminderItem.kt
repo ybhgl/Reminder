@@ -100,6 +100,7 @@ data class BackupData(
     val tags: List<TagItem>? = null,
     val themeOption: AppThemeOption? = null,
     val pureBlackEnabled: Boolean? = null,
+    val cardColoringEnabled: Boolean? = null,
     val defaultPage: AppDefaultPage? = null,
     val viewMode: String? = null,
     val backupReminderEnabled: Boolean? = null,

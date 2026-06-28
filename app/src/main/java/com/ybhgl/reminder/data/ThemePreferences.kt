@@ -32,6 +32,7 @@ private const val THEME_DATA_STORE_NAME = "theme_preferences"
 private val THEME_PREFERENCE_KEY = stringPreferencesKey("theme_option")
 private val PURE_BLACK_KEY = booleanPreferencesKey("pure_black_enabled")
 private val DEFAULT_PAGE_KEY = stringPreferencesKey("default_page")
+private val CARD_COLORING_KEY = booleanPreferencesKey("card_coloring_enabled")
 
 private val Context.themeDataStore: DataStore<Preferences> by preferencesDataStore(
     name = THEME_DATA_STORE_NAME
@@ -95,5 +96,24 @@ fun defaultPageFlow(context: Context): Flow<AppDefaultPage> =
 suspend fun saveDefaultPage(context: Context, page: AppDefaultPage) {
     context.themeDataStore.edit { preferences ->
         preferences[DEFAULT_PAGE_KEY] = page.name
+    }
+}
+
+fun cardColoringFlow(context: Context): Flow<Boolean> =
+    context.themeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[CARD_COLORING_KEY] ?: true
+        }
+
+suspend fun saveCardColoring(context: Context, enabled: Boolean) {
+    context.themeDataStore.edit { preferences ->
+        preferences[CARD_COLORING_KEY] = enabled
     }
 }

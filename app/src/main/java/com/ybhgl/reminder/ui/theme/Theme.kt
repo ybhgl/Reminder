@@ -31,11 +31,13 @@ private val LightColorScheme = lightColorScheme(
 )
 
 val LocalAppDarkTheme = staticCompositionLocalOf { false }
+val LocalCardColoringEnabled = staticCompositionLocalOf { true }
 
 @Composable
 fun ReminderTheme(
     themeOption: AppThemeOption = AppThemeOption.SYSTEM,
     usePureBlack: Boolean = false,
+    cardColoringEnabled: Boolean = true,
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
     content: @Composable () -> Unit
@@ -77,7 +79,10 @@ fun ReminderTheme(
         }
     }
 
-    CompositionLocalProvider(LocalAppDarkTheme provides darkTheme) {
+    CompositionLocalProvider(
+        LocalAppDarkTheme provides darkTheme,
+        LocalCardColoringEnabled provides cardColoringEnabled
+    ) {
         MaterialTheme(
             colorScheme = colorScheme,
             typography = Typography,

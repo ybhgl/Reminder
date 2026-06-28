@@ -12,6 +12,8 @@ import com.ybhgl.reminder.data.themeOptionFlow
 import com.ybhgl.reminder.data.saveThemeOption
 import com.ybhgl.reminder.data.pureBlackFlow
 import com.ybhgl.reminder.data.savePureBlack
+import com.ybhgl.reminder.data.cardColoringFlow
+import com.ybhgl.reminder.data.saveCardColoring
 import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.data.saveDefaultPage
 import com.ybhgl.reminder.data.BackupData
@@ -41,12 +43,18 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     fun pureBlackPreferenceFlow(context: Context): Flow<Boolean> = pureBlackFlow(context)
 
+    fun cardColoringPreferenceFlow(context: Context): Flow<Boolean> = cardColoringFlow(context)
+
     suspend fun updateThemePreference(context: Context, option: AppThemeOption) {
         saveThemeOption(context, option)
     }
 
     suspend fun updatePureBlackPreference(context: Context, enabled: Boolean) {
         savePureBlack(context, enabled)
+    }
+
+    suspend fun updateCardColoringPreference(context: Context, enabled: Boolean) {
+        saveCardColoring(context, enabled)
     }
 
     fun defaultPageFlow(context: Context): Flow<AppDefaultPage> = com.ybhgl.reminder.data.defaultPageFlow(context)
@@ -64,6 +72,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
             val themeOption = themePreferenceFlow(context).first()
             val pureBlackEnabled = pureBlackPreferenceFlow(context).first()
+            val cardColoringEnabled = cardColoringPreferenceFlow(context).first()
             val defaultPage = defaultPageFlow(context).first()
             val viewMode = viewModeFlow(context).first()
 
@@ -71,6 +80,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
                 reminders = reminders,
                 themeOption = themeOption,
                 pureBlackEnabled = pureBlackEnabled,
+                cardColoringEnabled = cardColoringEnabled,
                 defaultPage = defaultPage,
                 viewMode = viewMode
             )
@@ -113,6 +123,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
             backupData.themeOption?.let { updateThemePreference(context, it) }
             backupData.pureBlackEnabled?.let { updatePureBlackPreference(context, it) }
+            backupData.cardColoringEnabled?.let { updateCardColoringPreference(context, it) }
             backupData.defaultPage?.let { updateDefaultPage(context, it) }
             backupData.viewMode?.let { saveViewMode(context, it) }
 

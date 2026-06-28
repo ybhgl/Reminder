@@ -125,6 +125,8 @@ fun SettingsScreen(
     val selectedTheme by themePreferenceFlow.collectAsState(initial = AppThemeOption.SYSTEM)
     val pureBlackPreferenceFlow = remember(context) { viewModel.pureBlackPreferenceFlow(context) }
     val usePureBlack by pureBlackPreferenceFlow.collectAsState(initial = false)
+    val cardColoringPreferenceFlow = remember(context) { viewModel.cardColoringPreferenceFlow(context) }
+    val useCardColoring by cardColoringPreferenceFlow.collectAsState(initial = true)
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val scrollState = rememberScrollState()
@@ -254,6 +256,7 @@ fun SettingsScreen(
                 ThemeSelectionCard(
                     selectedOption = selectedTheme,
                     usePureBlack = usePureBlack,
+                    useCardColoring = useCardColoring,
                     onOptionSelected = { option ->
                         coroutineScope.launch {
                             viewModel.updateThemePreference(context, option)
@@ -262,6 +265,11 @@ fun SettingsScreen(
                     onPureBlackToggle = { enabled ->
                         coroutineScope.launch {
                             viewModel.updatePureBlackPreference(context, enabled)
+                        }
+                    },
+                    onCardColoringToggle = { enabled ->
+                        coroutineScope.launch {
+                            viewModel.updateCardColoringPreference(context, enabled)
                         }
                     }
                 )
@@ -438,8 +446,10 @@ private fun AppInfoCard(
 private fun ThemeSelectionCard(
     selectedOption: AppThemeOption,
     usePureBlack: Boolean,
+    useCardColoring: Boolean,
     onOptionSelected: (AppThemeOption) -> Unit,
-    onPureBlackToggle: (Boolean) -> Unit
+    onPureBlackToggle: (Boolean) -> Unit,
+    onCardColoringToggle: (Boolean) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -460,6 +470,11 @@ private fun ThemeSelectionCard(
             PureBlackModeRow(
                 checked = usePureBlack,
                 onCheckedChange = onPureBlackToggle
+            )
+            Spacer(modifier = Modifier.height(8.dp))
+            CardColoringModeRow(
+                checked = useCardColoring,
+                onCheckedChange = onCardColoringToggle
             )
         }
     }
@@ -700,6 +715,44 @@ private fun PureBlackModeRow(
             )
             Text(
                 text = "深色模式下对 AMOLED 屏幕更省电",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = { onCheckedChange(it) },
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
+                uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+            )
+        )
+    }
+}
+
+@Composable
+private fun CardColoringModeRow(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
+    ) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Text(
+                text = "卡片着色",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "开启以使用 Material Design 3 风格的动态着色；关闭则显示原版经典卡片色",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
