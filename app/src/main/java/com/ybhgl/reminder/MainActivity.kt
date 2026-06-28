@@ -276,6 +276,8 @@ class MainActivity : ComponentActivity() {
             val dynamicColorEnabled by dynamicColorFlowInstance.collectAsState(initial = true)
             val colorPaletteFlowInstance = remember(context) { colorPaletteFlow(context) }
             val themeColorPalette by colorPaletteFlowInstance.collectAsState(initial = AppColorPalette.PURPLE)
+            val customColorFlowInstance = remember(context) { com.ybhgl.reminder.data.customColorFlow(context) }
+            val customColorSeedInt by customColorFlowInstance.collectAsState(initial = 0xFF6650A4.toInt())
 
             LaunchedEffect(themeOption) {
                 com.ybhgl.reminder.ui.common.CustomToast.currentAppTheme = themeOption
@@ -311,7 +313,8 @@ class MainActivity : ComponentActivity() {
                 usePureBlack = usePureBlack,
                 cardColoringEnabled = cardColoringEnabled,
                 dynamicColor = dynamicColorEnabled,
-                colorPalette = themeColorPalette
+                colorPalette = themeColorPalette,
+                customColorSeed = Color(customColorSeedInt)
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),

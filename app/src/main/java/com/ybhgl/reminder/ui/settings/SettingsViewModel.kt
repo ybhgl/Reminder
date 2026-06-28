@@ -22,6 +22,8 @@ import com.ybhgl.reminder.data.AppColorPalette
 import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.data.saveDefaultPage
 import com.ybhgl.reminder.data.BackupData
+import com.ybhgl.reminder.data.customColorFlow
+import com.ybhgl.reminder.data.saveCustomColor
 import com.ybhgl.reminder.data.viewModeFlow
 import com.ybhgl.reminder.data.saveViewMode
 import java.time.LocalDateTime
@@ -44,6 +46,10 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     fun themePreferenceFlow(context: Context): Flow<AppThemeOption> = themeOptionFlow(context)
 
+    suspend fun updateThemePreference(context: Context, option: AppThemeOption) {
+        saveThemeOption(context, option)
+    }
+
     fun getAllRemindersStream(): Flow<List<ReminderItem>> = reminderRepository.getAllRemindersStream()
 
     fun pureBlackPreferenceFlow(context: Context): Flow<Boolean> = pureBlackFlow(context)
@@ -54,8 +60,14 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     fun colorPalettePreferenceFlow(context: Context): Flow<AppColorPalette> = colorPaletteFlow(context)
 
-    suspend fun updateThemePreference(context: Context, option: AppThemeOption) {
-        saveThemeOption(context, option)
+    suspend fun updateColorPalettePreference(context: Context, palette: AppColorPalette) {
+        saveColorPalette(context, palette)
+    }
+
+    fun customColorPreferenceFlow(context: Context): Flow<Int> = customColorFlow(context)
+
+    suspend fun updateCustomColorPreference(context: Context, color: Int) {
+        saveCustomColor(context, color)
     }
 
     suspend fun updatePureBlackPreference(context: Context, enabled: Boolean) {
@@ -68,10 +80,6 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     suspend fun updateDynamicColorPreference(context: Context, enabled: Boolean) {
         saveDynamicColor(context, enabled)
-    }
-
-    suspend fun updateColorPalettePreference(context: Context, palette: AppColorPalette) {
-        saveColorPalette(context, palette)
     }
 
     fun defaultPageFlow(context: Context): Flow<AppDefaultPage> = com.ybhgl.reminder.data.defaultPageFlow(context)
@@ -94,6 +102,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
             val viewMode = viewModeFlow(context).first()
             val dynamicColorEnabled = dynamicColorPreferenceFlow(context).first()
             val themeColorPalette = colorPalettePreferenceFlow(context).first()
+            val customColorSeed = customColorPreferenceFlow(context).first()
 
             val backupData = BackupData(
                 reminders = reminders,
@@ -103,7 +112,8 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
                 defaultPage = defaultPage,
                 viewMode = viewMode,
                 dynamicColorEnabled = dynamicColorEnabled,
-                themeColorPalette = themeColorPalette
+                themeColorPalette = themeColorPalette,
+                customColorSeed = customColorSeed
             )
 
             val json = Json.encodeToString(backupData)
@@ -149,6 +159,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
             backupData.viewMode?.let { saveViewMode(context, it) }
             backupData.dynamicColorEnabled?.let { updateDynamicColorPreference(context, it) }
             backupData.themeColorPalette?.let { updateColorPalettePreference(context, it) }
+            backupData.customColorSeed?.let { updateCustomColorPreference(context, it) }
 
             "恢复完成，共导入 ${backupData.reminders.size} 条记录"
         } catch (e: Exception) {

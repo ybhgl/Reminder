@@ -121,6 +121,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.compose.material3.Surface
 import kotlinx.coroutines.flow.first
+import androidx.compose.ui.graphics.toArgb
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -145,6 +146,8 @@ fun SettingsScreen(
     val dynamicColorEnabled by dynamicColorPreferenceFlow.collectAsState(initial = true)
     val colorPalettePreferenceFlow = remember(context) { viewModel.colorPalettePreferenceFlow(context) }
     val themeColorPalette by colorPalettePreferenceFlow.collectAsState(initial = AppColorPalette.PURPLE)
+    val customColorPreferenceFlow = remember(context) { viewModel.customColorPreferenceFlow(context) }
+    val customColorSeedInt by customColorPreferenceFlow.collectAsState(initial = 0xFF6650A4.toInt())
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val scrollState = rememberScrollState()
@@ -277,6 +280,7 @@ fun SettingsScreen(
                     useCardColoring = useCardColoring,
                     dynamicColorEnabled = dynamicColorEnabled,
                     themeColorPalette = themeColorPalette,
+                    customColorSeedInt = customColorSeedInt,
                     onOptionSelected = { option ->
                         coroutineScope.launch {
                             viewModel.updateThemePreference(context, option)
@@ -300,6 +304,11 @@ fun SettingsScreen(
                     onColorPaletteSelected = { palette ->
                         coroutineScope.launch {
                             viewModel.updateColorPalettePreference(context, palette)
+                        }
+                    },
+                    onCustomColorSelected = { color ->
+                        coroutineScope.launch {
+                            viewModel.updateCustomColorPreference(context, color.toArgb())
                         }
                     }
                 )
@@ -479,12 +488,24 @@ private fun ThemeSelectionCard(
     useCardColoring: Boolean,
     dynamicColorEnabled: Boolean,
     themeColorPalette: AppColorPalette,
+    customColorSeedInt: Int,
     onOptionSelected: (AppThemeOption) -> Unit,
     onPureBlackToggle: (Boolean) -> Unit,
     onCardColoringToggle: (Boolean) -> Unit,
     onDynamicColorToggle: (Boolean) -> Unit,
-    onColorPaletteSelected: (AppColorPalette) -> Unit
+    onColorPaletteSelected: (AppColorPalette) -> Unit,
+    onCustomColorSelected: (Color) -> Unit
 ) {
+    var showColorPicker by remember { mutableStateOf(false) }
+
+    if (showColorPicker) {
+        CustomColorPickerDialog(
+            initialColor = Color(customColorSeedInt),
+            onDismissRequest = { showColorPicker = false },
+            onColorConfirmed = onCustomColorSelected
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -539,8 +560,21 @@ private fun ThemeSelectionCard(
                         AppColorPalette.values().forEach { palette ->
                             ColorPaletteItem(
                                 palette = palette,
+                                customColor = Color(customColorSeedInt),
                                 isSelected = themeColorPalette == palette,
-                                onClick = { onColorPaletteSelected(palette) }
+                                onClick = {
+                                    if (palette == AppColorPalette.CUSTOM) {
+                                        if (themeColorPalette == AppColorPalette.CUSTOM) {
+                                            // 已处于选中状态，再次点击时唤起调色盘
+                                            showColorPicker = true
+                                        } else {
+                                            // 首次点击，先选中自定义调色盘
+                                            onColorPaletteSelected(AppColorPalette.CUSTOM)
+                                        }
+                                    } else {
+                                        onColorPaletteSelected(palette)
+                                    }
+                                }
                             )
                         }
                     }
@@ -562,18 +596,21 @@ private fun DynamicColorModeRow(
                 interactionSource = remember { MutableInteractionSource() },
                 indication = null,
                 onClick = { onCheckedChange(!checked) }
-            )
-            .padding(vertical = 4.dp),
-        verticalAlignment = Alignment.CenterVertically
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
-        Column(modifier = Modifier.weight(1f)) {
+        Column(
+            modifier = Modifier.weight(1f),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
             Text(
                 text = "动态取色",
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "在 Android 12+ 系统上使用系统壁纸颜色",
+                text = "从系统壁纸动态提取主题色",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
@@ -594,6 +631,7 @@ private fun DynamicColorModeRow(
 @Composable
 private fun ColorPaletteItem(
     palette: AppColorPalette,
+    customColor: Color,
     isSelected: Boolean,
     onClick: () -> Unit
 ) {
@@ -606,6 +644,7 @@ private fun ColorPaletteItem(
         AppColorPalette.PINK -> Pair("粉色", Color(0xFF9C4174))
         AppColorPalette.CYAN -> Pair("青色", Color(0xFF006A6A))
         AppColorPalette.MONOCHROME -> Pair("黑白", Color(0xFF5C5F62))
+        AppColorPalette.CUSTOM -> Pair("自定义", customColor)
     }
 
     Column(

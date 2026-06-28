@@ -37,7 +37,8 @@ enum class AppColorPalette {
     PURPLE,
     PINK,
     CYAN,
-    MONOCHROME
+    MONOCHROME,
+    CUSTOM
 }
 
 private const val THEME_DATA_STORE_NAME = "theme_preferences"
@@ -47,6 +48,7 @@ private val DEFAULT_PAGE_KEY = stringPreferencesKey("default_page")
 private val CARD_COLORING_KEY = booleanPreferencesKey("card_coloring_enabled")
 private val DYNAMIC_COLOR_KEY = booleanPreferencesKey("dynamic_color_enabled")
 private val COLOR_PALETTE_KEY = stringPreferencesKey("theme_color_palette")
+private val CUSTOM_COLOR_SEED_KEY = androidx.datastore.preferences.core.intPreferencesKey("custom_color_seed")
 
 private val Context.themeDataStore: DataStore<Preferences> by preferencesDataStore(
     name = THEME_DATA_STORE_NAME
@@ -169,5 +171,24 @@ fun colorPaletteFlow(context: Context): Flow<AppColorPalette> =
 suspend fun saveColorPalette(context: Context, palette: AppColorPalette) {
     context.themeDataStore.edit { preferences ->
         preferences[COLOR_PALETTE_KEY] = palette.name
+    }
+}
+
+fun customColorFlow(context: Context): Flow<Int> =
+    context.themeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[CUSTOM_COLOR_SEED_KEY] ?: 0xFF6650A4.toInt()
+        }
+
+suspend fun saveCustomColor(context: Context, color: Int) {
+    context.themeDataStore.edit { preferences ->
+        preferences[CUSTOM_COLOR_SEED_KEY] = color
     }
 }

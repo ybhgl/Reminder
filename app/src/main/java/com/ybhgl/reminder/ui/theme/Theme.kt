@@ -397,6 +397,7 @@ fun ReminderTheme(
     // Dynamic color is available on Android 12+
     dynamicColor: Boolean = true,
     colorPalette: AppColorPalette = AppColorPalette.PURPLE,
+    customColorSeed: Color = Color(0xFF6750A4),
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeOption) {
@@ -422,6 +423,7 @@ fun ReminderTheme(
                     AppColorPalette.PINK -> PinkDarkColorScheme
                     AppColorPalette.CYAN -> CyanDarkColorScheme
                     AppColorPalette.MONOCHROME -> MonochromeDarkColorScheme
+                    AppColorPalette.CUSTOM -> generateCustomColorScheme(customColorSeed, isDark = true)
                 }
             } else {
                 when (colorPalette) {
@@ -433,6 +435,7 @@ fun ReminderTheme(
                     AppColorPalette.PINK -> PinkLightColorScheme
                     AppColorPalette.CYAN -> CyanLightColorScheme
                     AppColorPalette.MONOCHROME -> MonochromeLightColorScheme
+                    AppColorPalette.CUSTOM -> generateCustomColorScheme(customColorSeed, isDark = false)
                 }
             }
         }
@@ -467,6 +470,130 @@ fun ReminderTheme(
             colorScheme = colorScheme,
             typography = Typography,
             content = content
+        )
+    }
+}
+
+/**
+ * 核心自定义色彩计算：基于 HSV 空间模型对 Seed Color 进行亮度/饱和度调配，
+ * 动态输出轻量级、高度和谐、符合高对比度规范的 Material 3 ColorScheme。
+ */
+private fun generateCustomColorScheme(seedColor: Color, isDark: Boolean): androidx.compose.material3.ColorScheme {
+    val hsv = FloatArray(3)
+    android.graphics.Color.colorToHSV(
+        android.graphics.Color.argb(
+            (seedColor.alpha * 255).toInt(),
+            (seedColor.red * 255).toInt(),
+            (seedColor.green * 255).toInt(),
+            (seedColor.blue * 255).toInt()
+        ),
+        hsv
+    )
+    val hue = hsv[0]
+    val sat = hsv[1]
+    val value = hsv[2]
+
+    // 辅助色彩变换函数
+    fun fromHsv(h: Float, s: Float, v: Float): Color {
+        val colorInt = android.graphics.Color.HSVToColor(floatArrayOf(h, s.coerceIn(0f, 1f), v.coerceIn(0f, 1f)))
+        return Color(colorInt)
+    }
+
+    return if (!isDark) {
+        // --- 浅色模式自定义 Scheme ---
+        val primary = seedColor
+        val onPrimary = Color.White
+        val primaryContainer = fromHsv(hue, sat * 0.25f, 0.96f)
+        val onPrimaryContainer = fromHsv(hue, sat.coerceAtLeast(0.7f), 0.3f)
+        val secondary = fromHsv((hue + 15) % 360f, sat * 0.4f, value * 0.7f)
+        val onSecondary = Color.White
+        val secondaryContainer = fromHsv((hue + 15) % 360f, sat * 0.15f, 0.96f)
+        val onSecondaryContainer = fromHsv((hue + 15) % 360f, sat.coerceAtLeast(0.7f), 0.35f)
+        val tertiary = fromHsv((hue + 120) % 360f, sat * 0.5f, value * 0.6f)
+        val onTertiary = Color.White
+        val tertiaryContainer = fromHsv((hue + 120) % 360f, sat * 0.15f, 0.97f)
+        val onTertiaryContainer = fromHsv((hue + 120) % 360f, sat.coerceAtLeast(0.7f), 0.3f)
+        
+        // 柔和、洁净、并融入微弱原色调的背景与表面
+        val background = fromHsv(hue, sat * 0.03f, 0.99f)
+        val onBackground = Color(0xFF1D1B20)
+        val surface = fromHsv(hue, sat * 0.03f, 0.99f)
+        val onSurface = Color(0xFF1D1B20)
+        val surfaceVariant = fromHsv(hue, sat * 0.08f, 0.93f)
+        val onSurfaceVariant = Color(0xFF49454F)
+
+        val surfaceContainerLow = fromHsv(hue, sat * 0.04f, 0.97f)
+        val surfaceContainerHigh = fromHsv(hue, sat * 0.06f, 0.93f)
+
+        lightColorScheme(
+            primary = primary,
+            onPrimary = onPrimary,
+            primaryContainer = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            secondary = secondary,
+            onSecondary = onSecondary,
+            secondaryContainer = secondaryContainer,
+            onSecondaryContainer = onSecondaryContainer,
+            tertiary = tertiary,
+            onTertiary = onTertiary,
+            tertiaryContainer = tertiaryContainer,
+            onTertiaryContainer = onTertiaryContainer,
+            background = background,
+            onBackground = onBackground,
+            surface = surface,
+            onSurface = onSurface,
+            surfaceVariant = surfaceVariant,
+            onSurfaceVariant = onSurfaceVariant,
+            surfaceContainerLow = surfaceContainerLow,
+            surfaceContainerHigh = surfaceContainerHigh
+        )
+    } else {
+        // --- 深色模式自定义 Scheme ---
+        val primary = fromHsv(hue, sat * 0.5f, 0.9f)
+        val onPrimary = fromHsv(hue, sat.coerceAtLeast(0.7f), 0.3f)
+        val primaryContainer = fromHsv(hue, sat.coerceAtLeast(0.6f), 0.45f)
+        val onPrimaryContainer = fromHsv(hue, sat * 0.2f, 0.97f)
+        val secondary = fromHsv((hue + 15) % 360f, sat * 0.35f, 0.8f)
+        val onSecondary = fromHsv((hue + 15) % 360f, sat.coerceAtLeast(0.7f), 0.25f)
+        val secondaryContainer = fromHsv((hue + 15) % 360f, sat * 0.5f, 0.4f)
+        val onSecondaryContainer = fromHsv((hue + 15) % 360f, sat * 0.15f, 0.97f)
+        val tertiary = fromHsv((hue + 120) % 360f, sat * 0.4f, 0.85f)
+        val onTertiary = fromHsv((hue + 120) % 360f, sat.coerceAtLeast(0.7f), 0.3f)
+        val tertiaryContainer = fromHsv((hue + 120) % 360f, sat * 0.5f, 0.45f)
+        val onTertiaryContainer = fromHsv((hue + 120) % 360f, sat * 0.15f, 0.98f)
+
+        // 舒适、低反差、充满沉浸感的深暗色背景与表面
+        val background = Color(0xFF121118)
+        val onBackground = Color(0xFFE6E1E5)
+        val surface = Color(0xFF121118)
+        val onSurface = Color(0xFFE6E1E5)
+        val surfaceVariant = fromHsv(hue, sat * 0.12f, 0.32f)
+        val onSurfaceVariant = Color(0xFFCAC4D0)
+
+        val surfaceContainerLow = Color(0xFF1B1922)
+        val surfaceContainerHigh = Color(0xFF26242F)
+
+        darkColorScheme(
+            primary = primary,
+            onPrimary = onPrimary,
+            primaryContainer = primaryContainer,
+            onPrimaryContainer = onPrimaryContainer,
+            secondary = secondary,
+            onSecondary = onSecondary,
+            secondaryContainer = secondaryContainer,
+            onSecondaryContainer = onSecondaryContainer,
+            tertiary = tertiary,
+            onTertiary = onTertiary,
+            tertiaryContainer = tertiaryContainer,
+            onTertiaryContainer = onTertiaryContainer,
+            background = background,
+            onBackground = onBackground,
+            surface = surface,
+            onSurface = onSurface,
+            surfaceVariant = surfaceVariant,
+            onSurfaceVariant = onSurfaceVariant,
+            surfaceContainerLow = surfaceContainerLow,
+            surfaceContainerHigh = surfaceContainerHigh
         )
     }
 }
