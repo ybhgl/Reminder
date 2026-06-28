@@ -332,6 +332,7 @@ object BackupPreferences {
             )
 
             val json = kotlinx.serialization.json.Json.encodeToString(backupData)
+            val encryptedData = com.ybhgl.reminder.util.BackupEncryptor.encrypt(json)
             val maxCount = autoBackupMaxCountFlow(context).first()
 
             val timestamp = java.time.LocalDateTime.now()
@@ -359,7 +360,7 @@ object BackupPreferences {
                                 if (newFile != null) {
                                     try {
                                         context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
-                                            output.write(json.toByteArray(Charsets.UTF_8))
+                                            output.write(encryptedData.toByteArray(Charsets.UTF_8))
                                             output.flush()
                                         }
                                     } catch (e: Exception) {
@@ -414,7 +415,7 @@ object BackupPreferences {
                             webDavPassword,
                             autoWebDavPath,
                             fullFileName,
-                            json
+                            encryptedData
                         )
                         if (result is com.ybhgl.reminder.util.WebDavResult.Success) {
                             val listResult = com.ybhgl.reminder.util.WebDavClient.listFilesActual(

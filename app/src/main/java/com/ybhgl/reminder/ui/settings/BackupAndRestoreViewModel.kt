@@ -135,8 +135,9 @@ class BackupAndRestoreViewModel(
             )
 
             val json = Json.encodeToString(backupData)
+            val encryptedData = com.ybhgl.reminder.util.BackupEncryptor.encrypt(json)
             context.contentResolver.openOutputStream(targetUri)?.use { output ->
-                output.write(json.toByteArray(Charsets.UTF_8))
+                output.write(encryptedData.toByteArray(Charsets.UTF_8))
                 output.flush()
             } ?: return@withContext "备份失败：无法写入目标位置"
 
@@ -230,9 +231,10 @@ class BackupAndRestoreViewModel(
         )
 
         val json = Json.encodeToString(backupData)
+        val encryptedData = com.ybhgl.reminder.util.BackupEncryptor.encrypt(json)
         val fileName = generateBackupFileName()
 
-        return@withContext when (val result = WebDavClient.uploadFile(server, username, password, path, fileName, json)) {
+        return@withContext when (val result = WebDavClient.uploadFile(server, username, password, path, fileName, encryptedData)) {
             is WebDavResult.Success -> {
                 // Update last backup timestamp
                 BackupPreferences.saveLastBackupTimestamp(context, System.currentTimeMillis())
@@ -376,11 +378,12 @@ class BackupAndRestoreViewModel(
     }
 
     private fun parseBackupData(json: String): BackupData? {
+        val decryptedContent = com.ybhgl.reminder.util.BackupEncryptor.decrypt(json) ?: json
         return try {
-            Json.decodeFromString<BackupData>(json)
+            Json.decodeFromString<BackupData>(decryptedContent)
         } catch (e: Exception) {
             try {
-                val reminders = Json.decodeFromString<List<ReminderItem>>(json)
+                val reminders = Json.decodeFromString<List<ReminderItem>>(decryptedContent)
                 BackupData(reminders = reminders)
             } catch (ex: Exception) {
                 null
