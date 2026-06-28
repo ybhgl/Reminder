@@ -989,93 +989,143 @@ fun BackupAndRestoreScreen(
                                 Spacer(modifier = Modifier.width(48.dp))
                             }
 
-                            // Tabs Segment (Local & Cloud)
-                            Row(
+                            // Tabs Segment (Local & Cloud) with stretchy elastic spring sliding animation
+                            BoxWithConstraints(
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .background(MaterialTheme.colorScheme.surfaceColorAtElevation(1.dp))
-                                    .padding(vertical = 8.dp),
-                                horizontalArrangement = Arrangement.SpaceAround,
-                                verticalAlignment = Alignment.CenterVertically
+                                    .padding(vertical = 12.dp)
                             ) {
-                                // Tab 1: Local
-                                val isLocalSelected = pagerState.currentPage == 0
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                val tabWidth = maxWidth / 2
+                                val fraction = (pagerState.currentPage + pagerState.currentPageOffsetFraction).coerceIn(0f, 1f)
+
+                                // Dynamic stretchy slide pill calculation
+                                // Now the pill is enlarged to fully enclose both the icon and the text!
+                                val pillHeight = 64.dp
+                                val pillWidthBase = 120.dp // Enclose words with pleasant horizontal padding
+                                val pillStretchMax = 80.dp // Stretchy rubber band effect remains perfectly adapted
+                                
+                                // Dynamic stretchy width: max stretch at exact center (fraction = 0.5)
+                                val currentPillWidth = pillWidthBase + pillStretchMax * kotlin.math.sin(fraction * kotlin.math.PI).toFloat()
+                                
+                                // Center coordinate of the pill
+                                val pillCenter = (tabWidth * 0.5f) + (tabWidth * fraction)
+                                
+                                // Dynamic left edge of the stretchy pill
+                                val pillLeftOffset = pillCenter - (currentPillWidth * 0.5f)
+
+                                // Shared stretchy elastic background (Pill) - now fully enclosing icon & text
+                                Box(
                                     modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(0)
-                                            }
-                                        }
-                                        .padding(vertical = 4.dp)
+                                        .offset(x = pillLeftOffset)
+                                        .width(currentPillWidth)
+                                        .height(pillHeight)
+                                        .background(
+                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                            shape = RoundedCornerShape(16.dp)
+                                        )
+                                )
+
+                                // Interpolated colors for smooth transition (Selected on PrimaryContainer, Unselected on Surface)
+                                val defaultUnselectedColor = MaterialTheme.colorScheme.onSurfaceVariant
+                                val selectedColor = MaterialTheme.colorScheme.onPrimaryContainer
+
+                                val tab1Color = androidx.compose.ui.graphics.lerp(selectedColor, defaultUnselectedColor, fraction)
+                                val tab2Color = androidx.compose.ui.graphics.lerp(defaultUnselectedColor, selectedColor, fraction)
+
+                                // Opacity interpolation factors for Double-Text Overlay (Smooth normal <-> bold change)
+                                val tab1BoldAlpha = 1f - fraction
+                                val tab1NormalAlpha = fraction
+
+                                val tab2BoldAlpha = fraction
+                                val tab2NormalAlpha = 1f - fraction
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.SpaceAround,
+                                    verticalAlignment = Alignment.CenterVertically
                                 ) {
-                                    Box(
+                                    // Tab 1: Local
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
                                         modifier = Modifier
-                                            .width(64.dp)
-                                            .height(32.dp)
-                                            .background(
-                                                color = if (isLocalSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                                shape = CircleShape
-                                            ),
-                                        contentAlignment = Alignment.Center
+                                            .weight(1f)
+                                            .height(pillHeight)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .clickable {
+                                                coroutineScope.launch {
+                                                    pagerState.animateScrollToPage(0)
+                                                }
+                                            }
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Folder,
                                             contentDescription = null,
-                                            tint = if (isLocalSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = tab1Color,
                                             modifier = Modifier.size(20.dp)
                                         )
-                                    }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "本地备份",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = if (isLocalSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isLocalSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                }
-
-                                // Tab 2: Cloud
-                                val isCloudSelected = pagerState.currentPage == 1
-                                Column(
-                                    horizontalAlignment = Alignment.CenterHorizontally,
-                                    modifier = Modifier
-                                        .weight(1f)
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            coroutineScope.launch {
-                                                pagerState.animateScrollToPage(1)
-                                            }
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        
+                                        // Tab 1 Text Layer: Double-Text Opacity Overlay for 100% smooth FontWeight transitions
+                                        Box(contentAlignment = Alignment.Center) {
+                                            // Bold Text
+                                            Text(
+                                                text = "本地",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = tab1Color.copy(alpha = tab1BoldAlpha)
+                                            )
+                                            // Normal Text
+                                            Text(
+                                                text = "本地",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Normal,
+                                                color = tab1Color.copy(alpha = tab1NormalAlpha)
+                                            )
                                         }
-                                        .padding(vertical = 4.dp)
-                                ) {
-                                    Box(
+                                    }
+
+                                    // Tab 2: Cloud
+                                    Column(
+                                        horizontalAlignment = Alignment.CenterHorizontally,
+                                        verticalArrangement = Arrangement.Center,
                                         modifier = Modifier
-                                            .width(64.dp)
-                                            .height(32.dp)
-                                            .background(
-                                                color = if (isCloudSelected) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
-                                                shape = CircleShape
-                                            ),
-                                        contentAlignment = Alignment.Center
+                                            .weight(1f)
+                                            .height(pillHeight)
+                                            .clip(RoundedCornerShape(16.dp))
+                                            .clickable {
+                                                coroutineScope.launch {
+                                                    pagerState.animateScrollToPage(1)
+                                                }
+                                            }
                                     ) {
                                         Icon(
                                             imageVector = Icons.Default.Cloud,
                                             contentDescription = null,
-                                            tint = if (isCloudSelected) MaterialTheme.colorScheme.onPrimaryContainer else MaterialTheme.colorScheme.onSurfaceVariant,
+                                            tint = tab2Color,
                                             modifier = Modifier.size(20.dp)
                                         )
+                                        Spacer(modifier = Modifier.height(4.dp))
+                                        
+                                        // Tab 2 Text Layer: Double-Text Opacity Overlay for 100% smooth FontWeight transitions
+                                        Box(contentAlignment = Alignment.Center) {
+                                            // Bold Text
+                                            Text(
+                                                text = "WebDAV",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Bold,
+                                                color = tab2Color.copy(alpha = tab2BoldAlpha)
+                                            )
+                                            // Normal Text
+                                            Text(
+                                                text = "WebDAV",
+                                                style = MaterialTheme.typography.labelLarge,
+                                                fontWeight = FontWeight.Normal,
+                                                color = tab2Color.copy(alpha = tab2NormalAlpha)
+                                            )
+                                        }
                                     }
-                                    Spacer(modifier = Modifier.height(4.dp))
-                                    Text(
-                                        text = "WebDAV 备份",
-                                        style = MaterialTheme.typography.labelLarge,
-                                        fontWeight = if (isCloudSelected) FontWeight.Bold else FontWeight.Normal,
-                                        color = if (isCloudSelected) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
                                 }
                             }
 
