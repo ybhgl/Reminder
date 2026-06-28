@@ -25,6 +25,10 @@ import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalSoftwareKeyboardController
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
+import com.ybhgl.reminder.ui.common.CustomToast
 import androidx.compose.ui.text.TextRange
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -67,6 +71,9 @@ fun CustomColorPickerDialog(
 
     var showHexInputDialog by remember { mutableStateOf(false) }
 
+    val context = LocalContext.current
+    val clipboardManager = LocalClipboardManager.current
+
     Dialog(
         onDismissRequest = onDismissRequest,
         properties = DialogProperties(usePlatformDefaultWidth = false)
@@ -101,7 +108,15 @@ fun CustomColorPickerDialog(
                             color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
                             shape = RoundedCornerShape(16.dp)
                         )
-                        .clickable { showHexInputDialog = true }
+                        .pointerInput(hexString) {
+                            detectTapGestures(
+                                onTap = { showHexInputDialog = true },
+                                onLongPress = {
+                                    clipboardManager.setText(AnnotatedString(hexString))
+                                    CustomToast.showSuccess(context, "已复制 $hexString 到剪贴板")
+                                }
+                            )
+                        }
                         .padding(12.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
@@ -420,7 +435,7 @@ private fun HexTextDialog(
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 Text(
-                    text = "输入或复制颜色代码",
+                    text = "输入颜色 HEX 值",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.onSurface
                 )
@@ -436,7 +451,7 @@ private fun HexTextDialog(
                         if (errorMessage != null) {
                             Text(text = errorMessage.orEmpty(), color = MaterialTheme.colorScheme.error)
                         } else {
-                            Text(text = "支持 #RRGGBB 或 #AARRGGBB 十六进制格式")
+                            
                         }
                     },
                     modifier = Modifier
@@ -473,7 +488,7 @@ private fun HexTextDialog(
                                 onHexConfirmed(parsedColor)
                                 keyboardController?.hide()
                             } else {
-                                errorMessage = "格式不正确，解析失败"
+                                errorMessage = "HEX 格式不正确"
                             }
                         },
                         shape = RoundedCornerShape(10.dp)
