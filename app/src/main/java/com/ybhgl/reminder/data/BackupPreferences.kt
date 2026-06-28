@@ -306,6 +306,7 @@ object BackupPreferences {
 
             val themeOption = themeOptionFlow(context).first()
             val pureBlackEnabled = pureBlackFlow(context).first()
+            val cardColoringEnabled = cardColoringFlow(context).first()
             val defaultPage = defaultPageFlow(context).first()
             val viewMode = viewModeFlow(context).first()
             val dynamicColorEnabled = dynamicColorFlow(context).first()
@@ -325,6 +326,7 @@ object BackupPreferences {
                 tags = tags,
                 themeOption = themeOption,
                 pureBlackEnabled = pureBlackEnabled,
+                cardColoringEnabled = cardColoringEnabled,
                 defaultPage = defaultPage,
                 viewMode = viewMode,
                 backupReminderEnabled = backupReminderEnabled,

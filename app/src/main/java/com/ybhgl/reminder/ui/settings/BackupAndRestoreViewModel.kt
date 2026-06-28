@@ -109,6 +109,7 @@ class BackupAndRestoreViewModel(
 
             val themeOption = themeOptionFlow(context).first()
             val pureBlackEnabled = pureBlackFlow(context).first()
+            val cardColoringEnabled = cardColoringFlow(context).first()
             val defaultPage = defaultPageFlow(context).first()
             val viewMode = viewModeFlow(context).first()
             val dynamicColorEnabled = dynamicColorFlow(context).first()
@@ -128,6 +129,7 @@ class BackupAndRestoreViewModel(
                 tags = tags,
                 themeOption = themeOption,
                 pureBlackEnabled = pureBlackEnabled,
+                cardColoringEnabled = cardColoringEnabled,
                 defaultPage = defaultPage,
                 viewMode = viewMode,
                 backupReminderEnabled = backupReminderEnabled,
@@ -211,6 +213,7 @@ class BackupAndRestoreViewModel(
 
         val themeOption = themeOptionFlow(context).first()
         val pureBlackEnabled = pureBlackFlow(context).first()
+        val cardColoringEnabled = cardColoringFlow(context).first()
         val defaultPage = defaultPageFlow(context).first()
         val viewMode = viewModeFlow(context).first()
         val dynamicColorEnabled = dynamicColorFlow(context).first()
@@ -230,6 +233,7 @@ class BackupAndRestoreViewModel(
             tags = tags,
             themeOption = themeOption,
             pureBlackEnabled = pureBlackEnabled,
+            cardColoringEnabled = cardColoringEnabled,
             defaultPage = defaultPage,
             viewMode = viewMode,
             backupReminderEnabled = backupReminderEnabled,
@@ -494,6 +498,7 @@ class BackupAndRestoreViewModel(
 
             backupData.themeOption?.let { saveThemeOption(context, it) }
             backupData.pureBlackEnabled?.let { savePureBlack(context, it) }
+            backupData.cardColoringEnabled?.let { saveCardColoring(context, it) }
             backupData.defaultPage?.let { saveDefaultPage(context, it) }
             backupData.viewMode?.let { saveViewMode(context, it) }
             backupData.dynamicColorEnabled?.let { saveDynamicColor(context, it) }
