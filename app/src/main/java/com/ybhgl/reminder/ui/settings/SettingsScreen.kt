@@ -88,7 +88,21 @@ import androidx.compose.ui.platform.LocalDensity
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.data.AppDefaultPage
+import com.ybhgl.reminder.data.AppColorPalette
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.border
+import androidx.compose.foundation.clickable
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.material.icons.filled.Check
+import android.os.Build
 import kotlinx.coroutines.launch
 import android.content.Intent
 import androidx.compose.ui.res.painterResource
@@ -127,6 +141,10 @@ fun SettingsScreen(
     val usePureBlack by pureBlackPreferenceFlow.collectAsState(initial = false)
     val cardColoringPreferenceFlow = remember(context) { viewModel.cardColoringPreferenceFlow(context) }
     val useCardColoring by cardColoringPreferenceFlow.collectAsState(initial = true)
+    val dynamicColorPreferenceFlow = remember(context) { viewModel.dynamicColorPreferenceFlow(context) }
+    val dynamicColorEnabled by dynamicColorPreferenceFlow.collectAsState(initial = true)
+    val colorPalettePreferenceFlow = remember(context) { viewModel.colorPalettePreferenceFlow(context) }
+    val themeColorPalette by colorPalettePreferenceFlow.collectAsState(initial = AppColorPalette.PURPLE)
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val scrollState = rememberScrollState()
@@ -257,6 +275,8 @@ fun SettingsScreen(
                     selectedOption = selectedTheme,
                     usePureBlack = usePureBlack,
                     useCardColoring = useCardColoring,
+                    dynamicColorEnabled = dynamicColorEnabled,
+                    themeColorPalette = themeColorPalette,
                     onOptionSelected = { option ->
                         coroutineScope.launch {
                             viewModel.updateThemePreference(context, option)
@@ -270,6 +290,16 @@ fun SettingsScreen(
                     onCardColoringToggle = { enabled ->
                         coroutineScope.launch {
                             viewModel.updateCardColoringPreference(context, enabled)
+                        }
+                    },
+                    onDynamicColorToggle = { enabled ->
+                        coroutineScope.launch {
+                            viewModel.updateDynamicColorPreference(context, enabled)
+                        }
+                    },
+                    onColorPaletteSelected = { palette ->
+                        coroutineScope.launch {
+                            viewModel.updateColorPalettePreference(context, palette)
                         }
                     }
                 )
@@ -447,9 +477,13 @@ private fun ThemeSelectionCard(
     selectedOption: AppThemeOption,
     usePureBlack: Boolean,
     useCardColoring: Boolean,
+    dynamicColorEnabled: Boolean,
+    themeColorPalette: AppColorPalette,
     onOptionSelected: (AppThemeOption) -> Unit,
     onPureBlackToggle: (Boolean) -> Unit,
-    onCardColoringToggle: (Boolean) -> Unit
+    onCardColoringToggle: (Boolean) -> Unit,
+    onDynamicColorToggle: (Boolean) -> Unit,
+    onColorPaletteSelected: (AppColorPalette) -> Unit
 ) {
     Card(
         modifier = Modifier.fillMaxWidth(),
@@ -476,7 +510,143 @@ private fun ThemeSelectionCard(
                 checked = useCardColoring,
                 onCheckedChange = onCardColoringToggle
             )
+            Spacer(modifier = Modifier.height(8.dp))
+            DynamicColorModeRow(
+                checked = dynamicColorEnabled,
+                onCheckedChange = onDynamicColorToggle
+            )
+            
+            AnimatedVisibility(
+                visible = !dynamicColorEnabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.S,
+                enter = expandVertically() + fadeIn(),
+                exit = shrinkVertically() + fadeOut()
+            ) {
+                Column(
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "种子色",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .horizontalScroll(rememberScrollState()),
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        AppColorPalette.values().forEach { palette ->
+                            ColorPaletteItem(
+                                palette = palette,
+                                isSelected = themeColorPalette == palette,
+                                onClick = { onColorPaletteSelected(palette) }
+                            )
+                        }
+                    }
+                }
+            }
         }
+    }
+}
+
+@Composable
+private fun DynamicColorModeRow(
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { onCheckedChange(!checked) }
+            )
+            .padding(vertical = 4.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = "动态取色",
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = "在 Android 12+ 系统上使用系统壁纸颜色",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(
+            checked = checked,
+            onCheckedChange = onCheckedChange,
+            colors = SwitchDefaults.colors(
+                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
+                uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+            )
+        )
+    }
+}
+
+@Composable
+private fun ColorPaletteItem(
+    palette: AppColorPalette,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    val paletteInfo = when (palette) {
+        AppColorPalette.BLUE -> Pair("蓝色", Color(0xFF0061A4))
+        AppColorPalette.GREEN -> Pair("绿色", Color(0xFF006D3A))
+        AppColorPalette.YELLOW -> Pair("黄色", Color(0xFF6A5F00))
+        AppColorPalette.ORANGE -> Pair("橙色", Color(0xFF8B5000))
+        AppColorPalette.PURPLE -> Pair("紫色", Color(0xFF6650A4))
+        AppColorPalette.PINK -> Pair("粉色", Color(0xFF9C4174))
+        AppColorPalette.CYAN -> Pair("青色", Color(0xFF006A6A))
+        AppColorPalette.MONOCHROME -> Pair("黑白", Color(0xFF5C5F62))
+    }
+
+    Column(
+        horizontalAlignment = Alignment.CenterHorizontally,
+        modifier = Modifier
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = onClick
+            )
+            .padding(vertical = 4.dp)
+    ) {
+        Box(
+            contentAlignment = Alignment.Center,
+            modifier = Modifier
+                .size(44.dp)
+                .background(
+                    color = paletteInfo.second,
+                    shape = CircleShape
+                )
+                .border(
+                    width = 2.dp,
+                    color = if (isSelected) MaterialTheme.colorScheme.primary else Color.Transparent,
+                    shape = CircleShape
+                )
+        ) {
+            if (isSelected) {
+                Icon(
+                    imageVector = Icons.Default.Check,
+                    contentDescription = null,
+                    tint = Color.White,
+                    modifier = Modifier.size(24.dp)
+                )
+            }
+        }
+        Spacer(modifier = Modifier.height(4.dp))
+        Text(
+            text = paletteInfo.first,
+            style = MaterialTheme.typography.labelMedium,
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
+        )
     }
 }
 
@@ -752,7 +922,7 @@ private fun CardColoringModeRow(
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "开启以使用 Material Design 3 风格的动态着色；关闭则显示原版经典卡片色",
+                text = "基于主题色对卡片进行着色",
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

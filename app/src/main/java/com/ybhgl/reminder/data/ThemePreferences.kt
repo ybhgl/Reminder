@@ -28,11 +28,25 @@ enum class AppDefaultPage {
     BIRTHDAY
 }
 
+@Serializable
+enum class AppColorPalette {
+    BLUE,
+    GREEN,
+    YELLOW,
+    ORANGE,
+    PURPLE,
+    PINK,
+    CYAN,
+    MONOCHROME
+}
+
 private const val THEME_DATA_STORE_NAME = "theme_preferences"
 private val THEME_PREFERENCE_KEY = stringPreferencesKey("theme_option")
 private val PURE_BLACK_KEY = booleanPreferencesKey("pure_black_enabled")
 private val DEFAULT_PAGE_KEY = stringPreferencesKey("default_page")
 private val CARD_COLORING_KEY = booleanPreferencesKey("card_coloring_enabled")
+private val DYNAMIC_COLOR_KEY = booleanPreferencesKey("dynamic_color_enabled")
+private val COLOR_PALETTE_KEY = stringPreferencesKey("theme_color_palette")
 
 private val Context.themeDataStore: DataStore<Preferences> by preferencesDataStore(
     name = THEME_DATA_STORE_NAME
@@ -115,5 +129,45 @@ fun cardColoringFlow(context: Context): Flow<Boolean> =
 suspend fun saveCardColoring(context: Context, enabled: Boolean) {
     context.themeDataStore.edit { preferences ->
         preferences[CARD_COLORING_KEY] = enabled
+    }
+}
+
+fun dynamicColorFlow(context: Context): Flow<Boolean> =
+    context.themeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[DYNAMIC_COLOR_KEY] ?: true
+        }
+
+suspend fun saveDynamicColor(context: Context, enabled: Boolean) {
+    context.themeDataStore.edit { preferences ->
+        preferences[DYNAMIC_COLOR_KEY] = enabled
+    }
+}
+
+fun colorPaletteFlow(context: Context): Flow<AppColorPalette> =
+    context.themeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            val stored = preferences[COLOR_PALETTE_KEY]
+            stored?.let { runCatching { AppColorPalette.valueOf(it) }.getOrNull() }
+                ?: AppColorPalette.PURPLE
+        }
+
+suspend fun saveColorPalette(context: Context, palette: AppColorPalette) {
+    context.themeDataStore.edit { preferences ->
+        preferences[COLOR_PALETTE_KEY] = palette.name
     }
 }

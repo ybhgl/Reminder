@@ -107,5 +107,7 @@ data class BackupData(
     val webDavServer: String? = null,
     val webDavUsername: String? = null,
     val webDavPassword: String? = null,
-    val webDavPath: String? = null
+    val webDavPath: String? = null,
+    val dynamicColorEnabled: Boolean? = null,
+    val themeColorPalette: AppColorPalette? = null
 )

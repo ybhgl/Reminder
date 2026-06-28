@@ -202,6 +202,9 @@ import com.ybhgl.reminder.data.defaultPageFlow
 import com.ybhgl.reminder.data.pureBlackFlow
 import com.ybhgl.reminder.data.themeOptionFlow
 import com.ybhgl.reminder.data.cardColoringFlow
+import com.ybhgl.reminder.data.dynamicColorFlow
+import com.ybhgl.reminder.data.colorPaletteFlow
+import com.ybhgl.reminder.data.AppColorPalette
 import com.ybhgl.reminder.ui.detail.BirthdayListScreen
 import com.ybhgl.reminder.ui.detail.DetailScreen
 import kotlinx.coroutines.launch
@@ -269,6 +272,10 @@ class MainActivity : ComponentActivity() {
             val usePureBlack by pureBlackModeFlow.collectAsState(initial = false)
             val cardColoringFlowInstance = remember(context) { cardColoringFlow(context) }
             val cardColoringEnabled by cardColoringFlowInstance.collectAsState(initial = true)
+            val dynamicColorFlowInstance = remember(context) { dynamicColorFlow(context) }
+            val dynamicColorEnabled by dynamicColorFlowInstance.collectAsState(initial = true)
+            val colorPaletteFlowInstance = remember(context) { colorPaletteFlow(context) }
+            val themeColorPalette by colorPaletteFlowInstance.collectAsState(initial = AppColorPalette.PURPLE)
 
             LaunchedEffect(themeOption) {
                 com.ybhgl.reminder.ui.common.CustomToast.currentAppTheme = themeOption
@@ -299,7 +306,13 @@ class MainActivity : ComponentActivity() {
                 }
             }
 
-            ReminderTheme(themeOption = themeOption, usePureBlack = usePureBlack, cardColoringEnabled = cardColoringEnabled) {
+            ReminderTheme(
+                themeOption = themeOption,
+                usePureBlack = usePureBlack,
+                cardColoringEnabled = cardColoringEnabled,
+                dynamicColor = dynamicColorEnabled,
+                colorPalette = themeColorPalette
+            ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
                     color = MaterialTheme.colorScheme.background

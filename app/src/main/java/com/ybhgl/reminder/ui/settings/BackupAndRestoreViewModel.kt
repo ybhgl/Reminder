@@ -111,6 +111,8 @@ class BackupAndRestoreViewModel(
             val pureBlackEnabled = pureBlackFlow(context).first()
             val defaultPage = defaultPageFlow(context).first()
             val viewMode = viewModeFlow(context).first()
+            val dynamicColorEnabled = dynamicColorFlow(context).first()
+            val themeColorPalette = colorPaletteFlow(context).first()
 
             val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
             val webDavServer = BackupPreferences.webDavServerFlow(context).first()
@@ -131,7 +133,9 @@ class BackupAndRestoreViewModel(
                 webDavServer = webDavServer,
                 webDavUsername = webDavUsername,
                 webDavPassword = webDavPassword,
-                webDavPath = webDavPath
+                webDavPath = webDavPath,
+                dynamicColorEnabled = dynamicColorEnabled,
+                themeColorPalette = themeColorPalette
             )
 
             val json = Json.encodeToString(backupData)
@@ -207,6 +211,8 @@ class BackupAndRestoreViewModel(
         val pureBlackEnabled = pureBlackFlow(context).first()
         val defaultPage = defaultPageFlow(context).first()
         val viewMode = viewModeFlow(context).first()
+        val dynamicColorEnabled = dynamicColorFlow(context).first()
+        val themeColorPalette = colorPaletteFlow(context).first()
 
         val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
         val webDavServer = BackupPreferences.webDavServerFlow(context).first()
@@ -227,7 +233,9 @@ class BackupAndRestoreViewModel(
             webDavServer = webDavServer,
             webDavUsername = webDavUsername,
             webDavPassword = webDavPassword,
-            webDavPath = webDavPath
+            webDavPath = webDavPath,
+            dynamicColorEnabled = dynamicColorEnabled,
+            themeColorPalette = themeColorPalette
         )
 
         val json = Json.encodeToString(backupData)
@@ -484,6 +492,8 @@ class BackupAndRestoreViewModel(
             backupData.pureBlackEnabled?.let { savePureBlack(context, it) }
             backupData.defaultPage?.let { saveDefaultPage(context, it) }
             backupData.viewMode?.let { saveViewMode(context, it) }
+            backupData.dynamicColorEnabled?.let { saveDynamicColor(context, it) }
+            backupData.themeColorPalette?.let { saveColorPalette(context, it) }
 
             // Update last backup to clear warning
             BackupPreferences.saveLastBackupTimestamp(context, System.currentTimeMillis())

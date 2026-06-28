@@ -308,6 +308,8 @@ object BackupPreferences {
             val pureBlackEnabled = pureBlackFlow(context).first()
             val defaultPage = defaultPageFlow(context).first()
             val viewMode = viewModeFlow(context).first()
+            val dynamicColorEnabled = dynamicColorFlow(context).first()
+            val themeColorPalette = colorPaletteFlow(context).first()
 
             val backupReminderEnabled = backupReminderEnabledFlow(context).first()
             val webDavServer = webDavServerFlow(context).first()
@@ -328,7 +330,9 @@ object BackupPreferences {
                 webDavServer = webDavServer,
                 webDavUsername = webDavUsername,
                 webDavPassword = webDavPassword,
-                webDavPath = webDavPath
+                webDavPath = webDavPath,
+                dynamicColorEnabled = dynamicColorEnabled,
+                themeColorPalette = themeColorPalette
             )
 
             val json = kotlinx.serialization.json.Json.encodeToString(backupData)
