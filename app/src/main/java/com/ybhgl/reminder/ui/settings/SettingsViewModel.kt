@@ -26,6 +26,7 @@ import com.ybhgl.reminder.data.customColorFlow
 import com.ybhgl.reminder.data.saveCustomColor
 import com.ybhgl.reminder.data.viewModeFlow
 import com.ybhgl.reminder.data.saveViewMode
+import com.ybhgl.reminder.data.BackupPreferences
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.util.Locale
@@ -48,6 +49,8 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     suspend fun updateThemePreference(context: Context, option: AppThemeOption) {
         saveThemeOption(context, option)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
     fun getAllRemindersStream(): Flow<List<ReminderItem>> = reminderRepository.getAllRemindersStream()
@@ -62,30 +65,42 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     suspend fun updateColorPalettePreference(context: Context, palette: AppColorPalette) {
         saveColorPalette(context, palette)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
     fun customColorPreferenceFlow(context: Context): Flow<Int> = customColorFlow(context)
 
     suspend fun updateCustomColorPreference(context: Context, color: Int) {
         saveCustomColor(context, color)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
     suspend fun updatePureBlackPreference(context: Context, enabled: Boolean) {
         savePureBlack(context, enabled)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
     suspend fun updateCardColoringPreference(context: Context, enabled: Boolean) {
         saveCardColoring(context, enabled)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
     suspend fun updateDynamicColorPreference(context: Context, enabled: Boolean) {
         saveDynamicColor(context, enabled)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
     fun defaultPageFlow(context: Context): Flow<AppDefaultPage> = com.ybhgl.reminder.data.defaultPageFlow(context)
 
     suspend fun updateDefaultPage(context: Context, page: AppDefaultPage) {
         saveDefaultPage(context, page)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
     suspend fun backupToUri(context: Context, targetUri: Uri): String = withContext(Dispatchers.IO) {
