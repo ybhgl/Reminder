@@ -2280,25 +2280,19 @@ private fun SectionHeader(
     val icon = if (key == "pinned") Icons.Filled.PushPin else Icons.AutoMirrored.Filled.Label
 
     val customColor = remember(tagColorHex) { tagColorHex?.toComposeColor() }
-    val isCustom = customColor != null && key != "pinned"
+    
+    val baseColor = if (key == "pinned") {
+        Color(0xFFE53935) // 显眼的红色
+    } else if (customColor != null) {
+        customColor
+    } else {
+        MaterialTheme.colorScheme.outline // 无标签（中性灰色）
+    }
 
     val surfaceColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f)
 
-    val iconBgColor = if (isCustom) {
-        customColor!!.copy(alpha = 0.22f)
-    } else if (key == "pinned") {
-        MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.8f)
-    } else {
-        MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.8f)
-    }
-
-    val iconColor = if (isCustom) {
-        customColor!!
-    } else if (key == "pinned") {
-        MaterialTheme.colorScheme.onErrorContainer
-    } else {
-        MaterialTheme.colorScheme.onPrimaryContainer
-    }
+    val iconBgColor = baseColor.copy(alpha = 0.22f)
+    val iconColor = baseColor
 
     val textColor = MaterialTheme.colorScheme.onSurface
 
