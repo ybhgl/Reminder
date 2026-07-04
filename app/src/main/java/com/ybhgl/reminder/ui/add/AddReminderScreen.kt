@@ -17,8 +17,10 @@ import androidx.compose.material.icons.filled.Save
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -740,70 +742,90 @@ fun NotesEditDialog(
     val isDirty = notesText != initialNotes
 
     LaunchedEffect(focusRequester) {
+        delay(50) // 延迟 50ms，错开 Dialog 的进场动画，避免动画撞车卡顿
         focusRequester.requestFocus()
     }
 
     Dialog(
         onDismissRequest = onDismiss,
         properties = DialogProperties(
-            usePlatformDefaultWidth = true,
+            usePlatformDefaultWidth = false, // 解除平台默认宽度限制
+            decorFitsSystemWindows = false,  // 接管系统 Window，禁止其在键盘弹出时强行改变尺寸
             dismissOnBackPress = !isDirty,
             dismissOnClickOutside = !isDirty
         )
     ) {
-        Surface(
-            shape = RoundedCornerShape(28.dp),
-            tonalElevation = 6.dp,
+        Box(
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 16.dp)
-        ) {
-            Column(
-                modifier = Modifier
-                    .padding(24.dp)
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Text(
-                    text = "编辑备注",
-                    style = MaterialTheme.typography.titleLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-
-                OutlinedTextField(
-                    value = notesText,
-                    onValueChange = { notesText = it },
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .defaultMinSize(minHeight = 120.dp)
-                        .focusRequester(focusRequester),
-                    placeholder = { Text("在此输入备注内容...") },
-                    maxLines = 10,
-                    shape = RoundedCornerShape(12.dp)
-                )
-
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.End,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    TextButton(
-                        onClick = {
-                            if (isDirty) {
-                                showConfirmCancelDialog = true
-                            } else {
-                                onDismiss()
-                            }
+                .fillMaxSize()
+                .pointerInput(isDirty) {
+                    detectTapGestures(onTap = {
+                        if (!isDirty) {
+                            onDismiss()
                         }
-                    ) {
-                        Text("取消")
+                    })
+                }
+                .smoothImePadding(), // 纯 Compose 层面的平滑键盘避让
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                shape = RoundedCornerShape(28.dp),
+                tonalElevation = 6.dp,
+                modifier = Modifier
+                    .fillMaxWidth(0.9f) // 限制最大宽度，与原本效果类似
+                    .padding(vertical = 16.dp)
+                    .pointerInput(Unit) {
+                        // 拦截点击事件，防止点击卡片内部时触发了外层 Box 的 dismiss
+                        detectTapGestures { }
                     }
-                    Spacer(modifier = Modifier.width(8.dp))
-                    TextButton(
-                        onClick = { onSave(notesText) }
+            ) {
+                Column(
+                    modifier = Modifier
+                        .padding(24.dp)
+                        .fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                ) {
+                    Text(
+                        text = "编辑备注",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+
+                    OutlinedTextField(
+                        value = notesText,
+                        onValueChange = { notesText = it },
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .defaultMinSize(minHeight = 120.dp)
+                            .focusRequester(focusRequester),
+                        placeholder = { Text("在此输入备注内容...") },
+                        maxLines = 10,
+                        shape = RoundedCornerShape(12.dp)
+                    )
+
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
                     ) {
-                        Text("确定", fontWeight = FontWeight.Bold)
+                        TextButton(
+                            onClick = {
+                                if (isDirty) {
+                                    showConfirmCancelDialog = true
+                                } else {
+                                    onDismiss()
+                                }
+                            }
+                        ) {
+                            Text("取消")
+                        }
+                        Spacer(modifier = Modifier.width(8.dp))
+                        TextButton(
+                            onClick = { onSave(notesText) }
+                        ) {
+                            Text("确定", fontWeight = FontWeight.Bold)
+                        }
                     }
                 }
             }
