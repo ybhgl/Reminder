@@ -4,17 +4,22 @@ package com.ybhgl.reminder.ui.tag
 
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.expandVertically
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.combinedClickable
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -57,6 +62,7 @@ import androidx.compose.material3.Slider
 import androidx.compose.material3.SliderDefaults
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -101,6 +107,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.data.TagItem
@@ -579,20 +586,50 @@ private fun AddEditTagDialog(
         gridItems.chunked(5)
     }
 
-    AlertDialog(
+    Dialog(
         onDismissRequest = onDismiss,
-        properties = DialogProperties(usePlatformDefaultWidth = false),
-        modifier = Modifier
-            .fillMaxWidth(0.9f)
-            .widthIn(max = 440.dp),
-        title = {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
-        },
-        text = {
-            Column(
+        properties = DialogProperties(
+            usePlatformDefaultWidth = false,
+            decorFitsSystemWindows = false
+        )
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxSize()
+                .pointerInput(Unit) {
+                    detectTapGestures(onTap = { onDismiss() })
+                },
+            contentAlignment = Alignment.Center
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth(0.9f)
+                    .widthIn(max = 440.dp)
+                    .wrapContentHeight()
+                    .animateContentSize(
+                        animationSpec = spring(
+                            dampingRatio = 0.65f, // 完美的物理回弹
+                            stiffness = Spring.StiffnessLow
+                        )
+                    )
+                    .pointerInput(Unit) {
+                        // 拦截点击事件，防止点击卡片时被底层 Box 消费导致消失
+                        detectTapGestures { }
+                    },
+                shape = AlertDialogDefaults.shape,
+                color = AlertDialogDefaults.containerColor,
+                tonalElevation = AlertDialogDefaults.TonalElevation
+            ) {
+                Column(
+                    modifier = Modifier.padding(24.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+
+                    Column(
                 modifier = Modifier
                     .fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -652,55 +689,74 @@ private fun AddEditTagDialog(
                     }
                 }
 
-                // 自定义色彩滑块和 HEX 栏
-                AnimatedVisibility(
-                    visible = isCustomMode,
-                    enter = fadeIn(animationSpec = tween(250)),
-                    exit = fadeOut(animationSpec = tween(200))
-                ) {
-                    CustomColorPanel(
-                        customColor = customColor,
-                        hexInput = hexInput,
-                        hueValue = hueValue,
-                        onHexInputChange = { input ->
-                            val filtered = input.trim().take(7)
-                            hexInput = filtered
-                            // 如果是合法的 HEX 格式
-                            val hexPattern = "^#([A-Fa-f0-9]{6})$".toRegex()
-                            if (hexPattern.matches(filtered)) {
-                                customColorHex = filtered
-                                selectedColor = filtered
-                            } else {
-                                val filterNoHash = filtered.removePrefix("#")
-                                if (filterNoHash.length == 6 && "^[A-Fa-f0-9]{6}$".toRegex().matches(filterNoHash)) {
-                                    customColorHex = "#$filterNoHash"
-                                    selectedColor = "#$filterNoHash"
-                                    hexInput = "#$filterNoHash"
+                    // 外部 Surface 接管了展开回弹动画，退出时同步收缩高度以避免延迟
+                    AnimatedVisibility(
+                        visible = isCustomMode,
+                        enter = slideInVertically(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioNoBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            initialOffsetY = { -it / 3 }
+                        ) + fadeIn(animationSpec = tween(250)),
+                        exit = shrinkVertically(
+                            animationSpec = tween(250),
+                            shrinkTowards = Alignment.Top
+                        ) + slideOutVertically(
+                            animationSpec = tween(250),
+                            targetOffsetY = { -it / 3 }
+                        ) + fadeOut(animationSpec = tween(200))
+                    ) {
+                        CustomColorPanel(
+                            customColor = customColor,
+                            hexInput = hexInput,
+                            hueValue = hueValue,
+                            onHexInputChange = { input ->
+                                val filtered = input.trim().take(7)
+                                hexInput = filtered
+                                // 如果是合法的 HEX 格式
+                                val hexPattern = "^#([A-Fa-f0-9]{6})$".toRegex()
+                                if (hexPattern.matches(filtered)) {
+                                    customColorHex = filtered
+                                    selectedColor = filtered
+                                } else {
+                                    val filterNoHash = filtered.removePrefix("#")
+                                    if (filterNoHash.length == 6 && "^[A-Fa-f0-9]{6}$".toRegex().matches(filterNoHash)) {
+                                        customColorHex = "#$filterNoHash"
+                                        selectedColor = "#$filterNoHash"
+                                        hexInput = "#$filterNoHash"
+                                    }
                                 }
+                            },
+                            onHueChange = {
+                                hueValue = it
+                                updateColorFromHue(it)
                             }
-                        },
-                        onHueChange = {
-                            hueValue = it
-                            updateColorFromHue(it)
-                        }
-                    )
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(24.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) {
+                        Text("取消")
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Button(
+                        onClick = { onConfirm(tagName, selectedColor) },
+                        enabled = isConfirmEnabled
+                    ) {
+                        Text("保存")
+                    }
                 }
             }
-        },
-        confirmButton = {
-            Button(
-                onClick = { onConfirm(tagName, selectedColor) },
-                enabled = isConfirmEnabled
-            ) {
-                Text("保存")
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
         }
-    )
+    }
+}
 }
 
 @Composable
