@@ -105,6 +105,23 @@ class DetailViewModel(
         }
     }
 
+    fun updateReminderCustomization(
+        context: Context,
+        reminder: ReminderItem,
+        isCustomized: Boolean,
+        customHeaderColor: String,
+        customFont: String
+    ) {
+        viewModelScope.launch {
+            val updatedReminder = reminder.copy(
+                isCustomized = isCustomized,
+                customHeaderColor = customHeaderColor,
+                customFont = customFont
+            )
+            reminderRepository.updateReminder(updatedReminder)
+        }
+    }
+
     fun updateReminderNotes(context: Context, reminder: ReminderItem, newNotes: String) {
         viewModelScope.launch {
             val updatedReminder = reminder.copy(notes = newNotes)

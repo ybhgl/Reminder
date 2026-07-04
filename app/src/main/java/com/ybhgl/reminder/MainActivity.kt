@@ -2,6 +2,9 @@
 
 package com.ybhgl.reminder
 
+import androidx.compose.ui.text.font.FontFamily
+import com.ybhgl.reminder.ui.add.toFontFamily
+
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
 import android.Manifest
@@ -832,7 +835,8 @@ data class ReminderCardVisuals(
     val footerBackground: Color,
     val footerDividerColor: Color,
     val numberColor: Color,
-    val secondaryTextColor: Color
+    val secondaryTextColor: Color,
+    val fontFamily: FontFamily = FontFamily.Default
 )
 
 private enum class ReminderTab(val title: String, val filter: (ReminderItem) -> Boolean) {
@@ -855,7 +859,7 @@ internal fun reminderDisplayInfo(
     shortFormat: Boolean = false
 ): ReminderDisplayInfo {
     val today = LocalDate.now()
-    val visuals = reminderCardVisuals(reminder.type)
+    val visuals = reminderCardVisuals(reminder)
 
     val (headerLabelSuffix, dayCount, referenceText) = when (reminder.type) {
         ReminderType.ANNUAL -> {
@@ -949,28 +953,57 @@ private fun buildHeaderTitle(title: String, suffix: String): String {
     return parts.joinToString(" ")
 }
 
+private fun getDefaultRawColor(type: ReminderType, isDark: Boolean): Color {
+    return when {
+        !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
+        !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
+        !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
+        isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
+        isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
+        else -> Color(0xFFF7A03A) // isDark && COUNT_UP
+    }
+}
+
 @Composable
 private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
+    return reminderCardVisuals(
+        ReminderItem(
+            id = 0,
+            title = "",
+            date = LocalDate.now(),
+            type = type,
+            isLunar = false,
+            tag = "",
+            isPinned = false
+        )
+    )
+}
+
+@Composable
+private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
+    val type = reminder.type
     val isDark = LocalAppDarkTheme.current
     val isCardColoringEnabled = LocalCardColoringEnabled.current
 
-    return if (isCardColoringEnabled) {
-        // Material Design 3 Color Harmonization 配色方案：在保留经典蓝橙红主色调的同时，融入系统当前主题的 Primary 进行色彩和谐化。
+    // 1. 提取出最底层的原始基色 (Raw Color)，将个性化标头定制色视为最原始的涂料层
+    val rawBaseColor = if (reminder.isCustomized && reminder.customHeaderColor.isNotEmpty()) {
+        try {
+            Color(android.graphics.Color.parseColor(reminder.customHeaderColor))
+        } catch (e: Exception) {
+            getDefaultRawColor(type, isDark)
+        }
+    } else {
+        getDefaultRawColor(type, isDark)
+    }
+
+    // 2. 结合系统染色偏好进行卡片样式的构建（卡片变色层会作为滤镜层叠加在原始基色之上）
+    val finalVisuals = if (isCardColoringEnabled) {
         val colorScheme = MaterialTheme.colorScheme
         val systemPrimary = colorScheme.primary
 
-        val rawBaseColor = when {
-            !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
-            !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
-            !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
-            isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
-            isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
-            else -> Color(0xFFF7A03A) // isDark && COUNT_UP
-        }
-
-        // 78% 经典原色 + 22% 系统主题 Primary 进行色彩和谐化（Harmonization）
+        // 主题色着色层叠加在原始基色之上，使用插值算法 lerp(底色, 染料, 比例) 融合成美妙的混色层
         val headerColor = lerp(rawBaseColor, systemPrimary, 0.22f)
-        val headerContentColor = Color.White // 白色保证蓝黄红在插值混合后具有最顶级的对比度与易读性
+        val headerContentColor = Color.White
 
         ReminderCardVisuals(
             headerColor = headerColor,
@@ -982,19 +1015,10 @@ private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
             secondaryTextColor = colorScheme.onSurfaceVariant
         )
     } else {
-        // 经典配色方案：保留原有设计与写死颜色
-        val headerColor = when {
-            !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
-            !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
-            !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
-            isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
-            isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
-            else -> Color(0xFFF7A03A) // isDark && COUNT_UP
-        }
-
+        // 经典未染色卡片方案，直接将原始色作为标头绘制颜色
         if (!isDark) {
             ReminderCardVisuals(
-                headerColor = headerColor,
+                headerColor = rawBaseColor,
                 headerContentColor = Color.White,
                 cardBackground = Color.White,
                 footerBackground = Color(0xFFF4F4F4),
@@ -1004,7 +1028,7 @@ private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
             )
         } else {
             ReminderCardVisuals(
-                headerColor = headerColor,
+                headerColor = rawBaseColor,
                 headerContentColor = Color.White,
                 cardBackground = Color(0xFF1F1F1F),
                 footerBackground = Color(0xFF2B2B2B),
@@ -1013,6 +1037,15 @@ private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
                 secondaryTextColor = Color(0xFFB0BEC5)
             )
         }
+    }
+
+    // 3. 应用个性化的大数 FontFamily 
+    return if (reminder.isCustomized && reminder.customFont.isNotEmpty()) {
+        finalVisuals.copy(
+            fontFamily = reminder.customFont.toFontFamily()
+        )
+    } else {
+        finalVisuals
     }
 }
 
@@ -1044,7 +1077,8 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: 
                 text = textToShow,
                 style = MaterialTheme.typography.displayLarge.copy(
                     fontWeight = FontWeight.Bold,
-                    letterSpacing = (-1).sp
+                    letterSpacing = (-1).sp,
+                    fontFamily = visuals.fontFamily
                 ),
                 modifier = Modifier
                     .alignByBaseline()

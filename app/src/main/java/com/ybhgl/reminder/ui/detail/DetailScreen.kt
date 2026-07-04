@@ -68,8 +68,14 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.filled.Palette
 import com.ybhgl.reminder.ui.tag.toComposeColor
 import com.ybhgl.reminder.data.TagItem
+import com.ybhgl.reminder.ui.add.ReminderCustomizationSection
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
 
 enum class CaptureAction { SHARE, SAVE }
 
@@ -135,6 +141,19 @@ fun DetailScreen(
         val currentReminder = reminderItems.getOrNull(pagerState.currentPage)
         val latestReminderItems by rememberUpdatedState(reminderItems)
         var currentId by remember { mutableIntStateOf(viewModel.reminderId) }
+        var editingReminderForTag by remember { mutableStateOf<ReminderItem?>(null) }
+        var reminderItemToCustomize by remember { mutableStateOf<ReminderItem?>(null) }
+        var tempIsCustomized by remember { mutableStateOf(false) }
+        var tempHeaderColor by remember { mutableStateOf("") }
+        var tempFont by remember { mutableStateOf("") }
+
+        LaunchedEffect(reminderItemToCustomize) {
+            reminderItemToCustomize?.let { item ->
+                tempIsCustomized = item.isCustomized
+                tempHeaderColor = item.customHeaderColor
+                tempFont = item.customFont
+            }
+        }
 
         // Sync currentId/viewModel active reminder item when page changes (via user swipe)
         LaunchedEffect(pagerState) {
@@ -208,6 +227,102 @@ fun DetailScreen(
                 )
             }
 
+            if (reminderItemToCustomize != null) {
+                val item = reminderItemToCustomize!!
+
+                fun handleCustomizedChange(checked: Boolean) {
+                    tempIsCustomized = checked
+                    if (checked) {
+                        if (tempFont.isEmpty()) {
+                            tempFont = "Default"
+                        }
+                    } else {
+                        tempHeaderColor = ""
+                        tempFont = ""
+                    }
+                }
+
+                Dialog(
+                    onDismissRequest = { reminderItemToCustomize = null },
+                    properties = DialogProperties(
+                        usePlatformDefaultWidth = false,
+                        decorFitsSystemWindows = false
+                    )
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxSize()
+                            .pointerInput(Unit) {
+                                detectTapGestures(onTap = { reminderItemToCustomize = null })
+                            },
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Surface(
+                            modifier = Modifier
+                                .fillMaxWidth(0.9f)
+                                .widthIn(max = 440.dp)
+                                .wrapContentHeight()
+                                .pointerInput(Unit) {
+                                    detectTapGestures { }
+                                },
+                            shape = RoundedCornerShape(24.dp),
+                            color = MaterialTheme.colorScheme.surface,
+                            tonalElevation = 6.dp
+                        ) {
+                            Column(
+                                modifier = Modifier
+                                    .padding(24.dp)
+                                    .fillMaxWidth()
+                            ) {
+                                Text(
+                                    text = "个性化设置",
+                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface
+                                )
+                                Spacer(modifier = Modifier.height(16.dp))
+
+                                ReminderCustomizationSection(
+                                    isCustomized = tempIsCustomized,
+                                    onCustomizedChange = { handleCustomizedChange(it) },
+                                    customHeaderColor = tempHeaderColor,
+                                    onHeaderColorChange = { tempHeaderColor = it },
+                                    customFont = tempFont,
+                                    onFontChange = { tempFont = it },
+                                    reminderType = item.type
+                                )
+
+                                Spacer(modifier = Modifier.height(24.dp))
+
+                                Row(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.End,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    TextButton(onClick = { reminderItemToCustomize = null }) {
+                                        Text("取消")
+                                    }
+                                    Spacer(modifier = Modifier.width(8.dp))
+                                    TextButton(
+                                        onClick = {
+                                            viewModel.updateReminderCustomization(
+                                                context = context,
+                                                reminder = item,
+                                                isCustomized = tempIsCustomized,
+                                                customHeaderColor = tempHeaderColor,
+                                                customFont = tempFont
+                                            )
+                                            reminderItemToCustomize = null
+                                        }
+                                    ) {
+                                        Text("保存", fontWeight = FontWeight.Bold)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+
             // The invisible composable for capture
             if (captureAction != null && currentReminder != null) {
                 Box(modifier = Modifier.offset(y = (10000).dp)) {
@@ -231,10 +346,29 @@ fun DetailScreen(
                     modifier = Modifier
                         .weight(1f)
                         .fillMaxWidth(),
-                    beyondViewportPageCount = 1
+                    beyondViewportPageCount = 1,
+                    key = { pageIndex ->
+                        val item = reminderItems.getOrNull(pageIndex)
+                        if (item != null) {
+                            "${item.id}_${item.isCustomized}_${item.customHeaderColor}_${item.customFont}"
+                        } else {
+                            pageIndex
+                        }
+                    }
                 ) { pageIndex ->
                     val pageItem = reminderItems.getOrNull(pageIndex)
                     if (pageItem != null) {
+                        val isCustomizingThisItem = reminderItemToCustomize?.id == pageItem.id
+                        val displayReminderItem = if (isCustomizingThisItem) {
+                            pageItem.copy(
+                                isCustomized = tempIsCustomized,
+                                customHeaderColor = tempHeaderColor,
+                                customFont = tempFont
+                            )
+                        } else {
+                            pageItem
+                        }
+
                         Column(
                             modifier = Modifier
                                 .fillMaxSize()
@@ -242,27 +376,27 @@ fun DetailScreen(
                             horizontalAlignment = Alignment.CenterHorizontally
                         ) {
                             Spacer(modifier = Modifier.weight(0.1f))
-                            val isLunarEnabled = showLunarMap[pageItem.id] ?: pageItem.isLunar
-                            val isFlipped = showNotesMap[pageItem.id] ?: false
+                            val isLunarEnabled = showLunarMap[displayReminderItem.id] ?: displayReminderItem.isLunar
+                            val isFlipped = showNotesMap[displayReminderItem.id] ?: false
                             ReminderDetailCard(
-                                reminderItem = pageItem,
+                                reminderItem = displayReminderItem,
                                 useLunar = isLunarEnabled,
                                 onDateClick = {
-                                    showLunarMap[pageItem.id] = !isLunarEnabled
+                                    showLunarMap[displayReminderItem.id] = !isLunarEnabled
                                 },
                                 isFlipped = isFlipped,
                                 onFlippedChange = { flipped ->
-                                    showNotesMap[pageItem.id] = flipped
+                                    showNotesMap[displayReminderItem.id] = flipped
                                 },
                                  onNotesSave = { updatedNotes ->
-                                    viewModel.updateReminderNotes(context, pageItem, updatedNotes)
+                                    viewModel.updateReminderNotes(context, displayReminderItem, updatedNotes)
                                 }
                             )
                             
                             // 生日额外信息
-                            if (pageItem.type == ReminderType.BIRTHDAY) {
-                                val birthdayInfo: BirthdayInfo = remember(pageItem.date, pageItem.isLunar) {
-                                    BirthdayCalculator.calculate(pageItem.date, pageItem.isLunar)
+                            if (displayReminderItem.type == ReminderType.BIRTHDAY) {
+                                val birthdayInfo: BirthdayInfo = remember(displayReminderItem.date, displayReminderItem.isLunar) {
+                                    BirthdayCalculator.calculate(displayReminderItem.date, displayReminderItem.isLunar)
                                 }
                                 Spacer(modifier = Modifier.height(16.dp))
                                 Row(
@@ -276,8 +410,8 @@ fun DetailScreen(
                             }
 
                             // 标签 Badge 显示
-                            val matchedTag = remember(pageItem.tag, uiState.tags) {
-                                uiState.tags.find { it.name.trim() == pageItem.tag.trim() }
+                            val matchedTag = remember(displayReminderItem.tag, uiState.tags) {
+                                uiState.tags.find { it.name.trim() == displayReminderItem.tag.trim() }
                             }
                             Spacer(modifier = Modifier.height(16.dp))
                             Row(
@@ -285,15 +419,15 @@ fun DetailScreen(
                                 horizontalArrangement = Arrangement.Center
                             ) {
                                 TagBadge(
-                                    tagName = pageItem.tag,
+                                    tagName = displayReminderItem.tag,
                                     tagColorHex = matchedTag?.color,
                                     onClick = {
-                                        editingReminderForTag = pageItem
+                                        editingReminderForTag = displayReminderItem
                                     }
                                 )
                                 Spacer(modifier = Modifier.width(8.dp))
-                                val isNotesFlipped = showNotesMap[pageItem.id] ?: false
-                                val hasNotes = pageItem.notes.isNotBlank()
+                                val isNotesFlipped = showNotesMap[displayReminderItem.id] ?: false
+                                val hasNotes = displayReminderItem.notes.isNotBlank()
                                 val baseColor = MaterialTheme.colorScheme.primary
                                 val (containerColor, contentColor, borderColor) = if (hasNotes) {
                                     Triple(
@@ -311,7 +445,7 @@ fun DetailScreen(
 
                                 OutlinedIconButton(
                                     onClick = {
-                                        showNotesMap[pageItem.id] = !isNotesFlipped
+                                        showNotesMap[displayReminderItem.id] = !isNotesFlipped
                                     },
                                     modifier = Modifier.size(32.dp),
                                     colors = IconButtonDefaults.outlinedIconButtonColors(
@@ -326,6 +460,51 @@ fun DetailScreen(
                                     Icon(
                                         imageVector = Icons.Default.Description,
                                         contentDescription = "备注",
+                                        modifier = Modifier.size(18.dp)
+                                    )
+                                }
+                                
+                                Spacer(modifier = Modifier.width(8.dp))
+                                
+                                // 个性化状态 Badge
+                                val isCustomizedVal = displayReminderItem.isCustomized
+                                val customizedBaseColor = if (isCustomizedVal && displayReminderItem.customHeaderColor.isNotEmpty()) {
+                                    displayReminderItem.customHeaderColor.toComposeColor()
+                                } else {
+                                    MaterialTheme.colorScheme.primary
+                                }
+                                
+                                val (customContainerColor, customContentColor, customBorderColor) = if (isCustomizedVal) {
+                                    Triple(
+                                        customizedBaseColor.copy(alpha = 0.15f),
+                                        customizedBaseColor,
+                                        customizedBaseColor.copy(alpha = 0.3f)
+                                    )
+                                } else {
+                                    Triple(
+                                        Color.Transparent,
+                                        MaterialTheme.colorScheme.onSurfaceVariant,
+                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+                                    )
+                                }
+
+                                OutlinedIconButton(
+                                    onClick = {
+                                        reminderItemToCustomize = pageItem
+                                    },
+                                    modifier = Modifier.size(32.dp),
+                                    colors = IconButtonDefaults.outlinedIconButtonColors(
+                                        containerColor = customContainerColor,
+                                        contentColor = customContentColor
+                                    ),
+                                    border = androidx.compose.foundation.BorderStroke(
+                                        width = 1.dp,
+                                        color = customBorderColor
+                                    )
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.Palette,
+                                        contentDescription = "个性化设置",
                                         modifier = Modifier.size(18.dp)
                                     )
                                 }
@@ -480,7 +659,8 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: 
                 fontSize = 140.sp,
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-1).sp,
-                color = visuals.numberColor
+                color = visuals.numberColor,
+                fontFamily = visuals.fontFamily
             ),
             modifier = Modifier
                 .alignByBaseline(),
