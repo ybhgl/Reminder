@@ -544,17 +544,13 @@ private fun AddEditTagDialog(
     // 自定义输入 HEX 的状态
     var hexInput by remember { mutableStateOf(customColorHex) }
     
-    // 初始化时从 initialColor 解析出正确的 hueValue
+    // 初始化时解析出正确的 hueValue
     val initialHue = remember(initialColor) {
-        if (isInitiallyCustom) {
-            val hsv = FloatArray(3)
-            try {
-                android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(initialColor), hsv)
-                hsv[0]
-            } catch (e: Exception) {
-                0f
-            }
-        } else {
+        val hsv = FloatArray(3)
+        try {
+            android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(if (isInitiallyCustom) initialColor else "#2196F3"), hsv)
+            hsv[0]
+        } catch (e: Exception) {
             0f
         }
     }
@@ -719,12 +715,22 @@ private fun AddEditTagDialog(
                                 if (hexPattern.matches(filtered)) {
                                     customColorHex = filtered
                                     selectedColor = filtered
+                                    val hsv = FloatArray(3)
+                                    try {
+                                        android.graphics.Color.colorToHSV(android.graphics.Color.parseColor(filtered), hsv)
+                                        hueValue = hsv[0]
+                                    } catch (e: Exception) {}
                                 } else {
                                     val filterNoHash = filtered.removePrefix("#")
                                     if (filterNoHash.length == 6 && "^[A-Fa-f0-9]{6}$".toRegex().matches(filterNoHash)) {
                                         customColorHex = "#$filterNoHash"
                                         selectedColor = "#$filterNoHash"
                                         hexInput = "#$filterNoHash"
+                                        val hsv = FloatArray(3)
+                                        try {
+                                            android.graphics.Color.colorToHSV(android.graphics.Color.parseColor("#$filterNoHash"), hsv)
+                                            hueValue = hsv[0]
+                                        } catch (e: Exception) {}
                                     }
                                 }
                             },
