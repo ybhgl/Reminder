@@ -173,6 +173,28 @@ class AddReminderViewModel(
         )
     }
 
+    fun onCustomizedChange(isCustomized: Boolean) {
+        if (!isCustomized) {
+            reminderUiState = reminderUiState.copy(
+                isCustomized = false,
+                customHeaderColor = "",
+                customFont = ""
+            )
+        } else {
+            val defaultColor = reminderUiState.customHeaderColor
+            val defaultFont = if (reminderUiState.customFont.isEmpty()) {
+                "Default"
+            } else {
+                reminderUiState.customFont
+            }
+            reminderUiState = reminderUiState.copy(
+                isCustomized = true,
+                customHeaderColor = defaultColor,
+                customFont = defaultFont
+            )
+        }
+    }
+
     fun onTypeChange(type: ReminderType) {
         reminderUiState = if (type == ReminderType.BIRTHDAY) {
             reminderUiState.copy(
@@ -199,7 +221,10 @@ data class ReminderUiState(
     val repeatInfo: RepeatInfo? = null,
     val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig(),
     val showRepeatDialog: Boolean = false,
-    val notes: String = ""
+    val notes: String = "",
+    val isCustomized: Boolean = false,
+    val customHeaderColor: String = "",
+    val customFont: String = ""
 )
 
 fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
@@ -212,7 +237,10 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     isPinned = isPinned,
     repeatInfo = repeatInfo,
     notificationConfig = notificationConfig,
-    notes = notes
+    notes = notes,
+    isCustomized = isCustomized,
+    customHeaderColor = customHeaderColor,
+    customFont = customFont
 )
 
 fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
@@ -225,5 +253,8 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     isPinned = isPinned,
     repeatInfo = repeatInfo,
     notificationConfig = notificationConfig,
-    notes = notes
+    notes = notes,
+    isCustomized = isCustomized,
+    customHeaderColor = customHeaderColor,
+    customFont = customFont
 )

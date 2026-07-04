@@ -304,6 +304,17 @@ fun AddReminderScreen(
                     )
                 }
 
+                // 5.5 个性化设置
+                ReminderCustomizationSection(
+                    isCustomized = uiState.isCustomized,
+                    onCustomizedChange = { viewModel.onCustomizedChange(it) },
+                    customHeaderColor = uiState.customHeaderColor,
+                    onHeaderColorChange = { viewModel.updateUiState(uiState.copy(customHeaderColor = it)) },
+                    customFont = uiState.customFont,
+                    onFontChange = { viewModel.updateUiState(uiState.copy(customFont = it)) },
+                    reminderType = uiState.type
+                )
+
                 // 6. 分类
                 Column(modifier = Modifier.fillMaxWidth()) {
                     val dropdownOptions = tagOptions
