@@ -11,7 +11,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ReminderItem::class, TagItem::class], version = 6, exportSchema = false)
+@Database(entities = [ReminderItem::class, TagItem::class], version = 7, exportSchema = false)
 @TypeConverters(com.ybhgl.reminder.data.TypeConverters::class)
 abstract class ReminderDatabase : RoomDatabase() {
 
@@ -70,6 +70,14 @@ abstract class ReminderDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reminders ADD COLUMN isCustomized INTEGER NOT NULL DEFAULT 0")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customHeaderColor TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customFont TEXT NOT NULL DEFAULT ''")
+            }
+        }
+
         fun getDatabase(context: Context): ReminderDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -77,7 +85,7 @@ abstract class ReminderDatabase : RoomDatabase() {
                     ReminderDatabase::class.java,
                     "reminder_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

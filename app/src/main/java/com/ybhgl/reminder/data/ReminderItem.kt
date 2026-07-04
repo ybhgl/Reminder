@@ -69,7 +69,10 @@ data class ReminderItem(
     val isPinned: Boolean,
     val repeatInfo: RepeatInfo? = null,
     val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig(),
-    val notes: String = ""
+    val notes: String = "",
+    val isCustomized: Boolean = false,
+    val customHeaderColor: String = "",
+    val customFont: String = ""
 )
 
 @Serializer(forClass = LocalDate::class)
