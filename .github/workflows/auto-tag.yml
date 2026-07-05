@@ -1,0 +1,51 @@
+name: Auto Create Tag on Version Bump
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write # 赋予 Action 往你的仓库写入（推送）Tag 的权限
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0 # 获取完整历史记录，以便正确检查最新的 commit
+          token: ${{ secrets.PERSONAL_ACCESS_TOKEN }}
+
+      - name: Detect version bump and tag
+        run: |
+          # 1. 获取最新一次的 commit message
+          COMMIT_MSG=$(git log -1 --pretty=%B)
+          echo "Latest commit message: $COMMIT_MSG"
+
+          # 2. 正则匹配 "build(config): bump version to X.Y.Z"
+          # 支持语义化版本号，例如 2.6.0, 2.6.0-alpha.1 等
+          if [[ "$COMMIT_MSG" =~ build\(config\):[[:space:]]bump[[:space:]]version[[:space:]]to[[:space:]]([0-9]+\.[0-9]+\.[0-9]+[a-zA-Z0-9.-]*) ]]; then
+            VERSION="${BASH_REMATCH[1]}"
+            TAG_NAME="v$VERSION"
+            echo "Matched! Target version found: $VERSION"
+            echo "Target Tag: $TAG_NAME"
+
+            # 3. 配置 git 机器人身份
+            git config --global user.name "github-actions[bot]"
+            git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+            # 4. 检查该 Tag 是否已经存在
+            if git rev-parse "$TAG_NAME" >/dev/null 2>&1; then
+              echo "Tag $TAG_NAME already exists. Skipping creation."
+            else
+              # 5. 创建并推送 Tag
+              echo "Creating tag $TAG_NAME..."
+              git tag "$TAG_NAME"
+              git push origin "$TAG_NAME"
+              echo "Tag $TAG_NAME pushed successfully!"
+            fi
+          else
+            echo "Commit message does not match the bump pattern. No action taken."
+          fi
