@@ -660,9 +660,11 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: 
                 fontWeight = FontWeight.Bold,
                 letterSpacing = (-1).sp,
                 color = visuals.numberColor,
-                fontFamily = visuals.fontFamily
+                fontFamily = visuals.fontFamily,
+                lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
             ),
             modifier = Modifier
+                .weight(1f, fill = false)
                 .alignByBaseline(),
             checkHeight = true
         )

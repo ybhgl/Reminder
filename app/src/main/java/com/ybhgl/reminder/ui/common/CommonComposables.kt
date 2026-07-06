@@ -200,13 +200,14 @@ fun AutoResizeText(
         val rememberedStyle = remember(resizedTextStyle) { resizedTextStyle }
 
         LaunchedEffect(text, rememberedStyle, constraints) {
-            var currentFontSize = rememberedStyle.fontSize
+            val styleWithoutLineHeight = rememberedStyle.copy(lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified)
+            var currentFontSize = styleWithoutLineHeight.fontSize
             val minFontSize = 1.sp
 
             while (currentFontSize > minFontSize) {
                 val result = textMeasurer.measure(
                     text,
-                    rememberedStyle.copy(fontSize = currentFontSize),
+                    styleWithoutLineHeight.copy(fontSize = currentFontSize),
                     softWrap = false
                 )
                 val overflow = if (checkHeight) {
@@ -220,7 +221,7 @@ fun AutoResizeText(
                 currentFontSize *= 0.95f
             }
 
-            resizedTextStyle = rememberedStyle.copy(fontSize = currentFontSize)
+            resizedTextStyle = styleWithoutLineHeight.copy(fontSize = currentFontSize)
             readyToDraw.value = true
         }
 

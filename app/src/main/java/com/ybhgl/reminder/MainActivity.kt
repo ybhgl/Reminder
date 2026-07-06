@@ -1052,48 +1052,39 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
 @Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
 @Composable
 private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: Boolean = false) {
-    val textMeasurer = rememberTextMeasurer()
-    val density = LocalDensity.current
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
     val suffixText = "天"
     val suffixStyle = MaterialTheme.typography.bodyLarge
     val spacing = 6.dp
-    BoxWithConstraints(
+    Row(
         modifier = Modifier
             .fillMaxWidth()
             .height(64.dp),
-        contentAlignment = Alignment.Center
+        verticalAlignment = Alignment.Bottom,
+        horizontalArrangement = Arrangement.Center
     ) {
-        val suffixWidth = with(density) {
-            textMeasurer.measure(text = suffixText, style = suffixStyle).size.width.toDp()
-        }
-        val availableNumberWidth = (maxWidth - suffixWidth - spacing).coerceAtLeast(0.dp)
-        Row(
-            verticalAlignment = Alignment.Bottom,
-            horizontalArrangement = Arrangement.Center
-        ) {
-            AutoResizeText(
-                text = textToShow,
-                style = MaterialTheme.typography.displayLarge.copy(
-                    fontWeight = FontWeight.Bold,
-                    letterSpacing = (-1).sp,
-                    fontFamily = visuals.fontFamily
-                ),
-                modifier = Modifier
-                    .alignByBaseline()
-                    .widthIn(max = availableNumberWidth),
-                color = visuals.numberColor,
-                checkHeight = true
-            )
-            Spacer(modifier = Modifier.width(spacing))
-            Text(
-                text = suffixText,
-                style = suffixStyle,
-                color = visuals.secondaryTextColor,
-                modifier = Modifier.alignByBaseline()
-            )
-        }
+        AutoResizeText(
+            text = textToShow,
+            style = MaterialTheme.typography.displayLarge.copy(
+                fontWeight = FontWeight.Bold,
+                letterSpacing = (-1).sp,
+                fontFamily = visuals.fontFamily,
+                lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
+            ),
+            modifier = Modifier
+                .weight(1f, fill = false)
+                .alignByBaseline(),
+            color = visuals.numberColor,
+            checkHeight = true
+        )
+        Spacer(modifier = Modifier.width(spacing))
+        Text(
+            text = suffixText,
+            style = suffixStyle,
+            color = visuals.secondaryTextColor,
+            modifier = Modifier.alignByBaseline()
+        )
     }
 }
 
