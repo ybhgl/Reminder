@@ -7,6 +7,8 @@ import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.verticalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -58,6 +60,8 @@ import dev.shreyaspatil.capturable.capturable
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlinx.coroutines.launch
 import androidx.compose.runtime.withFrameNanos
+import android.content.res.Configuration
+import androidx.compose.ui.platform.LocalConfiguration
 import java.time.LocalDate
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
@@ -335,10 +339,13 @@ fun DetailScreen(
                 }
             }
 
+            val configuration = LocalConfiguration.current
+            val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
+
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding() + 16.dp),
+                    .padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding() + if (isLandscape) 0.dp else 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
                 HorizontalPager(
@@ -369,172 +376,59 @@ fun DetailScreen(
                             pageItem
                         }
 
-                        Column(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(horizontal = 16.dp),
-                            horizontalAlignment = Alignment.CenterHorizontally
-                        ) {
-                            Spacer(modifier = Modifier.weight(0.1f))
-                            val isLunarEnabled = showLunarMap[displayReminderItem.id] ?: displayReminderItem.isLunar
-                            val isFlipped = showNotesMap[displayReminderItem.id] ?: false
-                            ReminderDetailCard(
-                                reminderItem = displayReminderItem,
-                                useLunar = isLunarEnabled,
-                                onDateClick = {
-                                    showLunarMap[displayReminderItem.id] = !isLunarEnabled
-                                },
-                                isFlipped = isFlipped,
-                                onFlippedChange = { flipped ->
-                                    showNotesMap[displayReminderItem.id] = flipped
-                                },
-                                 onNotesSave = { updatedNotes ->
-                                    viewModel.updateReminderNotes(context, displayReminderItem, updatedNotes)
-                                }
-                            )
-                            
-                            // 生日额外信息
-                            if (displayReminderItem.type == ReminderType.BIRTHDAY) {
-                                val birthdayInfo: BirthdayInfo = remember(displayReminderItem.date, displayReminderItem.isLunar) {
-                                    BirthdayCalculator.calculate(displayReminderItem.date, displayReminderItem.isLunar)
-                                }
-                                Spacer(modifier = Modifier.height(16.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.SpaceEvenly
-                                ) {
-                                    BirthdayInfoChip(label = "年龄", value = "${birthdayInfo.age}岁")
-                                    BirthdayInfoChip(label = "生肖", value = birthdayInfo.chineseZodiac)
-                                    BirthdayInfoChip(label = "星座", value = birthdayInfo.zodiac)
-                                }
-                            }
-
-                            // 标签 Badge 显示
-                            val matchedTag = remember(displayReminderItem.tag, uiState.tags) {
-                                uiState.tags.find { it.name.trim() == displayReminderItem.tag.trim() }
-                            }
-                            Spacer(modifier = Modifier.height(16.dp))
-                            Row(
-                                verticalAlignment = Alignment.CenterVertically,
-                                horizontalArrangement = Arrangement.Center
-                            ) {
-                                TagBadge(
-                                    tagName = displayReminderItem.tag,
-                                    tagColorHex = matchedTag?.color,
-                                    onClick = {
-                                        editingReminderForTag = displayReminderItem
-                                    }
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                                val isNotesFlipped = showNotesMap[displayReminderItem.id] ?: false
-                                val hasNotes = displayReminderItem.notes.isNotBlank()
-                                val baseColor = MaterialTheme.colorScheme.primary
-                                val (containerColor, contentColor, borderColor) = if (hasNotes) {
-                                    Triple(
-                                        baseColor.copy(alpha = 0.15f),
-                                        baseColor,
-                                        baseColor.copy(alpha = 0.3f)
-                                    )
+                        ReminderDetailPagerContent(
+                            displayReminderItem = displayReminderItem,
+                            originalPageItem = pageItem,
+                            isLandscape = isLandscape,
+                            uiState = uiState,
+                            showLunarMap = showLunarMap,
+                            showNotesMap = showNotesMap,
+                            viewModel = viewModel,
+                            onEditTag = { editingReminderForTag = it },
+                            onCustomize = { reminderItemToCustomize = it },
+                            onShareClick = { captureAction = CaptureAction.SHARE },
+                            onSaveClick = {
+                                val hasPermission = !needsLegacyStoragePermission || ContextCompat.checkSelfPermission(
+                                    context,
+                                    Manifest.permission.WRITE_EXTERNAL_STORAGE
+                                ) == PackageManager.PERMISSION_GRANTED
+                                if (hasPermission) {
+                                    captureAction = CaptureAction.SAVE
                                 } else {
-                                    Triple(
-                                        Color.Transparent,
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                                    )
+                                    pendingPermissionAction = CaptureAction.SAVE
+                                    storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
                                 }
-
-                                OutlinedIconButton(
-                                    onClick = {
-                                        showNotesMap[displayReminderItem.id] = !isNotesFlipped
-                                    },
-                                    modifier = Modifier.size(32.dp),
-                                    colors = IconButtonDefaults.outlinedIconButtonColors(
-                                        containerColor = containerColor,
-                                        contentColor = contentColor
-                                    ),
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        width = 1.dp,
-                                        color = borderColor
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Description,
-                                        contentDescription = "备注",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                                
-                                Spacer(modifier = Modifier.width(8.dp))
-                                
-                                // 个性化状态 Badge
-                                val isCustomizedVal = displayReminderItem.isCustomized
-                                val customizedBaseColor = if (isCustomizedVal && displayReminderItem.customHeaderColor.isNotEmpty()) {
-                                    displayReminderItem.customHeaderColor.toComposeColor()
-                                } else {
-                                    MaterialTheme.colorScheme.primary
-                                }
-                                
-                                val (customContainerColor, customContentColor, customBorderColor) = if (isCustomizedVal) {
-                                    Triple(
-                                        customizedBaseColor.copy(alpha = 0.15f),
-                                        customizedBaseColor,
-                                        customizedBaseColor.copy(alpha = 0.3f)
-                                    )
-                                } else {
-                                    Triple(
-                                        Color.Transparent,
-                                        MaterialTheme.colorScheme.onSurfaceVariant,
-                                        MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
-                                    )
-                                }
-
-                                OutlinedIconButton(
-                                    onClick = {
-                                        reminderItemToCustomize = pageItem
-                                    },
-                                    modifier = Modifier.size(32.dp),
-                                    colors = IconButtonDefaults.outlinedIconButtonColors(
-                                        containerColor = customContainerColor,
-                                        contentColor = customContentColor
-                                    ),
-                                    border = androidx.compose.foundation.BorderStroke(
-                                        width = 1.dp,
-                                        color = customBorderColor
-                                    )
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Palette,
-                                        contentDescription = "个性化设置",
-                                        modifier = Modifier.size(18.dp)
-                                    )
-                                }
-                            }
-                            Spacer(modifier = Modifier.weight(0.1f))
-                        }
+                            },
+                            onBirthdayListClick = if (currentReminder?.type == ReminderType.BIRTHDAY) {
+                                { navController.navigate(Routes.birthdayList(currentReminder.id)) }
+                            } else null
+                        )
                     }
                 }
 
-                ActionButtonsRow(
-                    onShareClick = {
-                        captureAction = CaptureAction.SHARE
-                    },
-                    onSaveClick = {
-                        val hasPermission = !needsLegacyStoragePermission || ContextCompat.checkSelfPermission(
-                            context,
-                            Manifest.permission.WRITE_EXTERNAL_STORAGE
-                        ) == PackageManager.PERMISSION_GRANTED
-                        if (hasPermission) {
-                            captureAction = CaptureAction.SAVE
-                        } else {
-                            pendingPermissionAction = CaptureAction.SAVE
-                            storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                        }
-                    },
-                    onBirthdayListClick = if (currentReminder?.type == ReminderType.BIRTHDAY) {
-                        { navController.navigate(Routes.birthdayList(currentReminder.id)) }
-                    } else null
-                )
-                Spacer(modifier = Modifier.height(16.dp))
+                if (!isLandscape) {
+                    ActionButtonsRow(
+                        onShareClick = {
+                            captureAction = CaptureAction.SHARE
+                        },
+                        onSaveClick = {
+                            val hasPermission = !needsLegacyStoragePermission || ContextCompat.checkSelfPermission(
+                                context,
+                                Manifest.permission.WRITE_EXTERNAL_STORAGE
+                            ) == PackageManager.PERMISSION_GRANTED
+                            if (hasPermission) {
+                                captureAction = CaptureAction.SAVE
+                            } else {
+                                pendingPermissionAction = CaptureAction.SAVE
+                                storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+                            }
+                        },
+                        onBirthdayListClick = if (currentReminder?.type == ReminderType.BIRTHDAY) {
+                            { navController.navigate(Routes.birthdayList(currentReminder.id)) }
+                        } else null
+                    )
+                    Spacer(modifier = Modifier.height(16.dp))
+                }
             }
         }
     } else {
@@ -553,6 +447,318 @@ fun DetailScreen(
                 contentAlignment = Alignment.Center
             ) {
                 CircularProgressIndicator()
+            }
+        }
+    }
+}
+
+@Composable
+fun ReminderDetailPagerContent(
+    displayReminderItem: ReminderItem,
+    originalPageItem: ReminderItem,
+    isLandscape: Boolean,
+    uiState: DetailUiState,
+    showLunarMap: MutableMap<Int, Boolean>,
+    showNotesMap: MutableMap<Int, Boolean>,
+    viewModel: DetailViewModel,
+    onEditTag: (ReminderItem) -> Unit,
+    onCustomize: (ReminderItem) -> Unit,
+    onShareClick: () -> Unit,
+    onSaveClick: () -> Unit,
+    onBirthdayListClick: (() -> Unit)?
+) {
+    val context = LocalContext.current
+    val isLunarEnabled = showLunarMap[displayReminderItem.id] ?: displayReminderItem.isLunar
+    val isFlipped = showNotesMap[displayReminderItem.id] ?: false
+
+    val cardContent = @Composable { modifier: Modifier ->
+        ReminderDetailCard(
+            reminderItem = displayReminderItem,
+            useLunar = isLunarEnabled,
+            onDateClick = {
+                showLunarMap[displayReminderItem.id] = !isLunarEnabled
+            },
+            isFlipped = isFlipped,
+            onFlippedChange = { flipped ->
+                showNotesMap[displayReminderItem.id] = flipped
+            },
+            onNotesSave = { updatedNotes ->
+                viewModel.updateReminderNotes(context, displayReminderItem, updatedNotes)
+            },
+            modifier = modifier
+        )
+    }
+
+    val birthdayInfoContent = @Composable {
+        if (displayReminderItem.type == ReminderType.BIRTHDAY) {
+            val birthdayInfo: BirthdayInfo = remember(displayReminderItem.date, displayReminderItem.isLunar) {
+                BirthdayCalculator.calculate(displayReminderItem.date, displayReminderItem.isLunar)
+            }
+            if (isLandscape) {
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(modifier = Modifier.padding(16.dp)) {
+                        Text(
+                            text = "生日档案",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.padding(bottom = 12.dp)
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.SpaceEvenly
+                        ) {
+                            BirthdayInfoChip(label = "年龄", value = "${birthdayInfo.age}岁")
+                            BirthdayInfoChip(label = "生肖", value = birthdayInfo.chineseZodiac)
+                            BirthdayInfoChip(label = "星座", value = birthdayInfo.zodiac)
+                        }
+                    }
+                }
+            } else {
+                Spacer(modifier = Modifier.height(16.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly
+                ) {
+                    BirthdayInfoChip(label = "年龄", value = "${birthdayInfo.age}岁")
+                    BirthdayInfoChip(label = "生肖", value = birthdayInfo.chineseZodiac)
+                    BirthdayInfoChip(label = "星座", value = birthdayInfo.zodiac)
+                }
+            }
+        }
+    }
+
+    val tagsAndOptionsContent = @Composable {
+        val matchedTag = remember(displayReminderItem.tag, uiState.tags) {
+            uiState.tags.find { it.name.trim() == displayReminderItem.tag.trim() }
+        }
+        val isNotesFlipped = showNotesMap[displayReminderItem.id] ?: false
+        val hasNotes = displayReminderItem.notes.isNotBlank()
+        val baseColor = MaterialTheme.colorScheme.primary
+        val (containerColor, contentColor, borderColor) = if (hasNotes) {
+            Triple(
+                baseColor.copy(alpha = 0.15f),
+                baseColor,
+                baseColor.copy(alpha = 0.3f)
+            )
+        } else {
+            Triple(
+                Color.Transparent,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            )
+        }
+        
+        val isCustomizedVal = displayReminderItem.isCustomized
+        val customizedBaseColor = if (isCustomizedVal && displayReminderItem.customHeaderColor.isNotEmpty()) {
+            displayReminderItem.customHeaderColor.toComposeColor()
+        } else {
+            MaterialTheme.colorScheme.primary
+        }
+        val (customContainerColor, customContentColor, customBorderColor) = if (isCustomizedVal) {
+            Triple(
+                customizedBaseColor.copy(alpha = 0.15f),
+                customizedBaseColor,
+                customizedBaseColor.copy(alpha = 0.3f)
+            )
+        } else {
+            Triple(
+                Color.Transparent,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            )
+        }
+
+        if (isLandscape) {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                shape = RoundedCornerShape(16.dp),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Column(modifier = Modifier.padding(16.dp)) {
+                    Text(
+                        text = "标签与选项",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(bottom = 12.dp)
+                    )
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.Start
+                    ) {
+                        TagBadge(
+                            tagName = displayReminderItem.tag,
+                            tagColorHex = matchedTag?.color,
+                            onClick = { onEditTag(displayReminderItem) }
+                        )
+                        Spacer(modifier = Modifier.weight(1f))
+                        OutlinedIconButton(
+                            onClick = { showNotesMap[displayReminderItem.id] = !isNotesFlipped },
+                            modifier = Modifier.size(36.dp),
+                            colors = IconButtonDefaults.outlinedIconButtonColors(
+                                containerColor = containerColor,
+                                contentColor = contentColor
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+                        ) {
+                            Icon(Icons.Default.Description, contentDescription = "备注", modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
+                        OutlinedIconButton(
+                            onClick = { onCustomize(originalPageItem) },
+                            modifier = Modifier.size(36.dp),
+                            colors = IconButtonDefaults.outlinedIconButtonColors(
+                                containerColor = customContainerColor,
+                                contentColor = customContentColor
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, customBorderColor)
+                        ) {
+                            Icon(Icons.Default.Palette, contentDescription = "个性化设置", modifier = Modifier.size(20.dp))
+                        }
+                    }
+                }
+            }
+        } else {
+            Spacer(modifier = Modifier.height(16.dp))
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.Center
+            ) {
+                TagBadge(
+                    tagName = displayReminderItem.tag,
+                    tagColorHex = matchedTag?.color,
+                    onClick = { onEditTag(displayReminderItem) }
+                )
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedIconButton(
+                    onClick = { showNotesMap[displayReminderItem.id] = !isNotesFlipped },
+                    modifier = Modifier.size(32.dp),
+                    colors = IconButtonDefaults.outlinedIconButtonColors(
+                        containerColor = containerColor,
+                        contentColor = contentColor
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, borderColor)
+                ) {
+                    Icon(Icons.Default.Description, contentDescription = "备注", modifier = Modifier.size(18.dp))
+                }
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedIconButton(
+                    onClick = { onCustomize(originalPageItem) },
+                    modifier = Modifier.size(32.dp),
+                    colors = IconButtonDefaults.outlinedIconButtonColors(
+                        containerColor = customContainerColor,
+                        contentColor = customContentColor
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, customBorderColor)
+                ) {
+                    Icon(Icons.Default.Palette, contentDescription = "个性化设置", modifier = Modifier.size(18.dp))
+                }
+            }
+            Spacer(modifier = Modifier.height(16.dp))
+        }
+    }
+
+    if (isLandscape) {
+        Row(
+            modifier = Modifier
+                .fillMaxSize()
+                .padding(horizontal = 16.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(24.dp)
+        ) {
+            // 左栏：聚焦展示 Card
+            Box(
+                modifier = Modifier
+                    .weight(0.45f)
+                    .fillMaxHeight(),
+                contentAlignment = Alignment.Center
+            ) {
+                // 在横屏下限制卡片的最大高度与宽度保持一致 (aspectRatio 1f)，避免被撑得过大
+                cardContent(Modifier.fillMaxHeight(0.9f))
+            }
+            
+            // 右栏：滚动信息与操作
+            Column(
+                modifier = Modifier
+                    .weight(0.55f)
+                    .fillMaxHeight()
+                    .verticalScroll(rememberScrollState()),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Spacer(modifier = Modifier.height(4.dp))
+                birthdayInfoContent()
+                tagsAndOptionsContent()
+                
+                // 操作区 Card
+                Card(
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
+                    shape = RoundedCornerShape(16.dp),
+                    modifier = Modifier.fillMaxWidth()
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Text(
+                            text = "操作",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.primary
+                        )
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onShareClick,
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(vertical = 12.dp)
+                            ) {
+                                Text("分享", fontWeight = FontWeight.Bold)
+                            }
+                            OutlinedButton(
+                                onClick = onSaveClick,
+                                modifier = Modifier.weight(1f),
+                                contentPadding = PaddingValues(vertical = 12.dp)
+                            ) {
+                                Text("存为图片", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                        if (onBirthdayListClick != null) {
+                            FilledTonalButton(
+                                onClick = onBirthdayListClick,
+                                modifier = Modifier.fillMaxWidth(),
+                                contentPadding = PaddingValues(vertical = 12.dp)
+                            ) {
+                                Text("查看生日列表", fontWeight = FontWeight.Bold)
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(16.dp))
+            }
+        }
+    } else {
+        BoxWithConstraints(
+            modifier = Modifier.fillMaxSize()
+        ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .heightIn(min = maxHeight)
+                    .padding(horizontal = 16.dp)
+                    .verticalScroll(rememberScrollState()),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
+                Spacer(modifier = Modifier.height(16.dp))
+                cardContent(Modifier)
+                birthdayInfoContent()
+                tagsAndOptionsContent()
             }
         }
     }
