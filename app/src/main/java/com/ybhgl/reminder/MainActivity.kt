@@ -53,6 +53,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.aspectRatio
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -1051,16 +1052,20 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
 
 @Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
 @Composable
-private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: Boolean = false) {
+private fun DayCountRow(
+    dayCount: Int, 
+    visuals: ReminderCardVisuals, 
+    isCountUp: Boolean = false,
+    modifier: Modifier = Modifier
+) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
     val suffixText = "天"
     val suffixStyle = MaterialTheme.typography.bodyLarge
     val spacing = 6.dp
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(64.dp),
+        modifier = modifier
+            .fillMaxWidth(),
         verticalAlignment = Alignment.Bottom,
         horizontalArrangement = Arrangement.Center
     ) {
@@ -1076,7 +1081,7 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: 
                 .weight(1f, fill = false)
                 .alignByBaseline(),
             color = visuals.numberColor,
-            checkHeight = true
+            checkHeight = false
         )
         Spacer(modifier = Modifier.width(spacing))
         Text(
@@ -1254,6 +1259,10 @@ fun ReminderListScreen(
         }
     }
     val coroutineScope = rememberCoroutineScope()
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp.dp
+    val columnsCount = kotlin.math.max(2, ((screenWidthDp - 16.dp) / 176.dp).toInt())
+    
     val tabs = remember { ReminderTab.entries.toTypedArray() }
     val tabCounts = remember(reminderListUiState.itemList) {
         tabs.map { tab -> reminderListUiState.itemList.count(tab.filter) }
@@ -1364,7 +1373,7 @@ fun ReminderListScreen(
                                         modifier = Modifier.fillMaxWidth()
                                     ) {
                                         if (viewMode == ReminderViewMode.CARD) {
-                                            val rows = section.items.chunked(2)
+                                            val rows = section.items.chunked(columnsCount)
                                             rows.forEach { rowItems ->
                                                 Row(
                                                     modifier = Modifier.fillMaxWidth(),
@@ -1376,7 +1385,7 @@ fun ReminderListScreen(
                                                                 reminder = reminder,
                                                                 modifier = Modifier
                                                                     .fillMaxWidth()
-                                                                    .heightIn(min = 180.dp),
+                                                                    .aspectRatio(1f),
                                                                 isSelectionMode = isSelectionMode,
                                                                 isSelected = reminder.id in selectedIds,
                                                                 onClick = { handleItemClick(reminder) },
@@ -1385,8 +1394,11 @@ fun ReminderListScreen(
                                                             )
                                                         }
                                                     }
-                                                    if (rowItems.size < 2) {
-                                                        Spacer(modifier = Modifier.weight(1f))
+                                                    if (rowItems.size < columnsCount) {
+                                                        val emptyCount = columnsCount - rowItems.size
+                                                        for (i in 0 until emptyCount) {
+                                                            Spacer(modifier = Modifier.weight(1f))
+                                                        }
                                                     }
                                                 }
                                             }
@@ -2232,7 +2244,7 @@ private fun ReminderSummaryCard(
                         .fillMaxWidth()
                         .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
                         .background(visuals.headerColor)
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(horizontal = 12.dp, vertical = 8.dp)
                 ) {
                     Text(
                         text = displayInfo.headerTitle,
@@ -2241,7 +2253,7 @@ private fun ReminderSummaryCard(
                             .basicMarquee(animationMode = MarqueeAnimationMode.Immediately),
                         style = MaterialTheme.typography.titleMedium.copy(
                             fontWeight = FontWeight.Medium,
-                            fontSize = 16.sp,
+                            fontSize = 15.sp,
                             letterSpacing = 0.sp
                         ),
                         color = visuals.headerContentColor,
@@ -2249,11 +2261,12 @@ private fun ReminderSummaryCard(
                         softWrap = false
                     )
                 }
-                Column(
+                Box(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 16.dp, vertical = 16.dp),
-                    horizontalAlignment = Alignment.CenterHorizontally
+                        .weight(1f)
+                        .padding(horizontal = 8.dp),
+                    contentAlignment = Alignment.Center
                 ) {
                     DayCountRow(
                         dayCount = displayInfo.dayCount,
@@ -2275,7 +2288,7 @@ private fun ReminderSummaryCard(
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 16.dp, vertical = 12.dp),
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
                         AutoSizeMiddleEllipsisText(
@@ -2580,6 +2593,10 @@ private fun SearchPanelContent(
     tagsList: List<TagItem> = emptyList()
 ) {
     var showFilterMenu by remember { mutableStateOf(false) }
+
+    val configuration = androidx.compose.ui.platform.LocalConfiguration.current
+    val screenWidthDp = configuration.screenWidthDp.dp
+    val columnsCount = kotlin.math.max(2, ((screenWidthDp - 16.dp) / 176.dp).toInt())
 
     Column(
         modifier = Modifier
@@ -2987,7 +3004,7 @@ private fun SearchPanelContent(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 if (viewMode == ReminderViewMode.CARD) {
-                                    val rows = section.items.chunked(2)
+                                    val rows = section.items.chunked(columnsCount)
                                     rows.forEach { rowItems ->
                                         Row(
                                             modifier = Modifier.fillMaxWidth(),
@@ -2999,7 +3016,7 @@ private fun SearchPanelContent(
                                                         reminder = reminder,
                                                         modifier = Modifier
                                                             .fillMaxWidth()
-                                                            .heightIn(min = 180.dp),
+                                                            .aspectRatio(1f),
                                                         isSelectionMode = false,
                                                         isSelected = false,
                                                         onClick = { onItemClick(reminder) },
@@ -3008,8 +3025,11 @@ private fun SearchPanelContent(
                                                     )
                                                 }
                                             }
-                                            if (rowItems.size < 2) {
-                                                Spacer(modifier = Modifier.weight(1f))
+                                            if (rowItems.size < columnsCount) {
+                                                val emptyCount = columnsCount - rowItems.size
+                                                for (i in 0 until emptyCount) {
+                                                    Spacer(modifier = Modifier.weight(1f))
+                                                }
                                             }
                                         }
                                     }
