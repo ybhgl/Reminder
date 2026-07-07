@@ -488,12 +488,6 @@ object BackupPreferences {
                 }
             } else {
                 autoBackupStatusFlow.value = "FAILED"
-                backupScope.launch {
-                    kotlinx.coroutines.delay(3000)
-                    if (autoBackupStatusFlow.value == "FAILED") {
-                        autoBackupStatusFlow.value = "IDLE"
-                    }
-                }
             }
             AutoBackupResult(success = totalSuccess, errorMessage = errorMsg)
         }
