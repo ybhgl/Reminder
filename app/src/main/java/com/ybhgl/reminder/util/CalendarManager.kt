@@ -22,13 +22,35 @@ object CalendarManager {
             .build()
     }
 
+    private data class ExpectedEvent(
+        val startMillis: Long,
+        val endMillis: Long?,
+        val duration: String?,
+        val rrule: String?,
+        val title: String,
+        val description: String,
+        val allDay: Int,
+        val reminders: List<Int>
+    ) {
+        fun isEffectivelyEqual(other: ExpectedEvent): Boolean {
+            return this.startMillis == other.startMillis &&
+                    this.endMillis == other.endMillis &&
+                    this.duration == other.duration &&
+                    this.rrule == other.rrule &&
+                    this.title == other.title &&
+                    this.description == other.description &&
+                    this.allDay == other.allDay &&
+                    this.reminders == other.reminders
+        }
+    }
+
     fun addOrUpdateEvent(context: Context, item: ReminderItem, forceNext: Boolean = false) {
         if (!item.notificationConfig.isEnabled || !item.notificationConfig.useSystemCalendar) {
-        if (item.type == com.ybhgl.reminder.data.ReminderType.BIRTHDAY) {
-            deleteFutureEventsOnly(context, item)
-        } else {
-            deleteEvent(context, item)
-        }
+            if (item.type == com.ybhgl.reminder.data.ReminderType.BIRTHDAY) {
+                deleteFutureEventsOnly(context, item)
+            } else {
+                deleteEvent(context, item)
+            }
             return
         }
 
@@ -37,9 +59,10 @@ object CalendarManager {
             return
         }
 
-        deleteEvent(context, item)
-
-        val calId = getOrCreateReminderCalendarId(context) ?: return
+        val expectedEvents = mutableListOf<ExpectedEvent>()
+        val expectedReminders = item.notificationConfig.notificationTimes.map { notifTime ->
+            notifTime.daysBefore * 24 * 60 - (notifTime.time.hour * 60 + notifTime.time.minute)
+        }.sorted()
 
         if (item.type == com.ybhgl.reminder.data.ReminderType.COUNT_UP) {
             item.notificationConfig.notificationTimes.forEach { notifTime ->
@@ -52,33 +75,24 @@ object CalendarManager {
                 val startMillis = remindDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
                 val endMillis = startMillis + 24 * 60 * 60 * 1000
 
-                val values = ContentValues().apply {
-                    put(CalendarContract.Events.DTSTART, startMillis)
-                    put(CalendarContract.Events.DTEND, endMillis)
-                    put(CalendarContract.Events.TITLE, item.title)
-                    put(CalendarContract.Events.DESCRIPTION, item.notes)
-                    put(CalendarContract.Events.EVENT_LOCATION, "From Reminder")
-                    put(CalendarContract.Events.SYNC_DATA1, "[ReminderApp_ID:${item.id}]")
-                    put(CalendarContract.Events.ORGANIZER, "reminder_id_${item.id}@ybhgl.reminder")
-                    put(CalendarContract.Events.CALENDAR_ID, calId)
-                    put(CalendarContract.Events.EVENT_TIMEZONE, "UTC")
-                    put(CalendarContract.Events.ALL_DAY, 1)
-                }
-
-                val uri = context.contentResolver.insert(getEventUri(), values)
-                val eventID = uri?.lastPathSegment?.toLongOrNull() ?: return@forEach
-
-                // Option: add exact reminder? All-day event reminders are usually relative to midnight.
+                expectedEvents.add(
+                    ExpectedEvent(
+                        startMillis = startMillis,
+                        endMillis = endMillis,
+                        duration = null,
+                        rrule = null,
+                        title = item.title,
+                        description = item.notes,
+                        allDay = 1,
+                        reminders = emptyList() // Original logic didn't add reminders for COUNT_UP
+                    )
+                )
             }
         } else {
-            // 倒数日 / 生日
             if (item.repeatInfo != null && !item.isLunar && item.type != com.ybhgl.reminder.data.ReminderType.BIRTHDAY) {
-                // 1. 【非生日的公历重复事件】 -> 采用系统原生 RRULE + DURATION 方案，实现系统日历原生自动无限重复
                 val baseDate = if (forceNext) LocalDate.now().plusDays(1) else LocalDate.now()
                 val targetDate = CalendarUtil.calculateNextTargetDate(item, baseDate) ?: item.date
                 val startMillis = targetDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
-
-                val title = item.title
 
                 val rrule = when (item.repeatInfo.unit) {
                     com.ybhgl.reminder.data.RepeatUnit.DAY -> "FREQ=DAILY;INTERVAL=${item.repeatInfo.interval}"
@@ -94,142 +108,83 @@ object CalendarManager {
                     }
                 }
 
-                val values = ContentValues().apply {
-                    put(CalendarContract.Events.DTSTART, startMillis)
-                    // 有 RRULE 时绝对不能写入 DTEND，改为写入 DURATION 持续时间，全天日程设为 P1D (持续1天)
-                    put(CalendarContract.Events.DURATION, "P1D")
-                    put(CalendarContract.Events.RRULE, rrule)
-                    put(CalendarContract.Events.TITLE, title)
-                    put(CalendarContract.Events.DESCRIPTION, item.notes)
-                    put(CalendarContract.Events.EVENT_LOCATION, "From Reminder")
-                    put(CalendarContract.Events.SYNC_DATA1, "[ReminderApp_ID:${item.id}]")
-                    put(CalendarContract.Events.ORGANIZER, "reminder_id_${item.id}@ybhgl.reminder")
-                    put(CalendarContract.Events.CALENDAR_ID, calId)
-                    put(CalendarContract.Events.EVENT_TIMEZONE, "UTC")
-                    put(CalendarContract.Events.ALL_DAY, 1)
-                }
-
-                val uri = context.contentResolver.insert(getEventUri(), values)
-                val eventID = uri?.lastPathSegment?.toLongOrNull() ?: return
-
-                item.notificationConfig.notificationTimes.forEach { notifTime ->
-                    val minutesBefore = notifTime.daysBefore * 24 * 60 - (notifTime.time.hour * 60 + notifTime.time.minute)
-                    val reminderValues = ContentValues().apply {
-                        put(CalendarContract.Reminders.MINUTES, minutesBefore)
-                        put(CalendarContract.Reminders.EVENT_ID, eventID)
-                        put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
-                    }
-                    context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminderValues)
-                }
-
+                expectedEvents.add(
+                    ExpectedEvent(
+                        startMillis = startMillis,
+                        endMillis = null,
+                        duration = "P1D",
+                        rrule = rrule,
+                        title = item.title,
+                        description = item.notes,
+                        allDay = 1,
+                        reminders = expectedReminders
+                    )
+                )
             } else if (item.repeatInfo != null && item.type == com.ybhgl.reminder.data.ReminderType.BIRTHDAY) {
-                // 2. 【生日重复事件（公历和农历均属于此类）】 -> 计算并生成接下来连续 3 个周期的独立单次日程（如未来3年的生日），写入精确计算的岁数标题，100%保留历史已发生日程，实现无感往后自动新增
-                val targetDates = mutableListOf<LocalDate>()
                 var currentBase = if (forceNext) LocalDate.now().plusDays(1) else LocalDate.now()
                 for (i in 1..3) {
                     val tDate = CalendarUtil.calculateNextTargetDate(item, currentBase)
                     if (tDate != null) {
-                        targetDates.add(tDate)
+                        val startMillis = tDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+                        val endMillis = startMillis + 24 * 60 * 60 * 1000
+
+                        val age = if (item.isLunar) {
+                            val birthSolar = SolarDay.fromYmd(item.date.year, item.date.monthValue, item.date.dayOfMonth)
+                            val birthLunar = birthSolar.getLunarDay()
+                            val targetSolar = SolarDay.fromYmd(tDate.year, tDate.monthValue, tDate.dayOfMonth)
+                            val targetLunar = targetSolar.getLunarDay()
+                            targetLunar.getYear() - birthLunar.getYear()
+                        } else {
+                            tDate.year - item.date.year
+                        }
+
+                        val baseAge = BirthdayCalculator.calculate(item.date, item.isLunar).age
+                        val displayAge = if (age > 0) age else baseAge
+                        val title = if (item.title.contains("生日")) {
+                            item.title.replace("生日", "${displayAge}岁生日")
+                        } else {
+                            "${item.title}${displayAge}岁生日"
+                        }
+
+                        expectedEvents.add(
+                            ExpectedEvent(
+                                startMillis = startMillis,
+                                endMillis = endMillis,
+                                duration = null,
+                                rrule = null,
+                                title = title,
+                                description = item.notes,
+                                allDay = 1,
+                                reminders = expectedReminders
+                            )
+                        )
                         currentBase = tDate.plusDays(1)
                     }
                 }
-
-                targetDates.forEach { targetDate ->
-                    val startMillis = targetDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
-                    val endMillis = startMillis + 24 * 60 * 60 * 1000
-
-                    val age = if (item.isLunar) {
-                        val birthSolar = SolarDay.fromYmd(item.date.year, item.date.monthValue, item.date.dayOfMonth)
-                        val birthLunar = birthSolar.getLunarDay()
-                        val targetSolar = SolarDay.fromYmd(targetDate.year, targetDate.monthValue, targetDate.dayOfMonth)
-                        val targetLunar = targetSolar.getLunarDay()
-                        targetLunar.getYear() - birthLunar.getYear()
-                    } else {
-                        targetDate.year - item.date.year
-                    }
-
-                    val baseAge = BirthdayCalculator.calculate(item.date, item.isLunar).age
-                    val displayAge = if (age > 0) age else baseAge
-                    val title = if (item.title.contains("生日")) {
-                        item.title.replace("生日", "${displayAge}岁生日")
-                    } else {
-                        "${item.title}${displayAge}岁生日"
-                    }
-
-                    val values = ContentValues().apply {
-                        put(CalendarContract.Events.DTSTART, startMillis)
-                        put(CalendarContract.Events.DTEND, endMillis)
-                        put(CalendarContract.Events.TITLE, title)
-                        put(CalendarContract.Events.DESCRIPTION, item.notes)
-                        put(CalendarContract.Events.EVENT_LOCATION, "From Reminder")
-                        put(CalendarContract.Events.SYNC_DATA1, "[ReminderApp_ID:${item.id}]")
-                        put(CalendarContract.Events.ORGANIZER, "reminder_id_${item.id}@ybhgl.reminder")
-                        put(CalendarContract.Events.CALENDAR_ID, calId)
-                        put(CalendarContract.Events.EVENT_TIMEZONE, "UTC")
-                        put(CalendarContract.Events.ALL_DAY, 1)
-                    }
-
-                    val uri = context.contentResolver.insert(getEventUri(), values)
-                    val eventID = uri?.lastPathSegment?.toLongOrNull() ?: return@forEach
-
-                    item.notificationConfig.notificationTimes.forEach { notifTime ->
-                        val minutesBefore = notifTime.daysBefore * 24 * 60 - (notifTime.time.hour * 60 + notifTime.time.minute)
-                        val reminderValues = ContentValues().apply {
-                            put(CalendarContract.Reminders.MINUTES, minutesBefore)
-                            put(CalendarContract.Reminders.EVENT_ID, eventID)
-                            put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
-                        }
-                        context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminderValues)
-                    }
-                }
-
             } else if (item.repeatInfo != null && item.isLunar) {
-                // 3. 【非生日的农历重复事件】 -> 计算并生成接下来连续 3 个周期的单次日程
-                val targetDates = mutableListOf<LocalDate>()
                 var currentBase = if (forceNext) LocalDate.now().plusDays(1) else LocalDate.now()
                 for (i in 1..3) {
                     val tDate = CalendarUtil.calculateNextTargetDate(item, currentBase)
                     if (tDate != null) {
-                        targetDates.add(tDate)
+                        val startMillis = tDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+                        val endMillis = startMillis + 24 * 60 * 60 * 1000
+
+                        expectedEvents.add(
+                            ExpectedEvent(
+                                startMillis = startMillis,
+                                endMillis = endMillis,
+                                duration = null,
+                                rrule = null,
+                                title = item.title,
+                                description = item.notes,
+                                allDay = 1,
+                                reminders = expectedReminders
+                            )
+                        )
                         currentBase = tDate.plusDays(1)
                     }
                 }
-
-                targetDates.forEach { targetDate ->
-                    val startMillis = targetDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
-                    val endMillis = startMillis + 24 * 60 * 60 * 1000
-
-                    val title = item.title
-
-                    val values = ContentValues().apply {
-                        put(CalendarContract.Events.DTSTART, startMillis)
-                        put(CalendarContract.Events.DTEND, endMillis)
-                        put(CalendarContract.Events.TITLE, title)
-                        put(CalendarContract.Events.DESCRIPTION, item.notes)
-                        put(CalendarContract.Events.EVENT_LOCATION, "From Reminder")
-                        put(CalendarContract.Events.SYNC_DATA1, "[ReminderApp_ID:${item.id}]")
-                        put(CalendarContract.Events.ORGANIZER, "reminder_id_${item.id}@ybhgl.reminder")
-                        put(CalendarContract.Events.CALENDAR_ID, calId)
-                        put(CalendarContract.Events.EVENT_TIMEZONE, "UTC")
-                        put(CalendarContract.Events.ALL_DAY, 1)
-                    }
-
-                    val uri = context.contentResolver.insert(getEventUri(), values)
-                    val eventID = uri?.lastPathSegment?.toLongOrNull() ?: return@forEach
-
-                    item.notificationConfig.notificationTimes.forEach { notifTime ->
-                        val minutesBefore = notifTime.daysBefore * 24 * 60 - (notifTime.time.hour * 60 + notifTime.time.minute)
-                        val reminderValues = ContentValues().apply {
-                            put(CalendarContract.Reminders.MINUTES, minutesBefore)
-                            put(CalendarContract.Reminders.EVENT_ID, eventID)
-                            put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
-                        }
-                        context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminderValues)
-                    }
-                }
-
             } else {
-                // 4. 【一次性非重复事件】 -> 传统普通单次日程
                 val baseDate = if (forceNext) LocalDate.now().plusDays(1) else LocalDate.now()
                 val targetDate = CalendarUtil.calculateNextTargetDate(item, baseDate) ?: item.date
                 val startMillis = targetDate.atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
@@ -246,31 +201,145 @@ object CalendarManager {
                     item.title
                 }
 
-                val values = ContentValues().apply {
-                    put(CalendarContract.Events.DTSTART, startMillis)
-                    put(CalendarContract.Events.DTEND, endMillis)
-                    put(CalendarContract.Events.TITLE, title)
-                    put(CalendarContract.Events.DESCRIPTION, item.notes)
-                    put(CalendarContract.Events.EVENT_LOCATION, "From Reminder")
-                    put(CalendarContract.Events.SYNC_DATA1, "[ReminderApp_ID:${item.id}]")
-                    put(CalendarContract.Events.ORGANIZER, "reminder_id_${item.id}@ybhgl.reminder")
-                    put(CalendarContract.Events.CALENDAR_ID, calId)
-                    put(CalendarContract.Events.EVENT_TIMEZONE, "UTC")
-                    put(CalendarContract.Events.ALL_DAY, 1)
-                }
+                expectedEvents.add(
+                    ExpectedEvent(
+                        startMillis = startMillis,
+                        endMillis = endMillis,
+                        duration = null,
+                        rrule = null,
+                        title = title,
+                        description = item.notes,
+                        allDay = 1,
+                        reminders = expectedReminders
+                    )
+                )
+            }
+        }
 
-                val uri = context.contentResolver.insert(getEventUri(), values)
-                val eventID = uri?.lastPathSegment?.toLongOrNull() ?: return
+        val existingEvents = mutableListOf<ExpectedEvent>()
+        try {
+            val eventSelection = if (item.type == com.ybhgl.reminder.data.ReminderType.BIRTHDAY) {
+                val todayStartMillis = LocalDate.now().atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+                "((${CalendarContract.Events.ORGANIZER} = ?) OR (${CalendarContract.Events.SYNC_DATA1} LIKE ?) OR (${CalendarContract.Events.DESCRIPTION} LIKE ?)) AND ${CalendarContract.Events.DTSTART} >= ?"
+            } else {
+                "(${CalendarContract.Events.ORGANIZER} = ?) OR (${CalendarContract.Events.SYNC_DATA1} LIKE ?) OR (${CalendarContract.Events.DESCRIPTION} LIKE ?)"
+            }
 
-                item.notificationConfig.notificationTimes.forEach { notifTime ->
-                    val minutesBefore = notifTime.daysBefore * 24 * 60 - (notifTime.time.hour * 60 + notifTime.time.minute)
-                    val reminderValues = ContentValues().apply {
-                        put(CalendarContract.Reminders.MINUTES, minutesBefore)
-                        put(CalendarContract.Reminders.EVENT_ID, eventID)
-                        put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
+            val eventSelectionArgs = if (item.type == com.ybhgl.reminder.data.ReminderType.BIRTHDAY) {
+                val todayStartMillis = LocalDate.now().atStartOfDay(ZoneId.of("UTC")).toInstant().toEpochMilli()
+                arrayOf("reminder_id_${item.id}@ybhgl.reminder", "%[ReminderApp_ID:${item.id}]%", "%[ReminderApp_ID:${item.id}]%", todayStartMillis.toString())
+            } else {
+                arrayOf("reminder_id_${item.id}@ybhgl.reminder", "%[ReminderApp_ID:${item.id}]%", "%[ReminderApp_ID:${item.id}]%")
+            }
+
+            val projection = arrayOf(
+                CalendarContract.Events._ID,
+                CalendarContract.Events.DTSTART,
+                CalendarContract.Events.DTEND,
+                CalendarContract.Events.DURATION,
+                CalendarContract.Events.RRULE,
+                CalendarContract.Events.TITLE,
+                CalendarContract.Events.DESCRIPTION,
+                CalendarContract.Events.ALL_DAY
+            )
+
+            context.contentResolver.query(CalendarContract.Events.CONTENT_URI, projection, eventSelection, eventSelectionArgs, null)?.use { cursor ->
+                while (cursor.moveToNext()) {
+                    val eventId = cursor.getLong(0)
+                    val startMillis = cursor.getLong(1)
+                    val endMillis = if (cursor.isNull(2)) null else cursor.getLong(2)
+                    val duration = if (cursor.isNull(3)) null else cursor.getString(3)
+                    val rrule = if (cursor.isNull(4)) null else cursor.getString(4)
+                    val title = if (cursor.isNull(5)) "" else cursor.getString(5)
+                    val description = if (cursor.isNull(6)) "" else cursor.getString(6)
+                    val allDay = if (cursor.isNull(7)) 0 else cursor.getInt(7)
+
+                    val reminders = mutableListOf<Int>()
+                    val reminderProjection = arrayOf(CalendarContract.Reminders.MINUTES)
+                    val reminderSelection = "${CalendarContract.Reminders.EVENT_ID} = ?"
+                    val reminderSelectionArgs = arrayOf(eventId.toString())
+                    context.contentResolver.query(CalendarContract.Reminders.CONTENT_URI, reminderProjection, reminderSelection, reminderSelectionArgs, null)?.use { reminderCursor ->
+                        while (reminderCursor.moveToNext()) {
+                            reminders.add(reminderCursor.getInt(0))
+                        }
                     }
-                    context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminderValues)
+                    reminders.sort()
+
+                    existingEvents.add(
+                        ExpectedEvent(
+                            startMillis = startMillis,
+                            endMillis = endMillis,
+                            duration = duration,
+                            rrule = rrule,
+                            title = title,
+                            description = description,
+                            allDay = allDay,
+                            reminders = reminders
+                        )
+                    )
                 }
+            }
+        } catch (e: Exception) {
+            e.printStackTrace()
+        }
+
+        val expectedSorted = expectedEvents.sortedBy { it.startMillis }
+        val existingSorted = existingEvents.sortedBy { it.startMillis }
+
+        var isMatch = expectedSorted.size == existingSorted.size
+        if (isMatch) {
+            for (i in expectedSorted.indices) {
+                if (!expectedSorted[i].isEffectivelyEqual(existingSorted[i])) {
+                    isMatch = false
+                    break
+                }
+            }
+        }
+
+        if (isMatch) {
+            return
+        }
+
+        if (item.type == com.ybhgl.reminder.data.ReminderType.BIRTHDAY) {
+            deleteFutureEventsOnly(context, item)
+        } else {
+            deleteEvent(context, item)
+        }
+
+        val calId = getOrCreateReminderCalendarId(context) ?: return
+
+        for (expected in expectedEvents) {
+            val values = ContentValues().apply {
+                put(CalendarContract.Events.DTSTART, expected.startMillis)
+                if (expected.endMillis != null) {
+                    put(CalendarContract.Events.DTEND, expected.endMillis)
+                }
+                if (expected.duration != null) {
+                    put(CalendarContract.Events.DURATION, expected.duration)
+                }
+                if (expected.rrule != null) {
+                    put(CalendarContract.Events.RRULE, expected.rrule)
+                }
+                put(CalendarContract.Events.TITLE, expected.title)
+                put(CalendarContract.Events.DESCRIPTION, expected.description)
+                put(CalendarContract.Events.EVENT_LOCATION, "From Reminder")
+                put(CalendarContract.Events.SYNC_DATA1, "[ReminderApp_ID:${item.id}]")
+                put(CalendarContract.Events.ORGANIZER, "reminder_id_${item.id}@ybhgl.reminder")
+                put(CalendarContract.Events.CALENDAR_ID, calId)
+                put(CalendarContract.Events.EVENT_TIMEZONE, "UTC")
+                put(CalendarContract.Events.ALL_DAY, expected.allDay)
+            }
+
+            val uri = context.contentResolver.insert(getEventUri(), values)
+            val eventID = uri?.lastPathSegment?.toLongOrNull() ?: continue
+
+            expected.reminders.forEach { minutesBefore ->
+                val reminderValues = ContentValues().apply {
+                    put(CalendarContract.Reminders.MINUTES, minutesBefore)
+                    put(CalendarContract.Reminders.EVENT_ID, eventID)
+                    put(CalendarContract.Reminders.METHOD, CalendarContract.Reminders.METHOD_ALERT)
+                }
+                context.contentResolver.insert(CalendarContract.Reminders.CONTENT_URI, reminderValues)
             }
         }
     }
