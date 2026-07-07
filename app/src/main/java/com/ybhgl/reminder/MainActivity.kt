@@ -78,8 +78,9 @@ import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Backup
-import androidx.compose.material.icons.filled.CloudUpload
-import androidx.compose.material.icons.filled.CloudDone
+import androidx.compose.material.icons.outlined.CloudUpload
+import androidx.compose.material.icons.outlined.CloudDone
+import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
@@ -1500,7 +1501,7 @@ fun ReminderListScreen(
                                             modifier = Modifier.graphicsLayer { alpha = autoBackupAlpha }
                                         ) {
                                             Icon(
-                                                imageVector = Icons.Default.CloudUpload,
+                                                imageVector = Icons.Outlined.CloudUpload,
                                                 contentDescription = "正在自动备份",
                                                 tint = MaterialTheme.colorScheme.primary
                                             )
@@ -1509,7 +1510,7 @@ fun ReminderListScreen(
                                     AutoBackupStatus.SUCCESS -> {
                                         IconButton(onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) }) {
                                             Icon(
-                                                imageVector = Icons.Default.CloudDone,
+                                                imageVector = Icons.Outlined.CloudDone,
                                                 contentDescription = "自动备份成功",
                                                 tint = MaterialTheme.colorScheme.primary
                                             )
@@ -1518,7 +1519,7 @@ fun ReminderListScreen(
                                     AutoBackupStatus.FAILED -> {
                                         IconButton(onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) }) {
                                             Icon(
-                                                imageVector = Icons.Default.CloudUpload,
+                                                imageVector = Icons.Outlined.CloudOff,
                                                 contentDescription = "自动备份失败",
                                                 tint = MaterialTheme.colorScheme.error
                                             )
@@ -1530,7 +1531,7 @@ fun ReminderListScreen(
                                 if (showBackupAlert) {
                                     IconButton(onClick = { navController.navigate(Routes.BACKUP_AND_RESTORE) }) {
                                         Icon(
-                                            imageVector = Icons.Default.CloudUpload,
+                                            imageVector = Icons.Outlined.CloudUpload,
                                             contentDescription = "需要备份",
                                             tint = MaterialTheme.colorScheme.error
                                         )
