@@ -1569,7 +1569,8 @@ fun ReminderListScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
-                    .padding(bottom = segmentedBottomSpacing + innerPadding.calculateBottomPadding(), start = 24.dp, end = 24.dp)
+                    .windowInsetsPadding(WindowInsets.navigationBars)
+                    .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
             ) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),

@@ -235,7 +235,7 @@ fun TagManagementScreen(
                         start = 16.dp,
                         end = 16.dp,
                         top = topBarHeightDp + titleOffsetDp + 16.dp,
-                        bottom = innerPadding.calculateBottomPadding() + 80.dp
+                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 80.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {

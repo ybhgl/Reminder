@@ -116,7 +116,7 @@ fun BirthdayListScreen(
                         start = 16.dp,
                         end = 16.dp,
                         top = dynamicTopPadding,
-                        bottom = 16.dp + paddingValues.calculateBottomPadding()
+                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
                     ),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
