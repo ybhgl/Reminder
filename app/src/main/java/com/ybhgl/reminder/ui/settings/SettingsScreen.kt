@@ -128,8 +128,11 @@ import kotlinx.coroutines.flow.first
 import androidx.compose.ui.graphics.toArgb
 
 import androidx.compose.material.icons.filled.Lock
-import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.AppBlocking
 import androidx.compose.material.icons.filled.Security
+import androidx.compose.material.icons.outlined.Edit
+import androidx.compose.material.icons.outlined.Lock as OutlinedLock
+import androidx.compose.material.icons.outlined.AppBlocking as OutlinedAppBlocking
 import com.ybhgl.reminder.data.SecurityPreferences
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -164,6 +167,8 @@ fun SettingsScreen(
     val isAppLockEnabled by remember(context) { SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = false)
     val isScreenshotBlocked by remember(context) { SecurityPreferences.screenshotBlockedFlow(context) }.collectAsState(initial = false)
     val scrollState = rememberScrollState()
+    
+    var showDisableVerify by rememberSaveable { mutableStateOf(false) }
 
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
@@ -214,6 +219,29 @@ fun SettingsScreen(
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
+            if (showDisableVerify) {
+                androidx.compose.ui.window.Dialog(
+                    onDismissRequest = { showDisableVerify = false },
+                    properties = androidx.compose.ui.window.DialogProperties(
+                        usePlatformDefaultWidth = false,
+                        dismissOnBackPress = true,
+                        dismissOnClickOutside = false
+                    )
+                ) {
+                    Surface(modifier = Modifier.fillMaxSize()) {
+                        com.ybhgl.reminder.ui.security.AppLockVerifyScreen(
+                            onUnlockSuccess = {
+                                showDisableVerify = false
+                                coroutineScope.launch {
+                                    SecurityPreferences.saveAppLockEnabled(context, false)
+                                }
+                            },
+                            onCancel = { showDisableVerify = false }
+                        )
+                    }
+                }
+            }
+
             if (configuringWidget != null) {
                 val widget = configuringWidget!!
                 val isSingleSelection = widget.isSingleSelection
@@ -370,28 +398,28 @@ fun SettingsScreen(
                 }
 
                 Text(
-                    text = "安全",
+                    text = "应用安全",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
-                SecurityManagementCard(
+                AppLockCard(
                     isAppLockEnabled = isAppLockEnabled,
-                    isScreenshotBlocked = isScreenshotBlocked,
                     onAppLockToggle = { enabled ->
                         if (enabled) {
                             onNavigateToGestureSetup()
                         } else {
-                            coroutineScope.launch {
-                                SecurityPreferences.saveAppLockEnabled(context, false)
-                            }
+                            showDisableVerify = true
                         }
                     },
+                    onModifyGesture = onNavigateToGestureModify
+                )
+                ScreenshotBlockCard(
+                    isScreenshotBlocked = isScreenshotBlocked,
                     onScreenshotBlockedToggle = { enabled ->
                         coroutineScope.launch {
                             SecurityPreferences.saveScreenshotBlocked(context, enabled)
                         }
-                    },
-                    onModifyGesture = onNavigateToGestureModify
+                    }
                 )
                 
                 Text(
@@ -467,11 +495,9 @@ fun SettingsScreen(
 }
 
 @Composable
-private fun SecurityManagementCard(
+private fun AppLockCard(
     isAppLockEnabled: Boolean,
-    isScreenshotBlocked: Boolean,
     onAppLockToggle: (Boolean) -> Unit,
-    onScreenshotBlockedToggle: (Boolean) -> Unit,
     onModifyGesture: () -> Unit
 ) {
     Card(
@@ -481,20 +507,32 @@ private fun SecurityManagementCard(
         )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.padding(vertical = 8.dp)
         ) {
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onAppLockToggle(!isAppLockEnabled) }
-                    ),
+                    .clickable { onAppLockToggle(!isAppLockEnabled) }
+                    .padding(horizontal = 16.dp, vertical = 8.dp),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
+                Box(
+                    modifier = Modifier
+                        .size(40.dp)
+                        .background(
+                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                            shape = RoundedCornerShape(8.dp)
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Lock,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(22.dp)
+                    )
+                }
                 Column(
                     modifier = Modifier.weight(1f),
                     verticalArrangement = Arrangement.spacedBy(4.dp)
@@ -502,17 +540,18 @@ private fun SecurityManagementCard(
                     Text(
                         text = "应用锁",
                         style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
                     )
                     Text(
-                        text = "开启后冷启动或从后台唤醒需验证",
+                        text = "开启后启动或唤醒应用需验证",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
                 Switch(
                     checked = isAppLockEnabled,
-                    onCheckedChange = onAppLockToggle,
+                    onCheckedChange = { onAppLockToggle(it) },
                     colors = SwitchDefaults.colors(
                         checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
                         checkedTrackColor = MaterialTheme.colorScheme.primary,
@@ -527,79 +566,94 @@ private fun SecurityManagementCard(
                 enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
                 exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
             ) {
-                Column {
-                    Spacer(modifier = Modifier.height(8.dp))
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable(
-                                interactionSource = remember { MutableInteractionSource() },
-                                indication = null,
-                                onClick = onModifyGesture
-                            ),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
-                    ) {
-                        Column(
-                            modifier = Modifier.weight(1f),
-                            verticalArrangement = Arrangement.spacedBy(4.dp)
-                        ) {
-                            Text(
-                                text = "修改手势密码",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                        }
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                            modifier = Modifier.size(20.dp)
-                        )
-                    }
-                    Spacer(modifier = Modifier.height(4.dp))
-                }
-            }
-
-            Spacer(modifier = Modifier.height(8.dp))
-
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable(
-                        interactionSource = remember { MutableInteractionSource() },
-                        indication = null,
-                        onClick = { onScreenshotBlockedToggle(!isScreenshotBlocked) }
-                    ),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable { onModifyGesture() }
+                        .padding(horizontal = 16.dp, vertical = 12.dp)
+                        .padding(start = 56.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "禁止截图",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+                        text = "修改手势密码",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f)
                     )
-                    Text(
-                        text = "全局阻断系统截图与录屏，保护隐私",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    Icon(
+                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.size(20.dp)
                     )
                 }
-                Switch(
-                    checked = isScreenshotBlocked,
-                    onCheckedChange = onScreenshotBlockedToggle,
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                        uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
-                        uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                    )
+            }
+        }
+    }
+}
+
+@Composable
+private fun ScreenshotBlockCard(
+    isScreenshotBlocked: Boolean,
+    onScreenshotBlockedToggle: (Boolean) -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+        )
+    ) {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable { onScreenshotBlockedToggle(!isScreenshotBlocked) }
+                .padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                        shape = RoundedCornerShape(8.dp)
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = Icons.Default.AppBlocking,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.size(22.dp)
                 )
             }
+            Column(
+                modifier = Modifier.weight(1f),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "禁止截图",
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "阻止系统截图与录屏",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            Switch(
+                checked = isScreenshotBlocked,
+                onCheckedChange = { onScreenshotBlockedToggle(it) },
+                colors = SwitchDefaults.colors(
+                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                    checkedTrackColor = MaterialTheme.colorScheme.primary,
+                    uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
+                    uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                )
+            )
         }
     }
 }
