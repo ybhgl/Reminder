@@ -273,6 +273,30 @@ class MainActivity : ComponentActivity() {
             val context = LocalContext.current
             val themeFlow = remember(context) { themeOptionFlow(context) }
             val themeOption by themeFlow.collectAsState(initial = AppThemeOption.SYSTEM)
+            
+            val isScreenshotBlocked by remember(context) { com.ybhgl.reminder.data.SecurityPreferences.screenshotBlockedFlow(context) }.collectAsState(initial = false)
+            LaunchedEffect(isScreenshotBlocked) {
+                if (isScreenshotBlocked) {
+                    window.setFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE, android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                } else {
+                    window.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+                }
+            }
+
+            val isAppLockEnabled by remember(context) { com.ybhgl.reminder.data.SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = false)
+            var isAppUnlocked by rememberSaveable { mutableStateOf(false) }
+
+            DisposableEffect(androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle) {
+                val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                    if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
+                        isAppUnlocked = false
+                    }
+                }
+                androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
+                onDispose {
+                    androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.removeObserver(observer)
+                }
+            }
             val pureBlackModeFlow = remember(context) { pureBlackFlow(context) }
             val usePureBlack by pureBlackModeFlow.collectAsState(initial = false)
             val cardColoringFlowInstance = remember(context) { cardColoringFlow(context) }
@@ -326,9 +350,15 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Box {
-                        ReminderApp()
+                        if (isAppLockEnabled && !isAppUnlocked) {
+                            com.ybhgl.reminder.ui.security.AppLockVerifyScreen(
+                                onUnlockSuccess = { isAppUnlocked = true }
+                            )
+                        } else {
+                            ReminderApp()
+                        }
 
-                        if (showPermissionDialog) {
+                        if (showPermissionDialog && (!isAppLockEnabled || isAppUnlocked)) {
                             AlertDialog(
                                 onDismissRequest = { showPermissionDialog = false },
                                 title = { Text("权限提醒") },
@@ -566,6 +596,8 @@ object Routes {
     const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}"
     const val SETTINGS = "settings"
     const val BACKUP_AND_RESTORE = "backup_and_restore"
+    const val GESTURE_SETUP = "gesture_setup"
+    const val GESTURE_MODIFY = "gesture_modify"
     const val TAG_MANAGEMENT = "tag_management"
     const val TAG_MANAGEMENT_PATTERN = "$TAG_MANAGEMENT?isSortMode={isSortMode}"
     const val DETAIL_REMINDER_BASE = "detail_reminder"
@@ -783,11 +815,27 @@ fun ReminderApp() {
                 SettingsScreen(
                     onNavigateBack = { navController.navigateUp() },
                     onNavigateToBackupAndRestore = { navController.navigate(Routes.BACKUP_AND_RESTORE) },
-                    onNavigateToTagManagement = { navController.navigate(Routes.tagManagement()) }
+                    onNavigateToTagManagement = { navController.navigate(Routes.tagManagement()) },
+                    onNavigateToGestureSetup = { navController.navigate(Routes.GESTURE_SETUP) },
+                    onNavigateToGestureModify = { navController.navigate(Routes.GESTURE_MODIFY) }
                 )
             }
             composable(route = Routes.BACKUP_AND_RESTORE) {
                 BackupAndRestoreScreen(onNavigateBack = { navController.navigateUp() })
+            }
+            composable(route = Routes.GESTURE_SETUP) {
+                com.ybhgl.reminder.ui.security.GestureSetupScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onSetupComplete = { navController.navigateUp() },
+                    isModifyMode = false
+                )
+            }
+            composable(route = Routes.GESTURE_MODIFY) {
+                com.ybhgl.reminder.ui.security.GestureSetupScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onSetupComplete = { navController.navigateUp() },
+                    isModifyMode = true
+                )
             }
             composable(
                 route = Routes.TAG_MANAGEMENT_PATTERN,

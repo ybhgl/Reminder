@@ -70,6 +70,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -126,12 +127,19 @@ import androidx.compose.material3.Surface
 import kotlinx.coroutines.flow.first
 import androidx.compose.ui.graphics.toArgb
 
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.Block
+import androidx.compose.material.icons.filled.Security
+import com.ybhgl.reminder.data.SecurityPreferences
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToBackupAndRestore: () -> Unit,
     onNavigateToTagManagement: () -> Unit,
+    onNavigateToGestureSetup: () -> Unit,
+    onNavigateToGestureModify: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
@@ -153,6 +161,8 @@ fun SettingsScreen(
     val customColorSeedInt by customColorPreferenceFlow.collectAsState(initial = 0xFF6650A4.toInt())
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
+    val isAppLockEnabled by remember(context) { SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = false)
+    val isScreenshotBlocked by remember(context) { SecurityPreferences.screenshotBlockedFlow(context) }.collectAsState(initial = false)
     val scrollState = rememberScrollState()
 
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
@@ -360,6 +370,31 @@ fun SettingsScreen(
                 }
 
                 Text(
+                    text = "安全",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
+                SecurityManagementCard(
+                    isAppLockEnabled = isAppLockEnabled,
+                    isScreenshotBlocked = isScreenshotBlocked,
+                    onAppLockToggle = { enabled ->
+                        if (enabled) {
+                            onNavigateToGestureSetup()
+                        } else {
+                            coroutineScope.launch {
+                                SecurityPreferences.saveAppLockEnabled(context, false)
+                            }
+                        }
+                    },
+                    onScreenshotBlockedToggle = { enabled ->
+                        coroutineScope.launch {
+                            SecurityPreferences.saveScreenshotBlocked(context, enabled)
+                        }
+                    },
+                    onModifyGesture = onNavigateToGestureModify
+                )
+                
+                Text(
                     text = "关于",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
@@ -425,6 +460,144 @@ fun SettingsScreen(
                             )
                         }
                     }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun SecurityManagementCard(
+    isAppLockEnabled: Boolean,
+    isScreenshotBlocked: Boolean,
+    onAppLockToggle: (Boolean) -> Unit,
+    onScreenshotBlockedToggle: (Boolean) -> Unit,
+    onModifyGesture: () -> Unit
+) {
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalArrangement = Arrangement.spacedBy(4.dp)
+        ) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onAppLockToggle(!isAppLockEnabled) }
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "应用锁",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "开启后冷启动或从后台唤醒需验证",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = isAppLockEnabled,
+                    onCheckedChange = onAppLockToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                        uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                    )
+                )
+            }
+            
+            AnimatedVisibility(
+                visible = isAppLockEnabled,
+                enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+            ) {
+                Column {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable(
+                                interactionSource = remember { MutableInteractionSource() },
+                                indication = null,
+                                onClick = onModifyGesture
+                            ),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "修改手势密码",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurface
+                            )
+                        }
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.size(20.dp)
+                        )
+                    }
+                    Spacer(modifier = Modifier.height(4.dp))
+                }
+            }
+
+            Spacer(modifier = Modifier.height(8.dp))
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onScreenshotBlockedToggle(!isScreenshotBlocked) }
+                    ),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "禁止截图",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "全局阻断系统截图与录屏，保护隐私",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = isScreenshotBlocked,
+                    onCheckedChange = onScreenshotBlockedToggle,
+                    colors = SwitchDefaults.colors(
+                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                        checkedTrackColor = MaterialTheme.colorScheme.primary,
+                        uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
+                        uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                    )
                 )
             }
         }
