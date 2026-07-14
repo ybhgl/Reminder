@@ -113,9 +113,5 @@ data class BackupData(
     val webDavPath: String? = null,
     val dynamicColorEnabled: Boolean? = null,
     val themeColorPalette: AppColorPalette? = null,
-    val customColorSeed: Int? = null,
-    val isAppLockEnabled: Boolean? = null,
-    val gesturePassword: String? = null,
-    val isScreenshotBlocked: Boolean? = null,
-    val useBiometric: Boolean? = null
+    val customColorSeed: Int? = null
 )
