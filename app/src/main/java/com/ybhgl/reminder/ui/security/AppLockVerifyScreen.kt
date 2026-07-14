@@ -67,6 +67,8 @@ fun AppLockVerifyScreen(
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME && useBiometric) {
                 triggerBiometric()
+            } else if (event == Lifecycle.Event.ON_STOP) {
+                hasPromptedBiometric = false
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
