@@ -124,6 +124,8 @@ dependencies {
     implementation(libs.capturable)
     implementation(libs.compose.m3.picker)
     implementation(libs.kotlinx.collections.immutable)
+    implementation("androidx.biometric:biometric:1.2.0-alpha05")
+    implementation("androidx.lifecycle:lifecycle-process:2.8.4")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)
     androidTestImplementation(libs.androidx.espresso.core)
