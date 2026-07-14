@@ -116,6 +116,11 @@ class BackupAndRestoreViewModel(
             val themeColorPalette = colorPaletteFlow(context).first()
             val customColorSeed = customColorFlow(context).first()
 
+            val isAppLockEnabled = SecurityPreferences.appLockEnabledFlow(context).first()
+            val gesturePassword = SecurityPreferences.gesturePasswordFlow(context).first()
+            val isScreenshotBlocked = SecurityPreferences.screenshotBlockedFlow(context).first()
+            val useBiometric = SecurityPreferences.useBiometricFlow(context).first()
+
             val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
             val webDavServer = BackupPreferences.webDavServerFlow(context).first()
             val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()
@@ -139,7 +144,11 @@ class BackupAndRestoreViewModel(
                 webDavPath = webDavPath,
                 dynamicColorEnabled = dynamicColorEnabled,
                 themeColorPalette = themeColorPalette,
-                customColorSeed = customColorSeed
+                customColorSeed = customColorSeed,
+                isAppLockEnabled = isAppLockEnabled,
+                gesturePassword = gesturePassword,
+                isScreenshotBlocked = isScreenshotBlocked,
+                useBiometric = useBiometric
             )
 
             val json = Json.encodeToString(backupData)
@@ -220,6 +229,11 @@ class BackupAndRestoreViewModel(
         val themeColorPalette = colorPaletteFlow(context).first()
         val customColorSeed = customColorFlow(context).first()
 
+        val isAppLockEnabled = SecurityPreferences.appLockEnabledFlow(context).first()
+        val gesturePassword = SecurityPreferences.gesturePasswordFlow(context).first()
+        val isScreenshotBlocked = SecurityPreferences.screenshotBlockedFlow(context).first()
+        val useBiometric = SecurityPreferences.useBiometricFlow(context).first()
+
         val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
         val webDavServer = BackupPreferences.webDavServerFlow(context).first()
         val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()
@@ -243,7 +257,11 @@ class BackupAndRestoreViewModel(
             webDavPath = webDavPath,
             dynamicColorEnabled = dynamicColorEnabled,
             themeColorPalette = themeColorPalette,
-            customColorSeed = customColorSeed
+            customColorSeed = customColorSeed,
+            isAppLockEnabled = isAppLockEnabled,
+            gesturePassword = gesturePassword,
+            isScreenshotBlocked = isScreenshotBlocked,
+            useBiometric = useBiometric
         )
 
         val json = Json.encodeToString(backupData)
@@ -504,6 +522,11 @@ class BackupAndRestoreViewModel(
             backupData.dynamicColorEnabled?.let { saveDynamicColor(context, it) }
             backupData.themeColorPalette?.let { saveColorPalette(context, it) }
             backupData.customColorSeed?.let { saveCustomColor(context, it) }
+            
+            backupData.isAppLockEnabled?.let { SecurityPreferences.saveAppLockEnabled(context, it) }
+            backupData.gesturePassword?.let { SecurityPreferences.saveGesturePassword(context, it) }
+            backupData.isScreenshotBlocked?.let { SecurityPreferences.saveScreenshotBlocked(context, it) }
+            backupData.useBiometric?.let { SecurityPreferences.saveUseBiometric(context, it) }
 
             // Update last backup to clear warning
             BackupPreferences.saveLastBackupTimestamp(context, System.currentTimeMillis())

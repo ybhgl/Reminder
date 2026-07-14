@@ -313,6 +313,11 @@ object BackupPreferences {
             val themeColorPalette = colorPaletteFlow(context).first()
             val customColorSeed = customColorFlow(context).first()
 
+            val isAppLockEnabled = SecurityPreferences.appLockEnabledFlow(context).first()
+            val gesturePassword = SecurityPreferences.gesturePasswordFlow(context).first()
+            val isScreenshotBlocked = SecurityPreferences.screenshotBlockedFlow(context).first()
+            val useBiometric = SecurityPreferences.useBiometricFlow(context).first()
+
             val backupReminderEnabled = backupReminderEnabledFlow(context).first()
             val webDavServer = webDavServerFlow(context).first()
             val webDavUsername = webDavUsernameFlow(context).first()
@@ -336,7 +341,11 @@ object BackupPreferences {
                 webDavPath = webDavPath,
                 dynamicColorEnabled = dynamicColorEnabled,
                 themeColorPalette = themeColorPalette,
-                customColorSeed = customColorSeed
+                customColorSeed = customColorSeed,
+                isAppLockEnabled = isAppLockEnabled,
+                gesturePassword = gesturePassword,
+                isScreenshotBlocked = isScreenshotBlocked,
+                useBiometric = useBiometric
             )
 
             val json = kotlinx.serialization.json.Json.encodeToString(backupData)
