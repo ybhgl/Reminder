@@ -14,7 +14,7 @@ import android.net.Uri
 import android.os.Build
 import android.os.Bundle
 import android.provider.Settings
-import androidx.activity.ComponentActivity
+import androidx.fragment.app.FragmentActivity
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.lifecycle.ViewModelProvider
@@ -233,7 +233,7 @@ import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.activity.SystemBarStyle
 import androidx.compose.ui.graphics.toArgb
 
-class MainActivity : ComponentActivity() {
+class MainActivity : FragmentActivity() {
     var onNewIntentCallback: ((Intent) -> Unit)? = null
 
     override fun onNewIntent(intent: Intent) {
@@ -284,12 +284,11 @@ class MainActivity : ComponentActivity() {
             }
 
             val isAppLockEnabled by remember(context) { com.ybhgl.reminder.data.SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = false)
-            var isAppUnlocked by rememberSaveable { mutableStateOf(false) }
 
             DisposableEffect(androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle) {
                 val observer = androidx.lifecycle.LifecycleEventObserver { _, event ->
                     if (event == androidx.lifecycle.Lifecycle.Event.ON_STOP) {
-                        isAppUnlocked = false
+                        com.ybhgl.reminder.data.AppLockState.isUnlocked.value = false
                     }
                 }
                 androidx.lifecycle.ProcessLifecycleOwner.get().lifecycle.addObserver(observer)
@@ -350,15 +349,15 @@ class MainActivity : ComponentActivity() {
                     color = MaterialTheme.colorScheme.background
                 ) {
                     Box {
-                        if (isAppLockEnabled && !isAppUnlocked) {
+                        if (isAppLockEnabled && !com.ybhgl.reminder.data.AppLockState.isUnlocked.value) {
                             com.ybhgl.reminder.ui.security.AppLockVerifyScreen(
-                                onUnlockSuccess = { isAppUnlocked = true }
+                                onUnlockSuccess = { com.ybhgl.reminder.data.AppLockState.isUnlocked.value = true }
                             )
                         } else {
                             ReminderApp()
                         }
 
-                        if (showPermissionDialog && (!isAppLockEnabled || isAppUnlocked)) {
+                        if (showPermissionDialog && (!isAppLockEnabled || com.ybhgl.reminder.data.AppLockState.isUnlocked.value)) {
                             AlertDialog(
                                 onDismissRequest = { showPermissionDialog = false },
                                 title = { Text("权限提醒") },
