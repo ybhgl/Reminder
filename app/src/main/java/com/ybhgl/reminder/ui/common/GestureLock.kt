@@ -66,7 +66,8 @@ fun GestureLock(
 
     LaunchedEffect(state) {
         if (state == GestureLockState.NORMAL && selectedNodes.isNotEmpty()) {
-            // Usually caller sets back to NORMAL to clear, but we should let user start drawing to clear
+            selectedNodes = emptyList()
+            currentDragPosition = null
         }
     }
 

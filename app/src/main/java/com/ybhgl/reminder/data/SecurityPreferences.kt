@@ -24,6 +24,10 @@ private val Context.securityDataStore: DataStore<Preferences> by preferencesData
     name = SECURITY_DATA_STORE_NAME
 )
 
+object AppLockState {
+    var isUnlocked = androidx.compose.runtime.mutableStateOf(false)
+}
+
 object SecurityPreferences {
 
     fun appLockEnabledFlow(context: Context): Flow<Boolean> =

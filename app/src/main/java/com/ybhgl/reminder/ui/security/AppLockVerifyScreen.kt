@@ -1,11 +1,10 @@
 package com.ybhgl.reminder.ui.security
 
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Fingerprint
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -13,58 +12,66 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import com.ybhgl.reminder.data.SecurityPreferences
 import com.ybhgl.reminder.ui.common.GestureLock
 import com.ybhgl.reminder.ui.common.GestureLockState
+import com.ybhgl.reminder.util.BiometricHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
 @Composable
 fun AppLockVerifyScreen(
-    onUnlockSuccess: () -> Unit
+    onUnlockSuccess: () -> Unit,
+    onCancel: (() -> Unit)? = null
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     
     var existingPassword by remember { mutableStateOf<String?>(null) }
     var useBiometric by remember { mutableStateOf(false) }
+    var hasPromptedBiometric by remember { mutableStateOf(false) }
     
-    fun triggerBiometric() {
-        val biometricManager = BiometricManager.from(context)
-        if (biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK) == BiometricManager.BIOMETRIC_SUCCESS) {
-            val activity = context as? FragmentActivity
+    LaunchedEffect(Unit) {
+        existingPassword = SecurityPreferences.gesturePasswordFlow(context).first()
+        useBiometric = SecurityPreferences.useBiometricFlow(context).first()
+    }
+
+    fun triggerBiometric(isManual: Boolean = false) {
+        if (!useBiometric) return
+        if (!isManual && hasPromptedBiometric) return
+        
+        if (BiometricHelper.isBiometricAvailable(context)) {
+            val activity = BiometricHelper.findActivity(context)
             if (activity != null) {
-                val executor = ContextCompat.getMainExecutor(context)
-                val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        super.onAuthenticationSucceeded(result)
-                        onUnlockSuccess()
-                    }
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        super.onAuthenticationError(errorCode, errString)
-                        // Fallback to gesture
-                    }
-                })
-                val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("解锁应用")
-                    .setSubtitle("验证身份以继续使用")
-                    .setNegativeButtonText("使用手势密码")
-                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
-                    .build()
-                prompt.authenticate(promptInfo)
+                if (!isManual) {
+                    hasPromptedBiometric = true
+                }
+                BiometricHelper.showBiometricPrompt(
+                    activity = activity,
+                    title = "验证身份",
+                    subtitle = "验证身份以继续操作",
+                    negativeButtonText = "使用手势密码",
+                    onSuccess = { onUnlockSuccess() },
+                    onError = { _, _ -> /* Fallback to gesture */ }
+                )
             }
         }
     }
 
-    LaunchedEffect(Unit) {
-        existingPassword = SecurityPreferences.gesturePasswordFlow(context).first()
-        useBiometric = SecurityPreferences.useBiometricFlow(context).first()
-        
-        if (useBiometric) {
-            triggerBiometric()
+    DisposableEffect(lifecycleOwner, useBiometric) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME && useBiometric) {
+                triggerBiometric()
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
         }
     }
 
@@ -75,13 +82,22 @@ fun AppLockVerifyScreen(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.colorScheme.background
     ) {
-        Column(
-            modifier = Modifier
-                .fillMaxSize()
-                .padding(24.dp),
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center
-        ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            if (onCancel != null) {
+                IconButton(
+                    onClick = onCancel,
+                    modifier = Modifier.align(Alignment.TopStart).padding(top = 48.dp, start = 12.dp)
+                ) {
+                    Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "取消")
+                }
+            }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center
+            ) {
             Icon(
                 imageVector = Icons.Default.Fingerprint,
                 contentDescription = null,
@@ -125,10 +141,11 @@ fun AppLockVerifyScreen(
                 }
             )
             
-            if (useBiometric) {
-                Spacer(modifier = Modifier.height(48.dp))
-                TextButton(onClick = { triggerBiometric() }) {
-                    Text("使用生物识别验证")
+                if (useBiometric) {
+                    Spacer(modifier = Modifier.height(48.dp))
+                    TextButton(onClick = { triggerBiometric(isManual = true) }) {
+                        Text("使用生物识别验证")
+                    }
                 }
             }
         }

@@ -1,7 +1,5 @@
 package com.ybhgl.reminder.ui.security
 
-import androidx.biometric.BiometricManager
-import androidx.biometric.BiometricPrompt
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -10,13 +8,14 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
-import androidx.fragment.app.FragmentActivity
+import androidx.lifecycle.Lifecycle
 import com.ybhgl.reminder.data.SecurityPreferences
 import com.ybhgl.reminder.ui.common.GestureLock
 import com.ybhgl.reminder.ui.common.GestureLockState
+import com.ybhgl.reminder.util.BiometricHelper
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
@@ -29,6 +28,7 @@ fun GestureSetupScreen(
     isModifyMode: Boolean = false
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     val coroutineScope = rememberCoroutineScope()
     
     var existingPassword by remember { mutableStateOf<String?>(null) }
@@ -42,37 +42,27 @@ fun GestureSetupScreen(
     var message by remember { mutableStateOf(if (isModifyMode) "请绘制原手势密码" else "请绘制新手势密码 (至少4个点)") }
 
     fun showBiometricPromptAndComplete() {
-        val biometricManager = BiometricManager.from(context)
-        val canAuthenticate = biometricManager.canAuthenticate(BiometricManager.Authenticators.BIOMETRIC_WEAK)
-        if (canAuthenticate == BiometricManager.BIOMETRIC_SUCCESS) {
-            val activity = context as? FragmentActivity
-            if (activity != null) {
-                val executor = ContextCompat.getMainExecutor(context)
-                val prompt = BiometricPrompt(activity, executor, object : BiometricPrompt.AuthenticationCallback() {
-                    override fun onAuthenticationSucceeded(result: BiometricPrompt.AuthenticationResult) {
-                        super.onAuthenticationSucceeded(result)
+        if (BiometricHelper.isBiometricAvailable(context)) {
+            val activity = BiometricHelper.findActivity(context)
+            if (activity != null && lifecycleOwner.lifecycle.currentState.isAtLeast(Lifecycle.State.RESUMED)) {
+                BiometricHelper.showBiometricPrompt(
+                    activity = activity,
+                    title = "开启生物识别解锁",
+                    subtitle = "使用指纹或面部识别以更快捷地解锁应用",
+                    negativeButtonText = "暂不开启",
+                    onSuccess = {
                         coroutineScope.launch {
                             SecurityPreferences.saveUseBiometric(context, true)
                             onSetupComplete()
                         }
-                    }
-
-                    override fun onAuthenticationError(errorCode: Int, errString: CharSequence) {
-                        super.onAuthenticationError(errorCode, errString)
-                        // If user cancels or fails, we just don't enable biometric
+                    },
+                    onError = { _, _ ->
                         coroutineScope.launch {
                             SecurityPreferences.saveUseBiometric(context, false)
                             onSetupComplete()
                         }
                     }
-                })
-                val promptInfo = BiometricPrompt.PromptInfo.Builder()
-                    .setTitle("开启生物识别解锁")
-                    .setSubtitle("使用指纹或面部识别以更快捷地解锁应用")
-                    .setNegativeButtonText("暂不开启")
-                    .setAllowedAuthenticators(BiometricManager.Authenticators.BIOMETRIC_WEAK)
-                    .build()
-                prompt.authenticate(promptInfo)
+                )
             } else {
                 onSetupComplete()
             }
@@ -164,6 +154,7 @@ fun GestureSetupScreen(
                                 coroutineScope.launch {
                                     SecurityPreferences.saveGesturePassword(context, pathStr)
                                     SecurityPreferences.saveAppLockEnabled(context, true)
+                                    com.ybhgl.reminder.data.AppLockState.isUnlocked.value = true
                                     delay(500)
                                     showBiometricPromptAndComplete()
                                 }
