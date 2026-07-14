@@ -44,8 +44,8 @@ android {
         applicationId = "com.ybhgl.reminder"
         minSdk = 28
         targetSdk = 36
-        versionCode = 270
-        versionName = "2.7.0"
+        versionCode = 280
+        versionName = "2.8.0"
 
         testInstrumentationRunner = "androidx.test.runner.AndroidJUnitRunner"
     }
