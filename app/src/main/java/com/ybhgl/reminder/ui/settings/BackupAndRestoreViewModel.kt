@@ -115,7 +115,8 @@ class BackupAndRestoreViewModel(
             val dynamicColorEnabled = dynamicColorFlow(context).first()
             val themeColorPalette = colorPaletteFlow(context).first()
             val customColorSeed = customColorFlow(context).first()
-
+            val scrollBehavior = scrollBehaviorFlow(context).first()
+    
             val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
             val webDavServer = BackupPreferences.webDavServerFlow(context).first()
             val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()
@@ -139,7 +140,8 @@ class BackupAndRestoreViewModel(
                 webDavPath = webDavPath,
                 dynamicColorEnabled = dynamicColorEnabled,
                 themeColorPalette = themeColorPalette,
-                customColorSeed = customColorSeed
+                customColorSeed = customColorSeed,
+                scrollBehavior = scrollBehavior
             )
 
             val json = Json.encodeToString(backupData)
@@ -219,6 +221,7 @@ class BackupAndRestoreViewModel(
         val dynamicColorEnabled = dynamicColorFlow(context).first()
         val themeColorPalette = colorPaletteFlow(context).first()
         val customColorSeed = customColorFlow(context).first()
+        val scrollBehavior = scrollBehaviorFlow(context).first()
 
         val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
         val webDavServer = BackupPreferences.webDavServerFlow(context).first()
@@ -243,7 +246,8 @@ class BackupAndRestoreViewModel(
             webDavPath = webDavPath,
             dynamicColorEnabled = dynamicColorEnabled,
             themeColorPalette = themeColorPalette,
-            customColorSeed = customColorSeed
+            customColorSeed = customColorSeed,
+            scrollBehavior = scrollBehavior
         )
 
         val json = Json.encodeToString(backupData)
@@ -504,6 +508,7 @@ class BackupAndRestoreViewModel(
             backupData.dynamicColorEnabled?.let { saveDynamicColor(context, it) }
             backupData.themeColorPalette?.let { saveColorPalette(context, it) }
             backupData.customColorSeed?.let { saveCustomColor(context, it) }
+            backupData.scrollBehavior?.let { saveScrollBehavior(context, it) }
 
             // Update last backup to clear warning
             BackupPreferences.saveLastBackupTimestamp(context, System.currentTimeMillis())

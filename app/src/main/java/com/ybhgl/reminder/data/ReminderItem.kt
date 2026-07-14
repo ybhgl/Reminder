@@ -113,5 +113,6 @@ data class BackupData(
     val webDavPath: String? = null,
     val dynamicColorEnabled: Boolean? = null,
     val themeColorPalette: AppColorPalette? = null,
-    val customColorSeed: Int? = null
+    val customColorSeed: Int? = null,
+    val scrollBehavior: String? = null
 )

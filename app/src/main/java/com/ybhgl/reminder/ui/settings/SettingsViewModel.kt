@@ -26,6 +26,8 @@ import com.ybhgl.reminder.data.customColorFlow
 import com.ybhgl.reminder.data.saveCustomColor
 import com.ybhgl.reminder.data.viewModeFlow
 import com.ybhgl.reminder.data.saveViewMode
+import com.ybhgl.reminder.data.scrollBehaviorFlow
+import com.ybhgl.reminder.data.saveScrollBehavior
 import com.ybhgl.reminder.data.BackupPreferences
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -103,6 +105,14 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
         BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
+    fun scrollBehaviorPreferenceFlow(context: Context): Flow<String?> = scrollBehaviorFlow(context)
+
+    suspend fun updateScrollBehaviorPreference(context: Context, behavior: String) {
+        saveScrollBehavior(context, behavior)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
+    }
+
     suspend fun backupToUri(context: Context, targetUri: Uri): String = withContext(Dispatchers.IO) {
         return@withContext try {
             val reminders = reminderRepository.getAllRemindersStream().first()
@@ -118,6 +128,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
             val dynamicColorEnabled = dynamicColorPreferenceFlow(context).first()
             val themeColorPalette = colorPalettePreferenceFlow(context).first()
             val customColorSeed = customColorPreferenceFlow(context).first()
+            val scrollBehavior = scrollBehaviorPreferenceFlow(context).first()
 
             val backupData = BackupData(
                 reminders = reminders,
@@ -128,7 +139,8 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
                 viewMode = viewMode,
                 dynamicColorEnabled = dynamicColorEnabled,
                 themeColorPalette = themeColorPalette,
-                customColorSeed = customColorSeed
+                customColorSeed = customColorSeed,
+                scrollBehavior = scrollBehavior
             )
 
             val json = Json.encodeToString(backupData)
@@ -175,6 +187,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
             backupData.dynamicColorEnabled?.let { updateDynamicColorPreference(context, it) }
             backupData.themeColorPalette?.let { updateColorPalettePreference(context, it) }
             backupData.customColorSeed?.let { updateCustomColorPreference(context, it) }
+            backupData.scrollBehavior?.let { updateScrollBehaviorPreference(context, it) }
 
             "恢复完成，共导入 ${backupData.reminders.size} 条记录"
         } catch (e: Exception) {
