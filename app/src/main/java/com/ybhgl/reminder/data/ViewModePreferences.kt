@@ -14,6 +14,11 @@ import java.io.IOException
 
 private const val DATA_STORE_NAME = "view_mode_preferences"
 private val VIEW_MODE_KEY = stringPreferencesKey("view_mode")
+private val SCROLL_BEHAVIOR_KEY = stringPreferencesKey("scroll_behavior")
+
+enum class ScrollBehaviorMode {
+    NONE, HIDE_TOP_BAR, HIDE_BOTH
+}
 
 private val Context.viewModeDataStore: DataStore<Preferences> by preferencesDataStore(
     name = DATA_STORE_NAME
@@ -33,5 +38,22 @@ fun viewModeFlow(context: Context): Flow<String?> =
 suspend fun saveViewMode(context: Context, mode: String) {
     context.viewModeDataStore.edit { preferences ->
         preferences[VIEW_MODE_KEY] = mode
+    }
+}
+
+fun scrollBehaviorFlow(context: Context): Flow<String?> =
+    context.viewModeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences -> preferences[SCROLL_BEHAVIOR_KEY] }
+
+suspend fun saveScrollBehavior(context: Context, behavior: String) {
+    context.viewModeDataStore.edit { preferences ->
+        preferences[SCROLL_BEHAVIOR_KEY] = behavior
     }
 }

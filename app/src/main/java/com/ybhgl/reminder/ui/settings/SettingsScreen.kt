@@ -134,6 +134,12 @@ import androidx.compose.material.icons.outlined.Edit
 import androidx.compose.material.icons.outlined.Lock as OutlinedLock
 import androidx.compose.material.icons.outlined.AppBlocking as OutlinedAppBlocking
 import com.ybhgl.reminder.data.SecurityPreferences
+import com.ybhgl.reminder.data.ScrollBehaviorMode
+import androidx.compose.material.icons.filled.SwapVert
+import androidx.compose.material3.RadioButton
+import androidx.compose.material3.RadioButtonDefaults
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.AlertDialog
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -164,6 +170,12 @@ fun SettingsScreen(
     val customColorSeedInt by customColorPreferenceFlow.collectAsState(initial = 0xFF6650A4.toInt())
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
+    val scrollBehaviorFlow = remember(context) { viewModel.scrollBehaviorPreferenceFlow(context) }
+    val scrollBehaviorStr by scrollBehaviorFlow.collectAsState(initial = ScrollBehaviorMode.HIDE_TOP_BAR.name)
+    val currentScrollBehavior = remember(scrollBehaviorStr) {
+        runCatching { ScrollBehaviorMode.valueOf(scrollBehaviorStr ?: ScrollBehaviorMode.HIDE_TOP_BAR.name) }
+            .getOrDefault(ScrollBehaviorMode.HIDE_TOP_BAR)
+    }
     val isAppLockEnabled by remember(context) { SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = false)
     val isScreenshotBlocked by remember(context) { SecurityPreferences.screenshotBlockedFlow(context) }.collectAsState(initial = false)
     val scrollState = rememberScrollState()
@@ -353,16 +365,22 @@ fun SettingsScreen(
                         }
                     }
                 )
-                 DefaultPageSelectionCard(
+                 HomePageSettingsCard(
                     selectedPage = selectedDefaultPage,
                     onPageSelected = { page ->
                         coroutineScope.launch {
                             viewModel.updateDefaultPage(context, page)
                         }
+                    },
+                    currentScrollBehavior = currentScrollBehavior,
+                    onScrollBehaviorSelected = { behavior ->
+                        coroutineScope.launch {
+                            viewModel.updateScrollBehaviorPreference(context, behavior.name)
+                        }
                     }
                 )
                 Text(
-                    text = "数据管理",
+                    text = "数据",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider()
@@ -388,7 +406,7 @@ fun SettingsScreen(
                     onConfigureClick = { widget -> configuringWidget = widget }
                 )
                 Text(
-                    text = "应用安全",
+                    text = "安全",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
@@ -560,6 +578,12 @@ private fun ThemeSelectionCard(
             modifier = Modifier.padding(horizontal=16.dp, vertical=12.dp),
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
+            Text(
+                text = "主题",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 8.dp)
+            )
             ThemeModeSegmentedControl(
                 options = listOf(AppThemeOption.SYSTEM, AppThemeOption.LIGHT, AppThemeOption.DARK),
                 selectedOption = selectedOption,
@@ -697,10 +721,58 @@ private fun ColorPaletteItem(
 }
 
 @Composable
-private fun DefaultPageSelectionCard(
+private fun HomePageSettingsCard(
     selectedPage: AppDefaultPage,
-    onPageSelected: (AppDefaultPage) -> Unit
+    onPageSelected: (AppDefaultPage) -> Unit,
+    currentScrollBehavior: ScrollBehaviorMode,
+    onScrollBehaviorSelected: (ScrollBehaviorMode) -> Unit
 ) {
+    var showScrollBehaviorDialog by rememberSaveable { mutableStateOf(false) }
+
+    if (showScrollBehaviorDialog) {
+        AlertDialog(
+            onDismissRequest = { showScrollBehaviorDialog = false },
+            title = { Text("首页滑动模式") },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    val options = listOf(
+                        ScrollBehaviorMode.NONE to "不隐藏",
+                        ScrollBehaviorMode.HIDE_TOP_BAR to "隐藏标题栏",
+                        ScrollBehaviorMode.HIDE_BOTH to "隐藏标题和底栏"
+                    )
+                    options.forEach { (mode, label) ->
+                        Row(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable {
+                                    onScrollBehaviorSelected(mode)
+                                    showScrollBehaviorDialog = false
+                                }
+                                .padding(vertical = 12.dp, horizontal = 8.dp),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            RadioButton(
+                                selected = (mode == currentScrollBehavior),
+                                onClick = null,
+                                colors = RadioButtonDefaults.colors(
+                                    selectedColor = MaterialTheme.colorScheme.primary
+                                )
+                            )
+                            Spacer(modifier = Modifier.width(16.dp))
+                            Text(text = label, style = MaterialTheme.typography.bodyLarge)
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showScrollBehaviorDialog = false }) {
+                    Text("关闭")
+                }
+            }
+        )
+    }
+
     Card(
         modifier = Modifier.fillMaxWidth(),
         colors = CardDefaults.cardColors(
@@ -709,24 +781,67 @@ private fun DefaultPageSelectionCard(
     ) {
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
             Text(
-                text = "默认起始页面",
-                style = MaterialTheme.typography.bodyLarge,
+                text = "首页",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface
             )
-            Text(
-                text = "选择启动应用后默认显示的页面",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            DefaultPageSegmentedControl(
-                options = listOf(AppDefaultPage.COUNTDOWN, AppDefaultPage.COUNTUP, AppDefaultPage.BIRTHDAY),
-                selectedOption = selectedPage,
-                onOptionSelected = onPageSelected
-            )
+
+            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                Text(
+                    text = "默认起始页面",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "选择启动应用后默认显示的页面",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                DefaultPageSegmentedControl(
+                    options = listOf(AppDefaultPage.COUNTDOWN, AppDefaultPage.COUNTUP, AppDefaultPage.BIRTHDAY),
+                    selectedOption = selectedPage,
+                    onOptionSelected = onPageSelected
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { showScrollBehaviorDialog = true }
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "首页滑动模式",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "控制滑动时标题栏和底栏的显示行为",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.size(20.dp)
+                )
+            }
         }
     }
 }
@@ -926,13 +1041,7 @@ private fun SettingsSwitchRow(
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = { onCheckedChange(!checked) }
-            ),
+        modifier = Modifier.fillMaxWidth(),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -1097,12 +1206,6 @@ private fun WidgetManagementCard(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
                             ) {
-                                Text(
-                                    text = "配置",
-                                    style = MaterialTheme.typography.labelLarge,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    fontWeight = FontWeight.Medium
-                                )
                                 Icon(
                                     imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
                                     contentDescription = null,

@@ -1252,17 +1252,41 @@ fun ReminderListScreen(
     
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
+    var bottomBarHeightPx by remember { mutableStateOf(0f) }
+    var bottomBarOffsetPx by rememberSaveable { mutableStateOf(0f) }
 
-    val customNestedScrollConnection = remember(topBarHeightPx, isSearchActive) {
+    val scrollBehaviorStr by remember(context) { com.ybhgl.reminder.data.scrollBehaviorFlow(context) }.collectAsState(initial = com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_TOP_BAR.name)
+    val currentScrollBehavior = remember(scrollBehaviorStr) {
+        runCatching { com.ybhgl.reminder.data.ScrollBehaviorMode.valueOf(scrollBehaviorStr ?: "HIDE_TOP_BAR") }
+            .getOrDefault(com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_TOP_BAR)
+    }
+
+    val customNestedScrollConnection = remember(topBarHeightPx, bottomBarHeightPx, currentScrollBehavior, isSearchActive) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.NONE) {
+                    return Offset.Zero
+                }
+
                 if (!isSearchActive && topBarHeightPx > 0f) {
                     val delta = available.y
-                    val oldOffset = titleOffsetPx
-                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
-                    val consumed = newOffset - oldOffset
-                    titleOffsetPx = newOffset
-                    return Offset(0f, consumed)
+                    
+                    val oldTopOffset = titleOffsetPx
+                    val newTopOffset = (oldTopOffset + delta).coerceIn(-topBarHeightPx, 0f)
+                    val consumedTop = newTopOffset - oldTopOffset
+                    titleOffsetPx = newTopOffset
+
+                    if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_BOTH && bottomBarHeightPx > 0f) {
+                        val maxBottomOffset = bottomBarHeightPx
+                        val oldBottomOffset = bottomBarOffsetPx
+                        // 向下滑动时 delta < 0，所以 -delta 为正，bottomBarOffsetPx 增大，导致底栏向下移出
+                        val newBottomOffset = (oldBottomOffset - delta).coerceIn(0f, maxBottomOffset)
+                        bottomBarOffsetPx = newBottomOffset
+                    } else {
+                        bottomBarOffsetPx = 0f
+                    }
+
+                    return Offset(0f, consumedTop)
                 }
                 return Offset.Zero
             }
@@ -1616,6 +1640,10 @@ fun ReminderListScreen(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
+                    .onSizeChanged {
+                        bottomBarHeightPx = it.height.toFloat()
+                    }
+                    .graphicsLayer { translationY = bottomBarOffsetPx }
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
             ) {
