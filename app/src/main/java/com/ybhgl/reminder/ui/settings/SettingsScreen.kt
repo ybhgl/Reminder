@@ -369,11 +369,15 @@ fun SettingsScreen(
                 SettingsActionItem(
                     title = "标签管理",
                     description = "管理、自定义颜色与排序您的分类标签",
-                    icon = Icons.AutoMirrored.Filled.Label,
-                    enabled = true
-                ) {
-                    onNavigateToTagManagement()
-                }
+                    icon = { Icon(Icons.AutoMirrored.Filled.Label, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    onClick = onNavigateToTagManagement
+                )
+                SettingsActionItem(
+                    title = "备份与恢复",
+                    description = "管理本地及 WebDAV 备份与恢复",
+                    icon = { Icon(Icons.Filled.Storage, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    onClick = onNavigateToBackupAndRestore
+                )
                 Text(
                     text = "桌面小部件",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
@@ -384,41 +388,68 @@ fun SettingsScreen(
                     onConfigureClick = { widget -> configuringWidget = widget }
                 )
                 Text(
-                    text = "备份与恢复",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                )
-                HorizontalDivider()
-                SettingsActionItem(
-                    title = "备份与恢复",
-                    description = "管理本地及 WebDAV 备份与恢复",
-                    icon = Icons.Filled.Storage,
-                    enabled = true
-                ) {
-                    onNavigateToBackupAndRestore()
-                }
-
-                Text(
                     text = "应用安全",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
-                AppLockCard(
-                    isAppLockEnabled = isAppLockEnabled,
-                    onAppLockToggle = { enabled ->
-                        if (enabled) {
-                            onNavigateToGestureSetup()
-                        } else {
-                            showDisableVerify = true
-                        }
+                SettingsActionItem(
+                    title = "应用锁",
+                    description = "开启后启动或唤醒应用需验证",
+                    icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    trailingContent = {
+                        Switch(
+                            checked = isAppLockEnabled,
+                            onCheckedChange = { enabled ->
+                                if (enabled) onNavigateToGestureSetup() else showDisableVerify = true
+                            },
+                            colors = defaultSwitchColors()
+                        )
                     },
-                    onModifyGesture = onNavigateToGestureModify
-                )
-                ScreenshotBlockCard(
-                    isScreenshotBlocked = isScreenshotBlocked,
-                    onScreenshotBlockedToggle = { enabled ->
-                        coroutineScope.launch {
-                            SecurityPreferences.saveScreenshotBlocked(context, enabled)
+                    bottomContent = {
+                        AnimatedVisibility(
+                            visible = isAppLockEnabled,
+                            enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                            exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable(onClick = onNavigateToGestureModify)
+                                    .padding(horizontal = 16.dp, vertical = 12.dp)
+                                    .padding(start = 56.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Text(
+                                    text = "修改手势密码",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurface,
+                                    modifier = Modifier.weight(1f)
+                                )
+                                Icon(
+                                    imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.size(20.dp)
+                                )
+                            }
                         }
+                    }
+                )
+                SettingsActionItem(
+                    title = "禁止截图",
+                    description = "阻止系统截图与录屏",
+                    icon = { Icon(Icons.Default.AppBlocking, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    trailingContent = {
+                        Switch(
+                            checked = isScreenshotBlocked,
+                            onCheckedChange = { enabled ->
+                                coroutineScope.launch {
+                                    SecurityPreferences.saveScreenshotBlocked(context, enabled)
+                                }
+                            },
+                            colors = defaultSwitchColors()
+                        )
                     }
                 )
                 
@@ -427,27 +458,26 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider()
-                AppInfoCard(
-                    modifier = Modifier.fillMaxWidth()
+                SettingsActionItem(
+                    title = stringResource(id = R.string.app_name),
+                    description = "版本 ${BuildConfig.VERSION_NAME}",
+                    icon = { Icon(painterResource(id = R.drawable.ic_app_logo), null, tint = Color.Unspecified, modifier = Modifier.size(24.dp)) }
                 )
                 SettingsActionItem(
                     title = "ybhgl/Reminder",
                     description = "在 GitHub 查看项目源码",
-                    icon = ImageVector.vectorResource(id = R.drawable.ic_github),
-                    enabled = true
-                ) {
-                    val intent = Intent(Intent.ACTION_VIEW,
-                        "https://github.com/ybhgl/Reminder".toUri())
-                    context.startActivity(intent)
-                }
+                    icon = { Icon(ImageVector.vectorResource(id = R.drawable.ic_github), null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    onClick = {
+                        val intent = Intent(Intent.ACTION_VIEW, "https://github.com/ybhgl/Reminder".toUri())
+                        context.startActivity(intent)
+                    }
+                )
             }
 
-            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
             StatusBarScrim(
                 modifier = Modifier.align(Alignment.TopCenter)
             )
 
-            // 标题栏 (Top Bar)
             val topAppBarColors = TopAppBarDefaults.topAppBarColors(
                 containerColor = Color.Transparent,
                 scrolledContainerColor = Color.Transparent,
@@ -494,222 +524,6 @@ fun SettingsScreen(
     }
 }
 
-@Composable
-private fun AppLockCard(
-    isAppLockEnabled: Boolean,
-    onAppLockToggle: (Boolean) -> Unit,
-    onModifyGesture: () -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(vertical = 8.dp)
-        ) {
-            Row(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .clickable { onAppLockToggle(!isAppLockEnabled) }
-                    .padding(horizontal = 16.dp, vertical = 8.dp),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                Box(
-                    modifier = Modifier
-                        .size(40.dp)
-                        .background(
-                            color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                            shape = RoundedCornerShape(8.dp)
-                        ),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Lock,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-                Column(
-                    modifier = Modifier.weight(1f),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "应用锁",
-                        style = MaterialTheme.typography.bodyLarge,
-                        fontWeight = FontWeight.Bold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "开启后启动或唤醒应用需验证",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-                Switch(
-                    checked = isAppLockEnabled,
-                    onCheckedChange = { onAppLockToggle(it) },
-                    colors = SwitchDefaults.colors(
-                        checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                        checkedTrackColor = MaterialTheme.colorScheme.primary,
-                        uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
-                        uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                    )
-                )
-            }
-            
-            AnimatedVisibility(
-                visible = isAppLockEnabled,
-                enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-                exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
-            ) {
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { onModifyGesture() }
-                        .padding(horizontal = 16.dp, vertical = 12.dp)
-                        .padding(start = 56.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.spacedBy(16.dp)
-                ) {
-                    Text(
-                        text = "修改手势密码",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurface,
-                        modifier = Modifier.weight(1f)
-                    )
-                    Icon(
-                        imageVector = Icons.AutoMirrored.Rounded.KeyboardArrowRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.size(20.dp)
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-private fun ScreenshotBlockCard(
-    isScreenshotBlocked: Boolean,
-    onScreenshotBlockedToggle: (Boolean) -> Unit
-) {
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onScreenshotBlockedToggle(!isScreenshotBlocked) }
-                .padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(8.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    imageVector = Icons.Default.AppBlocking,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp)
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = "禁止截图",
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "阻止系统截图与录屏",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = isScreenshotBlocked,
-                onCheckedChange = { onScreenshotBlockedToggle(it) },
-                colors = SwitchDefaults.colors(
-                    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                    checkedTrackColor = MaterialTheme.colorScheme.primary,
-                    uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
-                    uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-                )
-            )
-        }
-    }
-}
-
-@Composable
-private fun AppInfoCard(
-    modifier: Modifier = Modifier
-) {
-    val appName = stringResource(id = R.string.app_name)
-    val versionName = BuildConfig.VERSION_NAME
-    Card(
-        modifier = modifier,
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(8.dp)
-                    ),
-                contentAlignment = Alignment.Center
-            ) {
-                Icon(
-                    painter = painterResource(id = R.drawable.ic_app_logo),
-                    contentDescription = appName,
-                    tint = Color.Unspecified,
-                    modifier = Modifier.size(24.dp)
-                )
-            }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = appName,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = "版本 $versionName",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-    }
-}
 
 @Composable
 private fun ThemeSelectionCard(
@@ -752,17 +566,23 @@ private fun ThemeSelectionCard(
                 onOptionSelected = onOptionSelected
             )
             Spacer(modifier = Modifier.height(4.dp))
-            PureBlackModeRow(
+            SettingsSwitchRow(
+                title = "纯黑模式",
+                description = "深色模式下对 AMOLED 屏幕更省电",
                 checked = usePureBlack,
                 onCheckedChange = onPureBlackToggle
             )
             Spacer(modifier = Modifier.height(8.dp))
-            CardColoringModeRow(
+            SettingsSwitchRow(
+                title = "卡片着色",
+                description = "基于主题色对卡片进行着色",
                 checked = useCardColoring,
                 onCheckedChange = onCardColoringToggle
             )
             Spacer(modifier = Modifier.height(8.dp))
-            DynamicColorModeRow(
+            SettingsSwitchRow(
+                title = "动态取色",
+                description = "从系统壁纸动态提取主题色",
                 checked = dynamicColorEnabled,
                 onCheckedChange = onDynamicColorToggle
             )
@@ -814,49 +634,6 @@ private fun ThemeSelectionCard(
     }
 }
 
-@Composable
-private fun DynamicColorModeRow(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .clickable(
-                interactionSource = remember { MutableInteractionSource() },
-                indication = null,
-                onClick = { onCheckedChange(!checked) }
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = "动态取色",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "从系统壁纸动态提取主题色",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = onCheckedChange,
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
-                uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-            )
-        )
-    }
-}
 
 @Composable
 private fun ColorPaletteItem(
@@ -1134,50 +911,28 @@ private fun ThemeModeSegmentedControl(
 }
 
 @Composable
-private fun PureBlackModeRow(
-    checked: Boolean,
-    onCheckedChange: (Boolean) -> Unit
-) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(16.dp)
-    ) {
-        Column(
-            modifier = Modifier.weight(1f),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
-        ) {
-            Text(
-                text = "纯黑模式",
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = "深色模式下对 AMOLED 屏幕更省电",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        Switch(
-            checked = checked,
-            onCheckedChange = { onCheckedChange(it) },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
-                uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-            )
-        )
-    }
-}
+private fun defaultSwitchColors() = SwitchDefaults.colors(
+    checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+    checkedTrackColor = MaterialTheme.colorScheme.primary,
+    uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
+    uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+)
 
 @Composable
-private fun CardColoringModeRow(
+private fun SettingsSwitchRow(
+    title: String,
+    description: String,
     checked: Boolean,
     onCheckedChange: (Boolean) -> Unit
 ) {
     Row(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = Modifier
+            .fillMaxWidth()
+            .clickable(
+                interactionSource = remember { MutableInteractionSource() },
+                indication = null,
+                onClick = { onCheckedChange(!checked) }
+            ),
         verticalAlignment = Alignment.CenterVertically,
         horizontalArrangement = Arrangement.spacedBy(16.dp)
     ) {
@@ -1186,25 +941,20 @@ private fun CardColoringModeRow(
             verticalArrangement = Arrangement.spacedBy(4.dp)
         ) {
             Text(
-                text = "卡片着色",
+                text = title,
                 style = MaterialTheme.typography.bodyLarge,
                 color = MaterialTheme.colorScheme.onSurface
             )
             Text(
-                text = "基于主题色对卡片进行着色",
+                text = description,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Switch(
             checked = checked,
-            onCheckedChange = { onCheckedChange(it) },
-            colors = SwitchDefaults.colors(
-                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
-                checkedTrackColor = MaterialTheme.colorScheme.primary,
-                uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
-                uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
-            )
+            onCheckedChange = onCheckedChange,
+            colors = defaultSwitchColors()
         )
     }
 }
@@ -1213,55 +963,78 @@ private fun CardColoringModeRow(
 private fun SettingsActionItem(
     title: String,
     description: String,
-    icon: ImageVector,
-    enabled: Boolean,
-    onClick: () -> Unit
+    icon: @Composable (() -> Unit)? = null,
+    enabled: Boolean = true,
+    onClick: (() -> Unit)? = null,
+    trailingContent: @Composable (() -> Unit)? = null,
+    bottomContent: @Composable (() -> Unit)? = null,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
 ) {
-    Card(
-        onClick = onClick,
-        enabled = enabled,
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
-        )
-    ) {
-        Row(
-            modifier = Modifier
-                .padding(16.dp),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(16.dp)
-        ) {
-            Box(
+    val cardModifier = Modifier.fillMaxWidth()
+    val cardColors = CardDefaults.cardColors(containerColor = containerColor)
+    
+    val content = @Composable {
+        Column {
+            Row(
                 modifier = Modifier
-                    .size(40.dp)
-                    .background(
-                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                        shape = RoundedCornerShape(8.dp)
-                    ),
-                contentAlignment = Alignment.Center
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Icon(
-                    imageVector = icon,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(22.dp)
-                )
+                if (icon != null) {
+                    Box(
+                        modifier = Modifier
+                            .size(40.dp)
+                            .background(
+                                color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                shape = RoundedCornerShape(8.dp)
+                            ),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        icon()
+                    }
+                }
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.bodyLarge,
+                        fontWeight = FontWeight.Medium
+                    )
+                    Text(
+                        text = description,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                if (trailingContent != null) {
+                    trailingContent()
+                }
             }
-            Column(
-                modifier = Modifier.weight(1f),
-                verticalArrangement = Arrangement.spacedBy(4.dp)
-            ) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.Medium
-                )
-                Text(
-                    text = description,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            if (bottomContent != null) {
+                bottomContent()
             }
+        }
+    }
+
+    if (onClick != null) {
+        Card(
+            onClick = onClick,
+            enabled = enabled,
+            modifier = cardModifier,
+            colors = cardColors
+        ) {
+            content()
+        }
+    } else {
+        Card(
+            modifier = cardModifier,
+            colors = cardColors
+        ) {
+            content()
         }
     }
 }
@@ -1309,57 +1082,17 @@ private fun WidgetManagementCard(
                 )
             } else {
                 activeWidgets.forEach { widget ->
-                    Card(
-                        onClick = { onConfigureClick(widget) },
-                        colors = CardDefaults.cardColors(
-                            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp)
-                        ),
-                        modifier = Modifier.fillMaxWidth()
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(12.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            val widgetIcon = when {
-                                widget.providerClassName.contains("ReminderWidget1x2") -> Icons.Filled.CropLandscape
-                                widget.providerClassName.contains("ReminderWidget2x2") -> Icons.Filled.Event
-                                widget.providerClassName.contains("ReminderWidget4x2") -> Icons.AutoMirrored.Filled.ViewList
-                                else -> Icons.Default.Widgets
-                            }
-                            Box(
-                                modifier = Modifier
-                                    .size(40.dp)
-                                    .background(
-                                        color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
-                                        shape = RoundedCornerShape(8.dp)
-                                    ),
-                                contentAlignment = Alignment.Center
-                            ) {
-                                Icon(
-                                    imageVector = widgetIcon,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.primary,
-                                    modifier = Modifier.size(22.dp)
-                                )
-                            }
-                            Spacer(modifier = Modifier.width(12.dp))
-                            Column(
-                                modifier = Modifier.weight(1f)
-                            ) {
-                                Text(
-                                    text = widget.name,
-                                    style = MaterialTheme.typography.bodyLarge,
-                                    fontWeight = FontWeight.SemiBold
-                                )
-                                Spacer(modifier = Modifier.height(2.dp))
-                                Text(
-                                    text = "ID: #${widget.id}",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
+                    val widgetIcon = when {
+                        widget.providerClassName.contains("ReminderWidget1x2") -> Icons.Filled.CropLandscape
+                        widget.providerClassName.contains("ReminderWidget2x2") -> Icons.Filled.Event
+                        widget.providerClassName.contains("ReminderWidget4x2") -> Icons.AutoMirrored.Filled.ViewList
+                        else -> Icons.Default.Widgets
+                    }
+                    SettingsActionItem(
+                        title = widget.name,
+                        description = "ID: #${widget.id}",
+                        icon = { Icon(widgetIcon, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                        trailingContent = {
                             Row(
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.spacedBy(2.dp)
@@ -1377,8 +1110,10 @@ private fun WidgetManagementCard(
                                     modifier = Modifier.size(16.dp)
                                 )
                             }
-                        }
-                    }
+                        },
+                        onClick = { onConfigureClick(widget) },
+                        containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(6.dp)
+                    )
                 }
             }
         }
