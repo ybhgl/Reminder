@@ -77,11 +77,11 @@ fun GestureLock(
             .pointerInput(Unit) {
                 awaitEachGesture {
                     val down = awaitFirstDown()
-                    if (state != GestureLockState.NORMAL) {
-                        selectedNodes = emptyList()
-                        currentDragPosition = null
-                        onPathStart()
-                    }
+                    // Clear state unconditionally when user touches again to start a new pattern
+                    selectedNodes = emptyList()
+                    currentDragPosition = null
+                    onPathStart()
+
                     var isDrawing = true
                     var lastPosition = down.position
                     
