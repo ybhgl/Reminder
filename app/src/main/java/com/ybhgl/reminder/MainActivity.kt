@@ -21,6 +21,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Spring
@@ -1261,27 +1262,63 @@ fun ReminderListScreen(
             .getOrDefault(com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_TOP_BAR)
     }
 
-    val customNestedScrollConnection = remember(topBarHeightPx, bottomBarHeightPx, currentScrollBehavior, isSearchActive) {
+    val isSelectionMode = reminderListUiState.isSelectionMode
+    val selectedIds = reminderListUiState.selectedIds
+
+    LaunchedEffect(isSelectionMode) {
+        if (isSelectionMode) {
+            launch {
+                animate(
+                    initialValue = titleOffsetPx,
+                    targetValue = 0f,
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                ) { value, _ ->
+                    titleOffsetPx = value
+                }
+            }
+            launch {
+                animate(
+                    initialValue = bottomBarOffsetPx,
+                    targetValue = 0f,
+                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+                ) { value, _ ->
+                    bottomBarOffsetPx = value
+                }
+            }
+        }
+    }
+
+    val customNestedScrollConnection = remember(topBarHeightPx, bottomBarHeightPx, currentScrollBehavior, isSearchActive, isSelectionMode) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.NONE) {
+                if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.NONE || isSelectionMode) {
                     return Offset.Zero
                 }
 
-                if (!isSearchActive && topBarHeightPx > 0f) {
+                if (!isSearchActive) {
                     val delta = available.y
+                    var consumedTop = 0f
                     
-                    val oldTopOffset = titleOffsetPx
-                    val newTopOffset = (oldTopOffset + delta).coerceIn(-topBarHeightPx, 0f)
-                    val consumedTop = newTopOffset - oldTopOffset
-                    titleOffsetPx = newTopOffset
+                    if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_TOP_BAR || 
+                        currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_BOTH) {
+                        if (topBarHeightPx > 0f) {
+                            val oldTopOffset = titleOffsetPx
+                            val newTopOffset = (oldTopOffset + delta).coerceIn(-topBarHeightPx, 0f)
+                            consumedTop = newTopOffset - oldTopOffset
+                            titleOffsetPx = newTopOffset
+                        }
+                    } else {
+                        titleOffsetPx = 0f
+                    }
 
-                    if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_BOTH && bottomBarHeightPx > 0f) {
-                        val maxBottomOffset = bottomBarHeightPx
-                        val oldBottomOffset = bottomBarOffsetPx
-                        // 向下滑动时 delta < 0，所以 -delta 为正，bottomBarOffsetPx 增大，导致底栏向下移出
-                        val newBottomOffset = (oldBottomOffset - delta).coerceIn(0f, maxBottomOffset)
-                        bottomBarOffsetPx = newBottomOffset
+                    if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_BOTTOM_BAR || 
+                        currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_BOTH) {
+                        if (bottomBarHeightPx > 0f) {
+                            val maxBottomOffset = bottomBarHeightPx
+                            val oldBottomOffset = bottomBarOffsetPx
+                            val newBottomOffset = (oldBottomOffset - delta).coerceIn(0f, maxBottomOffset)
+                            bottomBarOffsetPx = newBottomOffset
+                        }
                     } else {
                         bottomBarOffsetPx = 0f
                     }
@@ -1292,9 +1329,6 @@ fun ReminderListScreen(
             }
         }
     }
-
-    val isSelectionMode = reminderListUiState.isSelectionMode
-    val selectedIds = reminderListUiState.selectedIds
 
     BackHandler(enabled = isSelectionMode) {
         viewModel.exitSelectionMode()
