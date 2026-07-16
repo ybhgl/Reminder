@@ -738,6 +738,7 @@ private fun HomePageSettingsCard(
                     val options = listOf(
                         ScrollBehaviorMode.NONE to "不隐藏",
                         ScrollBehaviorMode.HIDE_TOP_BAR to "隐藏标题栏",
+                        ScrollBehaviorMode.HIDE_BOTTOM_BAR to "隐藏底栏",
                         ScrollBehaviorMode.HIDE_BOTH to "隐藏标题和底栏"
                     )
                     options.forEach { (mode, label) ->

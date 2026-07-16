@@ -17,7 +17,7 @@ private val VIEW_MODE_KEY = stringPreferencesKey("view_mode")
 private val SCROLL_BEHAVIOR_KEY = stringPreferencesKey("scroll_behavior")
 
 enum class ScrollBehaviorMode {
-    NONE, HIDE_TOP_BAR, HIDE_BOTH
+    NONE, HIDE_TOP_BAR, HIDE_BOTTOM_BAR, HIDE_BOTH
 }
 
 private val Context.viewModeDataStore: DataStore<Preferences> by preferencesDataStore(
