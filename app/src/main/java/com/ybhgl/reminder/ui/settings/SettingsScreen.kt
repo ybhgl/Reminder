@@ -78,7 +78,6 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.Spring
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -102,11 +101,6 @@ import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.data.AppColorPalette
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
@@ -152,6 +146,7 @@ import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.ui.unit.sp
 import com.ybhgl.reminder.ui.common.CustomToast
+import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.util.ReleaseInfo
 import com.ybhgl.reminder.util.UpdateCheckResult
 import com.ybhgl.reminder.util.UpdateManager
@@ -178,7 +173,7 @@ fun SettingsScreen(
     val cardColoringPreferenceFlow = remember(context) { viewModel.cardColoringPreferenceFlow(context) }
     val useCardColoring by cardColoringPreferenceFlow.collectAsState(initial = true)
     val dynamicColorPreferenceFlow = remember(context) { viewModel.dynamicColorPreferenceFlow(context) }
-    val dynamicColorEnabled by dynamicColorPreferenceFlow.collectAsState(initial = true)
+    val dynamicColorEnabled by dynamicColorPreferenceFlow.collectAsState(initial = null)
     val colorPalettePreferenceFlow = remember(context) { viewModel.colorPalettePreferenceFlow(context) }
     val themeColorPalette by colorPalettePreferenceFlow.collectAsState(initial = AppColorPalette.PURPLE)
     val customColorPreferenceFlow = remember(context) { viewModel.customColorPreferenceFlow(context) }
@@ -186,14 +181,14 @@ fun SettingsScreen(
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val homeCategoryPreferenceFlow = remember(context) { viewModel.homeCategoryPreferenceFlow(context) }
-    val homeCategoryEnabled by homeCategoryPreferenceFlow.collectAsState(initial = true)
+    val homeCategoryEnabled by homeCategoryPreferenceFlow.collectAsState(initial = null)
     val scrollBehaviorFlow = remember(context) { viewModel.scrollBehaviorPreferenceFlow(context) }
     val scrollBehaviorStr by scrollBehaviorFlow.collectAsState(initial = ScrollBehaviorMode.HIDE_TOP_BAR.name)
     val currentScrollBehavior = remember(scrollBehaviorStr) {
         runCatching { ScrollBehaviorMode.valueOf(scrollBehaviorStr ?: ScrollBehaviorMode.HIDE_TOP_BAR.name) }
             .getOrDefault(ScrollBehaviorMode.HIDE_TOP_BAR)
     }
-    val isAppLockEnabled by remember(context) { SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = false)
+    val isAppLockEnabled by remember(context) { SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = null)
     val isScreenshotBlocked by remember(context) { SecurityPreferences.screenshotBlockedFlow(context) }.collectAsState(initial = false)
     val scrollState = rememberScrollState()
     
@@ -443,7 +438,7 @@ fun SettingsScreen(
                     icon = { Icon(Icons.Default.Lock, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
                     trailingContent = {
                         Switch(
-                            checked = isAppLockEnabled,
+                            checked = isAppLockEnabled ?: false,
                             onCheckedChange = { enabled ->
                                 if (enabled) onNavigateToGestureSetup() else showDisableVerify = true
                             },
@@ -451,11 +446,7 @@ fun SettingsScreen(
                         )
                     },
                     bottomContent = {
-                        AnimatedVisibility(
-                            visible = isAppLockEnabled,
-                            enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-                            exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
-                        ) {
+                        SettingsLinkedVisibility(visible = isAppLockEnabled) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -838,7 +829,7 @@ private fun ThemeSelectionCard(
     selectedOption: AppThemeOption,
     usePureBlack: Boolean,
     useCardColoring: Boolean,
-    dynamicColorEnabled: Boolean,
+    dynamicColorEnabled: Boolean?,
     themeColorPalette: AppColorPalette,
     customColorSeedInt: Int,
     onOptionSelected: (AppThemeOption) -> Unit,
@@ -865,49 +856,46 @@ private fun ThemeSelectionCard(
         )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal=16.dp, vertical=12.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            modifier = Modifier.padding(horizontal=16.dp, vertical=12.dp)
         ) {
             Text(
                 text = "主题",
                 style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
                 color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 8.dp)
+                modifier = Modifier.padding(bottom = 12.dp)
             )
             ThemeModeSegmentedControl(
                 options = listOf(AppThemeOption.SYSTEM, AppThemeOption.LIGHT, AppThemeOption.DARK),
                 selectedOption = selectedOption,
                 onOptionSelected = onOptionSelected
             )
-            Spacer(modifier = Modifier.height(4.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             SettingsSwitchRow(
                 title = "纯黑模式",
                 description = "深色模式下对 AMOLED 屏幕更省电",
                 checked = usePureBlack,
                 onCheckedChange = onPureBlackToggle
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             SettingsSwitchRow(
                 title = "卡片着色",
                 description = "基于主题色对卡片进行着色",
                 checked = useCardColoring,
                 onCheckedChange = onCardColoringToggle
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(16.dp))
             SettingsSwitchRow(
                 title = "动态取色",
                 description = "从系统壁纸动态提取主题色",
-                checked = dynamicColorEnabled,
+                checked = dynamicColorEnabled ?: true,
                 onCheckedChange = onDynamicColorToggle
             )
             
-            AnimatedVisibility(
-                visible = !dynamicColorEnabled || Build.VERSION.SDK_INT < Build.VERSION_CODES.S,
-                enter = expandVertically() + fadeIn(),
-                exit = shrinkVertically() + fadeOut()
+            SettingsLinkedVisibility(
+                visible = dynamicColorEnabled?.let { !it || Build.VERSION.SDK_INT < Build.VERSION_CODES.S }
             ) {
                 Column(
-                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                    modifier = Modifier.fillMaxWidth().padding(top = 12.dp),
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
@@ -1012,7 +1000,7 @@ private fun ColorPaletteItem(
 
 @Composable
 private fun HomePageSettingsCard(
-    homeCategoryEnabled: Boolean,
+    homeCategoryEnabled: Boolean?,
     onHomeCategoryChanged: (Boolean) -> Unit,
     selectedPage: AppDefaultPage,
     onPageSelected: (AppDefaultPage) -> Unit,
@@ -1073,8 +1061,7 @@ private fun HomePageSettingsCard(
         )
     ) {
         Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
             Text(
                 text = "首页",
@@ -1085,10 +1072,11 @@ private fun HomePageSettingsCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(top = 16.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
-                        onClick = { onHomeCategoryChanged(!homeCategoryEnabled) }
+                        onClick = { onHomeCategoryChanged(!(homeCategoryEnabled ?: true)) }
                     )
                     .padding(vertical = 4.dp),
                 verticalAlignment = Alignment.CenterVertically,
@@ -1110,17 +1098,16 @@ private fun HomePageSettingsCard(
                     )
                 }
                 Switch(
-                    checked = homeCategoryEnabled,
+                    checked = homeCategoryEnabled ?: true,
                     onCheckedChange = onHomeCategoryChanged
                 )
             }
 
-            AnimatedVisibility(
-                visible = homeCategoryEnabled,
-                enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-                exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
-            ) {
-                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            SettingsLinkedVisibility(visible = homeCategoryEnabled) {
+                Column(
+                    modifier = Modifier.padding(top = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
                     Text(
                         text = "默认起始页面",
                         style = MaterialTheme.typography.bodyLarge,
@@ -1143,6 +1130,7 @@ private fun HomePageSettingsCard(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .padding(top = 16.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,

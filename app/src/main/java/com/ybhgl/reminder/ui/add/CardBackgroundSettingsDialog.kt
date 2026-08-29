@@ -5,11 +5,6 @@ package com.ybhgl.reminder.ui.add
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -74,6 +69,7 @@ import com.ybhgl.reminder.ui.common.ImageCropDialog
 import com.ybhgl.reminder.ui.common.decodeCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.importCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.parseCardBackgroundType
+import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.detail.ReminderDetailCard
 import com.ybhgl.reminder.ui.settings.CustomColorPickerDialog
 import com.ybhgl.reminder.util.CardBackgroundImageManager
@@ -264,8 +260,7 @@ fun CardBackgroundSettingsDialog(
                     modifier = Modifier
                         .padding(24.dp)
                         .heightIn(max = 640.dp)
-                        .verticalScroll(rememberScrollState()),
-                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                        .verticalScroll(rememberScrollState())
                 ) {
                     Text(
                         text = "卡片背景",
@@ -279,7 +274,9 @@ fun CardBackgroundSettingsDialog(
                         CardBackgroundType.COLOR to "颜色"
                     )
                     SingleChoiceSegmentedButtonRow(
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
                     ) {
                         options.forEachIndexed { index, (optionType, label) ->
                             SegmentedButton(
@@ -309,16 +306,17 @@ fun CardBackgroundSettingsDialog(
                     // 实时预览卡片：直接复用详情页渲染
                     ReminderDetailCard(
                         reminderItem = previewItem,
-                        modifier = Modifier.fillMaxWidth()
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
                     )
 
                     // 字体颜色子选项（图片/颜色模式下可用）：自动按亮度反色，或手动指定白/黑
-                    AnimatedVisibility(
-                        visible = type != CardBackgroundType.DEFAULT,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    SettingsLinkedVisibility(visible = type != CardBackgroundType.DEFAULT) {
+                        Column(
+                            modifier = Modifier.padding(top = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
                             Text(
                                 "字体颜色",
                                 style = MaterialTheme.typography.bodyMedium,
@@ -352,12 +350,8 @@ fun CardBackgroundSettingsDialog(
                     }
 
                     // 图片模式：选择/更换图片 + 高级设置
-                    AnimatedVisibility(
-                        visible = type == CardBackgroundType.IMAGE,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SettingsLinkedVisibility(visible = type == CardBackgroundType.IMAGE) {
+                        Column(modifier = Modifier.padding(top = 16.dp)) {
                             Row(
                                 modifier = Modifier.fillMaxWidth(),
                                 verticalAlignment = Alignment.CenterVertically,
@@ -398,7 +392,8 @@ fun CardBackgroundSettingsDialog(
                             Text(
                                 "选择图片后可拖动缩放，按卡片比例（1:1）自由裁剪",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                modifier = Modifier.padding(top = 12.dp)
                             )
 
                             // 模糊度
@@ -407,12 +402,15 @@ fun CardBackgroundSettingsDialog(
                                 valueText = "${blurRadius.roundToInt()}",
                                 value = blurRadius,
                                 valueRange = 0f..25f,
-                                onValueChange = { blurRadius = it }
+                                onValueChange = { blurRadius = it },
+                                modifier = Modifier.padding(top = 12.dp)
                             )
 
                             // 光栅玻璃
                             Row(
-                                modifier = Modifier.fillMaxWidth(),
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 12.dp),
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
@@ -426,12 +424,11 @@ fun CardBackgroundSettingsDialog(
                                 Switch(checked = glassEnabled, onCheckedChange = { glassEnabled = it })
                             }
 
-                            AnimatedVisibility(
-                                visible = glassEnabled,
-                                enter = expandVertically() + fadeIn(),
-                                exit = shrinkVertically() + fadeOut()
-                            ) {
-                                Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                            SettingsLinkedVisibility(visible = glassEnabled) {
+                                Column(
+                                    modifier = Modifier.padding(top = 12.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
                                     Row(
                                         modifier = Modifier.fillMaxWidth(),
                                         verticalAlignment = Alignment.CenterVertically
@@ -462,12 +459,11 @@ fun CardBackgroundSettingsDialog(
                     }
 
                     // 颜色模式：当前色展示 + 手动点击"选择颜色"再弹出调色盘
-                    AnimatedVisibility(
-                        visible = type == CardBackgroundType.COLOR,
-                        enter = expandVertically() + fadeIn(),
-                        exit = shrinkVertically() + fadeOut()
-                    ) {
-                        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+                    SettingsLinkedVisibility(visible = type == CardBackgroundType.COLOR) {
+                        Column(
+                            modifier = Modifier.padding(top = 16.dp),
+                            verticalArrangement = Arrangement.spacedBy(12.dp)
+                        ) {
                             Row(
                                 modifier = Modifier
                                     .fillMaxWidth()
@@ -567,10 +563,11 @@ private fun SliderRow(
     valueText: String,
     value: Float,
     valueRange: ClosedFloatingPointRange<Float>,
-    onValueChange: (Float) -> Unit
+    onValueChange: (Float) -> Unit,
+    modifier: Modifier = Modifier
 ) {
     Column(
-        modifier = Modifier.fillMaxWidth(),
+        modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(4.dp)
     ) {
         Row(

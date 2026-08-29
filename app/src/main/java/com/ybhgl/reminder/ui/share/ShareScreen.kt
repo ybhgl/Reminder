@@ -12,11 +12,6 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -104,6 +99,7 @@ import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.ReminderCustomizationSection
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.detail.ReminderDetailCard
 import com.ybhgl.reminder.ui.settings.CustomColorPickerDialog
 import com.ybhgl.reminder.ui.tag.toComposeColor
@@ -340,19 +336,17 @@ fun ShareScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                            .padding(16.dp)
                     ) {
                         LogoSwitchRow(
                             showLogo = options.showLogo,
                             onShowLogoChange = { viewModel.updateShowLogo(it) }
                         )
-                        AnimatedVisibility(
-                            visible = options.showLogo,
-                            enter = expandVertically() + fadeIn(),
-                            exit = shrinkVertically() + fadeOut()
-                        ) {
-                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        SettingsLinkedVisibility(visible = options.showLogo) {
+                            Column(
+                                modifier = Modifier.padding(top = 12.dp),
+                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
                                 Text(
                                     "Logo 颜色",
                                     style = MaterialTheme.typography.bodyMedium,
@@ -402,6 +396,7 @@ fun ShareScreen(
                         Spacer(modifier = Modifier.height(4.dp))
                         ReminderCustomizationSection(
                             isCustomized = options.isCustomized,
+                            loaded = reminder != null,
                             onCustomizedChange = { checked ->
                                 val newColor = if (checked) options.customHeaderColor else ""
                                 val newFont = if (checked) options.customFont.ifEmpty { "Default" } else ""

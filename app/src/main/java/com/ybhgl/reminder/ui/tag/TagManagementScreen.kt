@@ -112,6 +112,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 
 // Hex 颜色解析扩展
@@ -602,12 +603,6 @@ private fun AddEditTagDialog(
                     .fillMaxWidth(0.9f)
                     .widthIn(max = 440.dp)
                     .wrapContentHeight()
-                    .animateContentSize(
-                        animationSpec = spring(
-                            dampingRatio = 0.65f, // 完美的物理回弹
-                            stiffness = Spring.StiffnessLow
-                        )
-                    )
                     .pointerInput(Unit) {
                         // 拦截点击事件，防止点击卡片时被底层 Box 消费导致消失
                         detectTapGestures { }
@@ -626,29 +621,30 @@ private fun AddEditTagDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Column(
-                modifier = Modifier
-                    .fillMaxWidth(),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
-            ) {
-                OutlinedTextField(
-                    value = tagName,
-                    onValueChange = { tagName = it },
-                    label = { Text("标签名称") },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                    shape = RoundedCornerShape(8.dp)
-                )
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        OutlinedTextField(
+                            value = tagName,
+                            onValueChange = { tagName = it },
+                            label = { Text("标签名称") },
+                            singleLine = true,
+                            modifier = Modifier.fillMaxWidth(),
+                            shape = RoundedCornerShape(8.dp)
+                        )
 
-                Text(
-                    text = "选择标签颜色",
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
-                )
+                        Text(
+                            text = "选择标签颜色",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold),
+                            modifier = Modifier.padding(top = 16.dp)
+                        )
 
-                // 预设颜色网格选择器 + 自定义调色盘
-                Column(
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
+                        // 预设颜色网格选择器 + 自定义调色盘
+                        Column(
+                            verticalArrangement = Arrangement.spacedBy(12.dp),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp)
+                        ) {
                     rows.forEach { rowItems ->
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -685,25 +681,10 @@ private fun AddEditTagDialog(
                     }
                 }
 
-                    // 外部 Surface 接管了展开回弹动画，退出时同步收缩高度以避免延迟
-                    AnimatedVisibility(
-                        visible = isCustomMode,
-                        enter = slideInVertically(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioNoBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            ),
-                            initialOffsetY = { -it / 3 }
-                        ) + fadeIn(animationSpec = tween(250)),
-                        exit = shrinkVertically(
-                            animationSpec = tween(250),
-                            shrinkTowards = Alignment.Top
-                        ) + slideOutVertically(
-                            animationSpec = tween(250),
-                            targetOffsetY = { -it / 3 }
-                        ) + fadeOut(animationSpec = tween(200))
-                    ) {
+                    // 自定义调色盘（统一联动动画，顶部间距置于动画内容内部随收缩归零）
+                    SettingsLinkedVisibility(visible = isCustomMode) {
                         CustomColorPanel(
+                            modifier = Modifier.padding(top = 16.dp),
                             customColor = customColor,
                             hexInput = hexInput,
                             hueValue = hueValue,

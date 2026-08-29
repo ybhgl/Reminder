@@ -3,17 +3,6 @@
 package com.ybhgl.reminder.ui.add
 
 import android.graphics.Typeface
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
@@ -77,6 +66,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ybhgl.reminder.data.ReminderType
+import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 
 // 7种不占用应用体积的高表现力系统内置 FontFamily 静态声明
 val SansSerifCondensed: FontFamily = FontFamily(Typeface.create("sans-serif-condensed", Typeface.NORMAL))
@@ -147,6 +137,7 @@ fun ReminderCustomizationSection(
     cardBackgroundTextColor: String = "",
     onBackgroundConfirmed: (CardBackgroundResult) -> Unit = {},
     showBackgroundOption: Boolean = true,
+    loaded: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var showColorDialog by remember { mutableStateOf(false) }
@@ -156,12 +147,6 @@ fun ReminderCustomizationSection(
     Column(
         modifier = modifier
             .fillMaxWidth()
-            .animateContentSize(
-                animationSpec = spring(
-                    dampingRatio = Spring.DampingRatioNoBouncy,
-                    stiffness = Spring.StiffnessMediumLow
-                )
-            )
     ) {
         // 1. 主控开关
         Row(
@@ -185,12 +170,8 @@ fun ReminderCustomizationSection(
             )
         }
 
-        // 2. 子选项面板（开启时展开）
-        AnimatedVisibility(
-            visible = isCustomized,
-            enter = expandVertically() + fadeIn(),
-            exit = shrinkVertically() + fadeOut()
-        ) {
+        // 2. 子选项面板（开启时展开；loaded 为 false 表示外部数据未就绪，不渲染也不播动画）
+        SettingsLinkedVisibility(visible = if (loaded) isCustomized else null) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -459,12 +440,6 @@ private fun ColorSelectDialog(
                     .fillMaxWidth(0.9f)
                     .widthIn(max = 440.dp)
                     .wrapContentHeight()
-                    .animateContentSize(
-                        animationSpec = spring(
-                            dampingRatio = 0.65f, // 完美的物理回弹
-                            stiffness = Spring.StiffnessLow
-                        )
-                    )
                     .pointerInput(Unit) {
                         detectTapGestures { }
                     },
@@ -482,8 +457,7 @@ private fun ColorSelectDialog(
                     Spacer(modifier = Modifier.height(16.dp))
 
                     Column(
-                        modifier = Modifier.fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                        modifier = Modifier.fillMaxWidth()
                     ) {
                         // 预设颜色网格选择器 + 自定义调色盘
                         Column(
@@ -541,25 +515,10 @@ private fun ColorSelectDialog(
                             }
                         }
 
-                        // 自定义调色盘控制部分
-                        AnimatedVisibility(
-                            visible = isCustomMode,
-                            enter = slideInVertically(
-                                animationSpec = spring(
-                                    dampingRatio = Spring.DampingRatioNoBouncy,
-                                    stiffness = Spring.StiffnessMediumLow
-                                ),
-                                initialOffsetY = { -it / 3 }
-                            ) + fadeIn(animationSpec = tween(250)),
-                            exit = shrinkVertically(
-                                animationSpec = tween(250),
-                                shrinkTowards = Alignment.Top
-                            ) + slideOutVertically(
-                                animationSpec = tween(250),
-                                targetOffsetY = { -it / 3 }
-                            ) + fadeOut(animationSpec = tween(200))
-                        ) {
+                        // 自定义调色盘控制部分（统一联动动画，顶部间距置于动画内容内部随收缩归零）
+                        SettingsLinkedVisibility(visible = isCustomMode) {
                             CustomColorPanel(
+                                modifier = Modifier.padding(top = 16.dp),
                                 customColor = customColor,
                                 hexInput = hexInput,
                                 hueValue = hueValue,

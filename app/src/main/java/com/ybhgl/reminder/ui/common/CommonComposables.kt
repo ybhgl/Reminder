@@ -1,5 +1,14 @@
 package com.ybhgl.reminder.ui.common
 
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterTransition
+import androidx.compose.animation.ExitTransition
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -256,5 +265,43 @@ fun StatusBarScrim(modifier: Modifier = Modifier) {
                     )
                 )
             )
+    )
+}
+
+/**
+ * 设置项联动展开/收起动画的统一实现。
+ *
+ * - [visible] 为 null 表示关联的偏好值尚未加载完成：不渲染内容也不触发任何动画，
+ *   避免进入页面时因 Flow 占位值误播进入/退出动画。
+ * - 首次携带真实值挂载时抑制动画（直接呈现最终状态），挂载完成后才启用动画，
+ *   保证后续用户操作时仍有平滑的展开/收起效果。
+ * - 动画组合统一为 expandVertically + fadeIn 进入、shrinkVertically + fadeOut 退出，
+ *   曲线为 spring(StiffnessMediumLow)。
+ */
+@Composable
+fun SettingsLinkedVisibility(
+    visible: Boolean?,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit
+) {
+    if (visible == null) return
+
+    var animationsEnabled by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) { animationsEnabled = true }
+
+    AnimatedVisibility(
+        visible = visible,
+        modifier = modifier,
+        enter = if (animationsEnabled) {
+            expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn()
+        } else {
+            EnterTransition.None
+        },
+        exit = if (animationsEnabled) {
+            shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+        } else {
+            ExitTransition.None
+        },
+        content = { content() }
     )
 }

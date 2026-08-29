@@ -2,11 +2,6 @@ package com.ybhgl.reminder.ui.settings
 
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
@@ -114,6 +109,7 @@ import com.ybhgl.reminder.ui.common.StatusBarScrim
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import com.ybhgl.reminder.ui.common.CustomToast
+import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import androidx.compose.material.icons.filled.Archive
 import androidx.compose.material.icons.filled.Close
 import java.util.Locale
@@ -144,9 +140,14 @@ fun BackupAndRestoreScreen(
     val webDavUsername by viewModel.webDavUsernameFlow(context).collectAsState(initial = "")
     val webDavPassword by viewModel.webDavPasswordFlow(context).collectAsState(initial = "")
     val webDavPath by viewModel.webDavPathFlow(context).collectAsState(initial = "reminder_backups")
-    val autoBackupLocalEnabled by viewModel.autoBackupLocalEnabledFlow(context).collectAsState(initial = false)
-    val autoBackupWebDavEnabled by viewModel.autoBackupWebDavEnabledFlow(context).collectAsState(initial = false)
-    val isAutoBackupActive = autoBackupLocalEnabled || autoBackupWebDavEnabled
+    val autoBackupLocalEnabled by viewModel.autoBackupLocalEnabledFlow(context).collectAsState(initial = null)
+    val autoBackupWebDavEnabled by viewModel.autoBackupWebDavEnabledFlow(context).collectAsState(initial = null)
+    // null 表示偏好值尚未加载完成，用于抑制进入页面时的误播动画；非动画处统一回退 false
+    val localBackupEnabled = autoBackupLocalEnabled ?: false
+    val webDavBackupEnabled = autoBackupWebDavEnabled ?: false
+    val isAutoBackupActive: Boolean? =
+        if (autoBackupLocalEnabled == null || autoBackupWebDavEnabled == null) null
+        else localBackupEnabled || webDavBackupEnabled
     val autoBackupMaxCount by viewModel.autoBackupMaxCountFlow(context).collectAsState(initial = 5)
     val autoBackupLocalPath by viewModel.autoBackupLocalPathFlow(context).collectAsState(initial = "")
 
@@ -356,8 +357,7 @@ fun BackupAndRestoreScreen(
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(16.dp)
+                            .padding(16.dp)
                     ) {
                         Row(
                             modifier = Modifier.fillMaxWidth(),
@@ -398,7 +398,9 @@ fun BackupAndRestoreScreen(
                         }
 
                         Column(
-                            modifier = Modifier.fillMaxWidth(),
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(top = 16.dp),
                             verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
                             Text(
@@ -414,7 +416,7 @@ fun BackupAndRestoreScreen(
                                 modifier = Modifier.fillMaxWidth()
                             ) {
                                 options.forEachIndexed { index, label ->
-                                    val checked = if (index == 0) autoBackupLocalEnabled else autoBackupWebDavEnabled
+                                    val checked = if (index == 0) localBackupEnabled else webDavBackupEnabled
                                     SegmentedButton(
                                         checked = checked,
                                         onCheckedChange = { isChecked ->
@@ -491,19 +493,18 @@ fun BackupAndRestoreScreen(
                             }
                         }
 
-                        AnimatedVisibility(
-                            visible = isAutoBackupActive,
-                            enter = expandVertically() + fadeIn(),
-                            exit = shrinkVertically() + fadeOut()
-                        ) {
+                        SettingsLinkedVisibility(visible = isAutoBackupActive) {
                             Column(
-                                modifier = Modifier.fillMaxWidth(),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 16.dp)
                             ) {
                                 HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
 
                                 Column(
-                                    modifier = Modifier.fillMaxWidth(),
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp),
                                     verticalArrangement = Arrangement.spacedBy(4.dp)
                                 ) {
                                     Row(
@@ -542,10 +543,14 @@ fun BackupAndRestoreScreen(
                                     )
                                 }
 
-                                HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
+                                HorizontalDivider(
+                                    modifier = Modifier.padding(top = 16.dp),
+                                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                                )
                                 Row(
                                     modifier = Modifier
                                         .fillMaxWidth()
+                                        .padding(top = 16.dp)
                                         .background(
                                             color = MaterialTheme.colorScheme.primary.copy(alpha = 0.05f),
                                             shape = RoundedCornerShape(12.dp)
@@ -585,16 +590,14 @@ fun BackupAndRestoreScreen(
                                     }
                                 }
 
-                                AnimatedVisibility(
-                                    visible = autoBackupLocalEnabled,
-                                    enter = expandVertically() + fadeIn(),
-                                    exit = shrinkVertically() + fadeOut()
-                                ) {
-                                    val isLocalPathMissing = autoBackupLocalEnabled && autoBackupLocalPath.isBlank()
+                                SettingsLinkedVisibility(visible = autoBackupLocalEnabled) {
+                                    val isLocalPathMissing = localBackupEnabled && autoBackupLocalPath.isBlank()
                                     val localBorderColor = if (isLocalPathMissing) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
                                     
                                     Column(
-                                        modifier = Modifier.fillMaxWidth(),
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 16.dp),
                                         verticalArrangement = Arrangement.spacedBy(8.dp)
                                     ) {
                                         HorizontalDivider(color = localBorderColor)
@@ -687,7 +690,7 @@ fun BackupAndRestoreScreen(
                 HorizontalDivider()
                 
                 // WebDAV Server Configuration Card
-                val isWebDavMissing = autoBackupWebDavEnabled && !isWebDavConfigured
+                val isWebDavMissing = webDavBackupEnabled && !isWebDavConfigured
                 val webDavCardColor = if (isWebDavMissing) {
                     MaterialTheme.colorScheme.errorContainer.copy(alpha = 0.2f)
                 } else {
@@ -904,7 +907,7 @@ fun BackupAndRestoreScreen(
 
             if (showAutoBackupManagerDialog) {
                 val pagerState = rememberPagerState(
-                    initialPage = if (autoBackupWebDavEnabled && !autoBackupLocalEnabled) 1 else 0
+                    initialPage = if (webDavBackupEnabled && !localBackupEnabled) 1 else 0
                 ) { 2 }
                 
                 var localAutoFiles by remember { mutableStateOf<List<androidx.documentfile.provider.DocumentFile>?>(null) }
@@ -1151,7 +1154,7 @@ fun BackupAndRestoreScreen(
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                                 CircularProgressIndicator()
                                             }
-                                        } else if (!autoBackupLocalEnabled) {
+                                        } else if (!localBackupEnabled) {
                                             Column(
                                                 modifier = Modifier.fillMaxSize(),
                                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1291,7 +1294,7 @@ fun BackupAndRestoreScreen(
                                             Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                                                 CircularProgressIndicator()
                                             }
-                                        } else if (!autoBackupWebDavEnabled) {
+                                        } else if (!webDavBackupEnabled) {
                                             Column(
                                                 modifier = Modifier.fillMaxSize(),
                                                 horizontalAlignment = Alignment.CenterHorizontally,
@@ -1741,7 +1744,7 @@ fun BackupAndRestoreScreen(
                                     showServerConfigDialog = false
                                     CustomToast.showSuccess(context, "设置已保存")
 
-                                    if (autoBackupWebDavEnabled) {
+                                    if (webDavBackupEnabled) {
                                         isProcessing = true
                                         val (success, msg) = viewModel.checkAndCreateWebDavAutoFolder(
                                             context,

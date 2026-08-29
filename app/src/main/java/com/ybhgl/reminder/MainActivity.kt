@@ -35,9 +35,6 @@ import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -190,6 +187,7 @@ import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.StatusBarScrim
+import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.SettingsScreen
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
@@ -1482,10 +1480,9 @@ fun ReminderListScreen(
                             end = 16.dp,
                             top = dynamicTopPadding,
                             bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                        ),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
+                        )
                     ) {
-                        sections.forEach { section ->
+                        sections.forEachIndexed { sectionIndex, section ->
                             val collapsedKey = "${tabs[page].name}_${section.key}"
                             item(key = "header_${section.key}_${viewMode.name}") {
                                 SectionHeader(
@@ -1504,19 +1501,19 @@ fun ReminderListScreen(
                                         navController.navigate(Routes.tagManagement(isSortMode = true))
                                     },
                                     tagColorHex = section.tagColorHex,
-                                    modifier = Modifier.padding(bottom = if (collapsedKey in collapsedSections) 0.dp else 4.dp)
+                                    modifier = Modifier
+                                        .padding(top = if (sectionIndex == 0) 0.dp else 8.dp)
+                                        .padding(bottom = if (collapsedKey in collapsedSections) 0.dp else 4.dp)
                                 )
                             }
 
                             item(key = "content_${section.key}_${viewMode.name}") {
-                                AnimatedVisibility(
-                                    visible = collapsedKey !in collapsedSections,
-                                    enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-                                    exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
-                                ) {
+                                SettingsLinkedVisibility(visible = collapsedKey !in collapsedSections) {
                                     Column(
                                         verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp),
-                                        modifier = Modifier.fillMaxWidth()
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 8.dp)
                                     ) {
                                         if (viewMode == ReminderViewMode.CARD) {
                                             val rows = section.items.chunked(columnsCount)
@@ -3048,10 +3045,9 @@ private fun SearchPanelContent(
                     end = 16.dp,
                     top = 8.dp,
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+                )
             ) {
-                sections.forEach { section ->
+                sections.forEachIndexed { sectionIndex, section ->
                     item(key = "search_header_${section.key}_${viewMode.name}") {
                         SectionHeader(
                             title = section.title,
@@ -3066,19 +3062,19 @@ private fun SearchPanelContent(
                                 }
                             },
                             tagColorHex = section.tagColorHex,
-                            modifier = Modifier.padding(bottom = if (section.key in collapsedSections) 0.dp else 4.dp)
+                            modifier = Modifier
+                                .padding(top = if (sectionIndex == 0) 0.dp else 8.dp)
+                                .padding(bottom = if (section.key in collapsedSections) 0.dp else 4.dp)
                         )
                     }
                     
                     item(key = "search_content_${section.key}_${viewMode.name}") {
-                        AnimatedVisibility(
-                            visible = section.key !in collapsedSections,
-                            enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
-                            exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
-                        ) {
+                        SettingsLinkedVisibility(visible = section.key !in collapsedSections) {
                             Column(
                                 verticalArrangement = Arrangement.spacedBy(if (viewMode == ReminderViewMode.CARD) 24.dp else 16.dp),
-                                modifier = Modifier.fillMaxWidth()
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(top = 8.dp)
                             ) {
                                 if (viewMode == ReminderViewMode.CARD) {
                                     val rows = section.items.chunked(columnsCount)
