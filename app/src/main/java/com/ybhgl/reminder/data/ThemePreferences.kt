@@ -49,6 +49,7 @@ private val CARD_COLORING_KEY = booleanPreferencesKey("card_coloring_enabled")
 private val DYNAMIC_COLOR_KEY = booleanPreferencesKey("dynamic_color_enabled")
 private val COLOR_PALETTE_KEY = stringPreferencesKey("theme_color_palette")
 private val CUSTOM_COLOR_SEED_KEY = androidx.datastore.preferences.core.intPreferencesKey("custom_color_seed")
+private val HOME_CATEGORY_KEY = booleanPreferencesKey("home_category_enabled")
 
 private val Context.themeDataStore: DataStore<Preferences> by preferencesDataStore(
     name = THEME_DATA_STORE_NAME
@@ -112,6 +113,25 @@ fun defaultPageFlow(context: Context): Flow<AppDefaultPage> =
 suspend fun saveDefaultPage(context: Context, page: AppDefaultPage) {
     context.themeDataStore.edit { preferences ->
         preferences[DEFAULT_PAGE_KEY] = page.name
+    }
+}
+
+fun homeCategoryFlow(context: Context): Flow<Boolean> =
+    context.themeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[HOME_CATEGORY_KEY] ?: true
+        }
+
+suspend fun saveHomeCategory(context: Context, enabled: Boolean) {
+    context.themeDataStore.edit { preferences ->
+        preferences[HOME_CATEGORY_KEY] = enabled
     }
 }
 

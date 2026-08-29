@@ -170,6 +170,8 @@ fun SettingsScreen(
     val customColorSeedInt by customColorPreferenceFlow.collectAsState(initial = 0xFF6650A4.toInt())
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
+    val homeCategoryPreferenceFlow = remember(context) { viewModel.homeCategoryPreferenceFlow(context) }
+    val homeCategoryEnabled by homeCategoryPreferenceFlow.collectAsState(initial = true)
     val scrollBehaviorFlow = remember(context) { viewModel.scrollBehaviorPreferenceFlow(context) }
     val scrollBehaviorStr by scrollBehaviorFlow.collectAsState(initial = ScrollBehaviorMode.HIDE_TOP_BAR.name)
     val currentScrollBehavior = remember(scrollBehaviorStr) {
@@ -366,6 +368,12 @@ fun SettingsScreen(
                     }
                 )
                  HomePageSettingsCard(
+                    homeCategoryEnabled = homeCategoryEnabled,
+                    onHomeCategoryChanged = { enabled ->
+                        coroutineScope.launch {
+                            viewModel.updateHomeCategoryPreference(context, enabled)
+                        }
+                    },
                     selectedPage = selectedDefaultPage,
                     onPageSelected = { page ->
                         coroutineScope.launch {
@@ -722,6 +730,8 @@ private fun ColorPaletteItem(
 
 @Composable
 private fun HomePageSettingsCard(
+    homeCategoryEnabled: Boolean,
+    onHomeCategoryChanged: (Boolean) -> Unit,
     selectedPage: AppDefaultPage,
     onPageSelected: (AppDefaultPage) -> Unit,
     currentScrollBehavior: ScrollBehaviorMode,
@@ -790,23 +800,62 @@ private fun HomePageSettingsCard(
                 color = MaterialTheme.colorScheme.onSurface
             )
 
-            Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                Text(
-                    text = "默认起始页面",
-                    style = MaterialTheme.typography.bodyLarge,
-                    color = MaterialTheme.colorScheme.onSurface
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onHomeCategoryChanged(!homeCategoryEnabled) }
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "首页分类显示",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "开启后首页按倒数、正数、生日分类显示；关闭后所有事件统一显示",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = homeCategoryEnabled,
+                    onCheckedChange = onHomeCategoryChanged
                 )
-                Text(
-                    text = "选择启动应用后默认显示的页面",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                Spacer(modifier = Modifier.height(4.dp))
-                DefaultPageSegmentedControl(
-                    options = listOf(AppDefaultPage.COUNTDOWN, AppDefaultPage.COUNTUP, AppDefaultPage.BIRTHDAY),
-                    selectedOption = selectedPage,
-                    onOptionSelected = onPageSelected
-                )
+            }
+
+            AnimatedVisibility(
+                visible = homeCategoryEnabled,
+                enter = expandVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeIn(),
+                exit = shrinkVertically(animationSpec = spring(stiffness = Spring.StiffnessMediumLow)) + fadeOut()
+            ) {
+                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Text(
+                        text = "默认起始页面",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "选择启动应用后默认显示的页面",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(4.dp))
+                    DefaultPageSegmentedControl(
+                        options = listOf(AppDefaultPage.COUNTDOWN, AppDefaultPage.COUNTUP, AppDefaultPage.BIRTHDAY),
+                        selectedOption = selectedPage,
+                        onOptionSelected = onPageSelected
+                    )
+                }
             }
 
             Row(

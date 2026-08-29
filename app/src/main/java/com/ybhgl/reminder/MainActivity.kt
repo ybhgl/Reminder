@@ -200,6 +200,8 @@ import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.CalendarUtil
+import com.ybhgl.reminder.util.ReminderSectionData
+import com.ybhgl.reminder.util.buildReminderSections
 import com.ybhgl.reminder.data.viewModeFlow
 import com.ybhgl.reminder.data.saveViewMode
 import com.ybhgl.reminder.data.AppThemeOption
@@ -1376,10 +1378,13 @@ fun ReminderListScreen(
     }
     val defaultPage by remember(context) { defaultPageFlow(context) }
         .collectAsState(initial = null)
-    val pagerState = rememberPagerState { ReminderTab.entries.size }
+    val homeCategoryEnabled by remember(context) { com.ybhgl.reminder.data.homeCategoryFlow(context) }
+        .collectAsState(initial = null)
+    val showCategories = homeCategoryEnabled != false
+    val pagerState = rememberPagerState { if (showCategories) ReminderTab.entries.size else 1 }
     var hasSetDefaultPage by rememberSaveable { mutableStateOf(false) }
-    LaunchedEffect(defaultPage) {
-        if (!hasSetDefaultPage && defaultPage != null) {
+    LaunchedEffect(defaultPage, homeCategoryEnabled) {
+        if (!hasSetDefaultPage && defaultPage != null && homeCategoryEnabled == true) {
             val page = when (defaultPage) {
                 AppDefaultPage.COUNTDOWN -> 0
                 AppDefaultPage.COUNTUP -> 1
@@ -1418,10 +1423,12 @@ fun ReminderListScreen(
                 state = pagerState,
                 modifier = Modifier
                     .fillMaxSize(),
+                userScrollEnabled = showCategories,
                 beyondViewportPageCount = 1
             ) { page ->
-                val filteredItems = remember(reminderListUiState.itemList, page) {
-                    reminderListUiState.itemList.filter(tabs[page].filter)
+                val filteredItems = remember(reminderListUiState.itemList, page, showCategories) {
+                    if (showCategories) reminderListUiState.itemList.filter(tabs[page].filter)
+                    else reminderListUiState.itemList
                 }
                 val sections = remember(filteredItems, reminderListUiState.tagsList) {
                     buildReminderSections(filteredItems, reminderListUiState.tagsList)
@@ -1733,19 +1740,21 @@ fun ReminderListScreen(
                                 .weight(1f),
                             contentAlignment = Alignment.Center
                         ) {
-                            FloatingSegmentedTabs(
-                                tabs = tabs,
-                                counts = tabCounts,
-                                selectedIndex = pagerState.currentPage,
-                                onTabSelected = { index ->
-                                    coroutineScope.launch {
-                                        pagerState.animateScrollToPage(index)
-                                    }
-                                },
-                                modifier = Modifier
-                                    .height(segmentedHeight)
-                                    .widthIn(min = 200.dp, max = 260.dp)
-                            )
+                            if (showCategories) {
+                                FloatingSegmentedTabs(
+                                    tabs = tabs,
+                                    counts = tabCounts,
+                                    selectedIndex = pagerState.currentPage,
+                                    onTabSelected = { index ->
+                                        coroutineScope.launch {
+                                            pagerState.animateScrollToPage(index)
+                                        }
+                                    },
+                                    modifier = Modifier
+                                        .height(segmentedHeight)
+                                        .widthIn(min = 200.dp, max = 260.dp)
+                                )
+                            }
                         }
 
                         val deleteEnabled = selectedIds.isNotEmpty()
@@ -1918,126 +1927,6 @@ fun ReminderListScreen(
 
     }
 
-
-
-private data class ReminderSectionData(
-    val key: String,
-    val title: String,
-    val items: List<ReminderItem>,
-    val tagColorHex: String? = null
-)
-
-private fun buildReminderSections(reminders: List<ReminderItem>, tags: List<TagItem> = emptyList()): List<ReminderSectionData> {
-    if (reminders.isEmpty()) return emptyList()
-
-    val locale = Locale.getDefault()
-    val result = mutableListOf<ReminderSectionData>()
-    val pinned = reminders.filter { it.isPinned }.sortedWith(
-        compareBy<ReminderItem> { reminderSortValue(it) }.thenBy { it.id }
-    )
-    if (pinned.isNotEmpty()) {
-        result += ReminderSectionData(
-            key = "pinned",
-            title = "置顶",
-            items = pinned
-        )
-    }
-
-    val nonPinned = reminders.filterNot { it.isPinned }
-    val grouped = nonPinned.groupBy { normalizeTag(it.tag) }
-
-    val tagOrderMap = tags.associate { it.name.trim().lowercase(locale) to it.sortOrder }
-    val tagColorMap = tags.associate { it.name.trim().lowercase(locale) to it.color }
-
-    val sortedGroups = grouped.keys.sortedWith { tag1, tag2 ->
-        val isBlank1 = tag1.isBlank()
-        val isBlank2 = tag2.isBlank()
-        if (isBlank1 && !isBlank2) {
-            1
-        } else if (!isBlank1 && isBlank2) {
-            -1
-        } else {
-            val key1 = tag1.trim().lowercase(locale)
-            val key2 = tag2.trim().lowercase(locale)
-            val order1 = tagOrderMap[key1]
-            val order2 = tagOrderMap[key2]
-            
-            if (order1 != null && order2 != null) {
-                order1.compareTo(order2)
-            } else if (order1 != null) {
-                -1
-            } else if (order2 != null) {
-                1
-            } else {
-                val sortKey1 = groupSortKey(tag1).lowercase(locale)
-                val sortKey2 = groupSortKey(tag2).lowercase(locale)
-                if (sortKey1 != sortKey2) {
-                    sortKey1.compareTo(sortKey2)
-                } else {
-                    tag1.lowercase(locale).compareTo(tag2.lowercase(locale))
-                }
-            }
-        }
-    }
-
-    sortedGroups.forEach { tag ->
-        val items = grouped[tag]
-            .orEmpty()
-            .sortedWith(compareBy<ReminderItem> { reminderSortValue(it) }
-                .thenBy { it.title.lowercase(locale) }
-                .thenBy { it.id })
-        if (items.isNotEmpty()) {
-            val title = tag.ifBlank { "无标签" }
-            val key = if (tag.isBlank()) "group_uncategorized" else "group_${tag.lowercase(locale)}"
-            val trimmedLower = tag.trim().lowercase(locale)
-            val tagColor = tagColorMap[trimmedLower]
-            result += ReminderSectionData(
-                key = key,
-                title = title,
-                items = items,
-                tagColorHex = tagColor
-            )
-        }
-    }
-
-    return result
-}
-
-private fun normalizeTag(tag: String): String = tag.trim()
-
-private fun groupSortKey(tag: String): String {
-    if (tag.isBlank()) return "#"
-    return tag.first().toString()
-}
-
-private fun reminderSortValue(reminder: ReminderItem): Int {
-    val today = LocalDate.now()
-    return when (reminder.type) {
-        ReminderType.ANNUAL -> {
-            val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
-            if (nextDate != null) {
-                ChronoUnit.DAYS.between(today, nextDate).toInt()
-            } else {
-                // For past, non-repeating events, sort them at the end.
-                Int.MAX_VALUE
-            }
-        }
-
-        ReminderType.COUNT_UP -> {
-            val days = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
-            if (reminder.notificationConfig.includeStartDay) days + 1 else days
-        }
-
-        ReminderType.BIRTHDAY -> {
-            val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
-            if (nextDate != null) {
-                ChronoUnit.DAYS.between(today, nextDate).toInt()
-            } else {
-                Int.MAX_VALUE
-            }
-        }
-    }
-}
 
 
 @Composable

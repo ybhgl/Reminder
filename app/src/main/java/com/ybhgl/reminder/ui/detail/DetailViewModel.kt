@@ -21,7 +21,8 @@ import kotlinx.coroutines.launch
 class DetailViewModel(
     savedStateHandle: SavedStateHandle,
     private val reminderRepository: ReminderRepository,
-    private val tagRepository: TagRepository
+    private val tagRepository: TagRepository,
+    private val appContext: Context
 ) : ViewModel() {
 
     val reminderId: Int = checkNotNull(savedStateHandle["reminderId"])
@@ -33,8 +34,12 @@ class DetailViewModel(
     val snackbarMessage = _snackbarMessage.asSharedFlow()
 
     init {
-        reminderRepository.getAllRemindersStream()
-            .combine(tagRepository.getAllTagsFlow()) { reminders, tags ->
+        combine(
+            reminderRepository.getAllRemindersStream(),
+            tagRepository.getAllTagsFlow(),
+            com.ybhgl.reminder.data.homeCategoryFlow(appContext)
+        ) { reminders, tags, homeCategoryEnabled ->
+            val sortedReminders = if (homeCategoryEnabled) {
                 val today = LocalDate.now()
                 val locale = java.util.Locale.getDefault()
 
@@ -62,8 +67,13 @@ class DetailViewModel(
                     getSortValue = { getBirthdaySortValue(it, today) }
                 )
 
-                Pair(annualList + countUpList + birthdayList, tags)
+                annualList + countUpList + birthdayList
+            } else {
+                // 关闭分类显示时，滑动顺序与首页统一列表完全一致
+                com.ybhgl.reminder.util.flattenReminders(reminders, tags)
             }
+            Pair(sortedReminders, tags)
+        }
             .onEach { (sortedReminders, tags) ->
                 val current = sortedReminders.find { it.id == reminderId }
                 _uiState.update {

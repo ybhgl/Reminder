@@ -313,6 +313,7 @@ object BackupPreferences {
             val themeColorPalette = colorPaletteFlow(context).first()
             val customColorSeed = customColorFlow(context).first()
             val scrollBehavior = scrollBehaviorFlow(context).first()
+            val homeCategoryEnabled = homeCategoryFlow(context).first()
 
             val backupReminderEnabled = backupReminderEnabledFlow(context).first()
             val webDavServer = webDavServerFlow(context).first()
@@ -339,6 +340,7 @@ object BackupPreferences {
                 themeColorPalette = themeColorPalette,
                 customColorSeed = customColorSeed,
                 scrollBehavior = scrollBehavior,
+                homeCategoryEnabled = homeCategoryEnabled,
                 cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
                     .collectForBackup(context, reminders)
             )

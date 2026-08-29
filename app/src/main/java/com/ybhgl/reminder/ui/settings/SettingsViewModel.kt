@@ -105,6 +105,14 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
         BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
 
+    fun homeCategoryPreferenceFlow(context: Context): Flow<Boolean> = com.ybhgl.reminder.data.homeCategoryFlow(context)
+
+    suspend fun updateHomeCategoryPreference(context: Context, enabled: Boolean) {
+        com.ybhgl.reminder.data.saveHomeCategory(context, enabled)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
+    }
+
     fun scrollBehaviorPreferenceFlow(context: Context): Flow<String?> = scrollBehaviorFlow(context)
 
     suspend fun updateScrollBehaviorPreference(context: Context, behavior: String) {
@@ -129,6 +137,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
             val themeColorPalette = colorPalettePreferenceFlow(context).first()
             val customColorSeed = customColorPreferenceFlow(context).first()
             val scrollBehavior = scrollBehaviorPreferenceFlow(context).first()
+            val homeCategoryEnabled = homeCategoryPreferenceFlow(context).first()
 
             val backupData = BackupData(
                 reminders = reminders,
@@ -140,7 +149,8 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
                 dynamicColorEnabled = dynamicColorEnabled,
                 themeColorPalette = themeColorPalette,
                 customColorSeed = customColorSeed,
-                scrollBehavior = scrollBehavior
+                scrollBehavior = scrollBehavior,
+                homeCategoryEnabled = homeCategoryEnabled
             )
 
             val json = Json.encodeToString(backupData)

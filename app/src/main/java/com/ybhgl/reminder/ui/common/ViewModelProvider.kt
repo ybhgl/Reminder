@@ -53,7 +53,8 @@ object AppViewModelProvider {
             DetailViewModel(
                 savedStateHandle = this.createSavedStateHandle(),
                 reminderRepository = reminderApplication().container.reminderRepository,
-                tagRepository = reminderApplication().container.tagRepository
+                tagRepository = reminderApplication().container.tagRepository,
+                appContext = reminderApplication().applicationContext
             )
         }
 
