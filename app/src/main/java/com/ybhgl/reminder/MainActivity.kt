@@ -230,6 +230,7 @@ import kotlinx.coroutines.Dispatchers
 import androidx.lifecycle.lifecycleScope
 import com.ybhgl.reminder.util.ReminderScheduler
 import com.ybhgl.reminder.util.CalendarManager
+import com.ybhgl.reminder.util.UpdateManager
 import kotlinx.serialization.ExperimentalSerializationApi
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
@@ -668,6 +669,11 @@ fun ReminderApp() {
     }
 
     val navController = rememberNavController()
+
+    // 应用启动时执行静默版本检查（不显示任何 toast）
+    LaunchedEffect(Unit) {
+        UpdateManager.checkForUpdates(context)
+    }
 
     val lastBackupTimestamp by remember(context) { BackupPreferences.lastBackupTimestampFlow(context) }.collectAsState(initial = 0L)
     val lastDataChangeTimestamp by remember(context) { BackupPreferences.lastDataChangeTimestampFlow(context) }.collectAsState(initial = 0L)
@@ -1223,6 +1229,7 @@ fun ReminderListScreen(
     val lastBackupTimestamp by remember(context) { BackupPreferences.lastBackupTimestampFlow(context) }.collectAsState(initial = 0L)
     val lastDataChangeTimestamp by remember(context) { BackupPreferences.lastDataChangeTimestampFlow(context) }.collectAsState(initial = 0L)
     val showBackupAlert = backupReminderEnabled && lastDataChangeTimestamp > lastBackupTimestamp
+    val hasUpdate by UpdateManager.updateInfo.collectAsState()
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchIconOffset by remember { mutableStateOf(Offset.Zero) }
@@ -1692,11 +1699,22 @@ fun ReminderListScreen(
                                     contentDescription = "搜索"
                                 )
                             }
-                            IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
-                                Icon(
-                                    imageVector = Icons.Default.Settings,
-                                    contentDescription = "设置"
-                                )
+                            Box {
+                                IconButton(onClick = { navController.navigate(Routes.SETTINGS) }) {
+                                    Icon(
+                                        imageVector = Icons.Default.Settings,
+                                        contentDescription = "设置"
+                                    )
+                                }
+                                if (hasUpdate != null) {
+                                    Box(
+                                        modifier = Modifier
+                                            .align(Alignment.TopEnd)
+                                            .offset(x = (-6).dp, y = 6.dp)
+                                            .size(8.dp)
+                                            .background(Color.Red, CircleShape)
+                                    )
+                                }
                             }
                         }
                     )

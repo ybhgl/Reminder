@@ -64,7 +64,15 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.res.vectorResource
+import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.withStyle
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.animation.core.animateDpAsState
@@ -140,6 +148,13 @@ import androidx.compose.material3.RadioButton
 import androidx.compose.material3.RadioButtonDefaults
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Button
+import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.ui.unit.sp
+import com.ybhgl.reminder.ui.common.CustomToast
+import com.ybhgl.reminder.util.ReleaseInfo
+import com.ybhgl.reminder.util.UpdateCheckResult
+import com.ybhgl.reminder.util.UpdateManager
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -183,6 +198,10 @@ fun SettingsScreen(
     val scrollState = rememberScrollState()
     
     var showDisableVerify by rememberSaveable { mutableStateOf(false) }
+
+    val updateInfo by UpdateManager.updateInfo.collectAsState()
+    val isCheckingUpdate by UpdateManager.isChecking.collectAsState()
+    var showUpdateDialog by rememberSaveable { mutableStateOf(false) }
 
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
@@ -484,10 +503,61 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider()
+                val appVersion = remember(context) { UpdateManager.currentVersion(context) }
                 SettingsActionItem(
                     title = stringResource(id = R.string.app_name),
-                    description = "版本 ${BuildConfig.VERSION_NAME}",
-                    icon = { Icon(painterResource(id = R.drawable.ic_app_logo), null, tint = Color.Unspecified, modifier = Modifier.size(24.dp)) }
+                    description = "版本 $appVersion",
+                    icon = { Icon(painterResource(id = R.drawable.ic_app_logo), null, tint = Color.Unspecified, modifier = Modifier.size(24.dp)) },
+                    trailingContent = {
+                        if (updateInfo != null) {
+                            NewUpdateBadge()
+                        } else if (isCheckingUpdate) {
+                            CircularProgressIndicator(
+                                modifier = Modifier.size(20.dp),
+                                strokeWidth = 2.dp,
+                                color = MaterialTheme.colorScheme.primary
+                            )
+                        }
+                    },
+                    onClick = {
+                        val info = updateInfo
+                        if (info != null) {
+                            showUpdateDialog = true
+                        } else if (!isCheckingUpdate) {
+                            CustomToast.show(
+                                context,
+                                "正在检查更新",
+                                type = CustomToast.Type.NORMAL
+                            )
+                            coroutineScope.launch {
+                                when (UpdateManager.checkForUpdates(context)) {
+                                    UpdateCheckResult.UPDATE_AVAILABLE -> {
+                                        UpdateManager.updateInfo.value?.let { release ->
+                                            CustomToast.show(
+                                                context,
+                                                "检测到更新：v${release.version}",
+                                                type = CustomToast.Type.NORMAL
+                                            )
+                                        }
+                                    }
+                                    UpdateCheckResult.LATEST -> {
+                                        CustomToast.show(
+                                            context,
+                                            "目前已是最新版本",
+                                            type = CustomToast.Type.SUCCESS
+                                        )
+                                    }
+                                    UpdateCheckResult.FAILED -> {
+                                        CustomToast.show(
+                                            context,
+                                            "检查更新失败，请稍后重试",
+                                            type = CustomToast.Type.ERROR
+                                        )
+                                    }
+                                }
+                            }
+                        }
+                    }
                 )
                 SettingsActionItem(
                     title = "ybhgl/Reminder",
@@ -548,8 +618,220 @@ fun SettingsScreen(
             }
         }
     }
+
+    updateInfo?.let { release ->
+        if (showUpdateDialog) {
+            UpdateDialog(
+                release = release,
+                currentVersion = UpdateManager.currentVersion(context),
+                onDismiss = { showUpdateDialog = false },
+                onIgnore = {
+                    showUpdateDialog = false
+                    coroutineScope.launch { UpdateManager.ignoreCurrentUpdate(context) }
+                },
+                onDownload = {
+                    showUpdateDialog = false
+                    val intent = Intent(Intent.ACTION_VIEW, release.downloadUrl.toUri())
+                    context.startActivity(intent)
+                }
+            )
+        }
+    }
 }
 
+
+@Composable
+private fun NewUpdateBadge() {
+    Text(
+        text = "NEW",
+        color = Color.White,
+        fontSize = 10.sp,
+        fontWeight = FontWeight.Bold,
+        maxLines = 1,
+        modifier = Modifier
+            .background(Color.Red, CircleShape)
+            .padding(horizontal = 8.dp, vertical = 3.dp)
+    )
+}
+
+
+@Composable
+private fun UpdateDialog(
+    release: ReleaseInfo,
+    currentVersion: String,
+    onDismiss: () -> Unit,
+    onIgnore: () -> Unit,
+    onDownload: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text("检测到新版本 v${release.version}") },
+        text = {
+            Column(
+                verticalArrangement = Arrangement.spacedBy(8.dp),
+                modifier = Modifier.verticalScroll(rememberScrollState())
+            ) {
+                Text(
+                    text = "当前版本：v$currentVersion → 最新版本：v${release.version}",
+                    style = MaterialTheme.typography.bodyMedium,
+                    fontWeight = FontWeight.Medium
+                )
+                MarkdownText(
+                    markdown = release.body.ifBlank { "暂无更新说明" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        },
+        confirmButton = {
+            Button(onClick = onDownload) {
+                Text("下载")
+            }
+        },
+        dismissButton = {
+            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                TextButton(onClick = onIgnore) {
+                    Text("忽略")
+                }
+                TextButton(onClick = onDismiss) {
+                    Text("取消")
+                }
+            }
+        }
+    )
+}
+
+
+private sealed interface MdBlock {
+    data class Heading(val level: Int, val text: String) : MdBlock
+    data class ListItem(val text: String, val marker: String) : MdBlock
+    data class Quote(val text: String) : MdBlock
+    data class Paragraph(val text: String) : MdBlock
+    object Divider : MdBlock
+}
+
+
+/**
+ * 轻量 Markdown 渲染：支持标题、有序/无序列表、引用、分隔线，
+ * 以及行内加粗、斜体、代码、链接样式。
+ */
+@Composable
+private fun MarkdownText(
+    markdown: String,
+    style: TextStyle,
+    color: Color,
+    modifier: Modifier = Modifier
+) {
+    val linkColor = MaterialTheme.colorScheme.primary
+    val blocks = remember(markdown) { parseMarkdownBlocks(markdown) }
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
+        blocks.forEach { block ->
+            when (block) {
+                is MdBlock.Heading -> {
+                    val scale = when (block.level) {
+                        1 -> 1.4f
+                        2 -> 1.25f
+                        else -> 1.1f
+                    }
+                    Text(
+                        text = renderMarkdownInline(block.text, linkColor),
+                        style = style.copy(
+                            fontSize = (style.fontSize * scale),
+                            fontWeight = FontWeight.Bold,
+                            color = color
+                        )
+                    )
+                }
+                is MdBlock.ListItem -> {
+                    Row(horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                        Text(text = block.marker, style = style.copy(color = color))
+                        Text(
+                            text = renderMarkdownInline(block.text, linkColor),
+                            style = style.copy(color = color)
+                        )
+                    }
+                }
+                is MdBlock.Quote -> {
+                    Text(
+                        text = renderMarkdownInline(block.text, linkColor),
+                        style = style.copy(
+                            fontStyle = FontStyle.Italic,
+                            color = color
+                        ),
+                        modifier = Modifier.padding(start = 8.dp)
+                    )
+                }
+                is MdBlock.Divider -> {
+                    HorizontalDivider(modifier = Modifier.padding(vertical = 2.dp))
+                }
+                is MdBlock.Paragraph -> {
+                    Text(
+                        text = renderMarkdownInline(block.text, linkColor),
+                        style = style.copy(color = color)
+                    )
+                }
+            }
+        }
+    }
+}
+
+
+private val mdHeadingRegex = Regex("^(#{1,6})\\s+(.*)$")
+private val mdUnorderedRegex = Regex("^[-*+]\\s+(.*)$")
+private val mdOrderedRegex = Regex("^(\\d+)\\.\\s+(.*)$")
+private val mdQuoteRegex = Regex("^>\\s*(.*)$")
+private val mdInlineRegex = Regex("""\*\*([^*]+)\*\*|\*([^*]+)\*|`([^`]+)`|\[([^\]]+)\]\(([^)\s]+)\)""")
+
+private fun parseMarkdownBlocks(source: String): List<MdBlock> =
+    source.lines()
+        .map { it.trim() }
+        .filter { it.isNotEmpty() }
+        .map { line ->
+            when {
+                line == "---" || line == "***" -> MdBlock.Divider
+                mdHeadingRegex.matchEntire(line) != null -> {
+                    val m = mdHeadingRegex.matchEntire(line)!!
+                    MdBlock.Heading(level = m.groupValues[1].length, text = m.groupValues[2])
+                }
+                mdQuoteRegex.matchEntire(line) != null ->
+                    MdBlock.Quote(mdQuoteRegex.matchEntire(line)!!.groupValues[1])
+                mdUnorderedRegex.matchEntire(line) != null ->
+                    MdBlock.ListItem(mdUnorderedRegex.matchEntire(line)!!.groupValues[1], "•")
+                mdOrderedRegex.matchEntire(line) != null -> {
+                    val m = mdOrderedRegex.matchEntire(line)!!
+                    MdBlock.ListItem(m.groupValues[2], "${m.groupValues[1]}.")
+                }
+                else -> MdBlock.Paragraph(line)
+            }
+        }
+
+private fun renderMarkdownInline(text: String, linkColor: Color): AnnotatedString =
+    buildAnnotatedString {
+        var last = 0
+        for (match in mdInlineRegex.findAll(text)) {
+            append(text.substring(last, match.range.first))
+            val groups = match.groupValues
+            when {
+                groups[1].isNotEmpty() -> withStyle(SpanStyle(fontWeight = FontWeight.Bold)) {
+                    append(groups[1])
+                }
+                groups[2].isNotEmpty() -> withStyle(SpanStyle(fontStyle = FontStyle.Italic)) {
+                    append(groups[2])
+                }
+                groups[3].isNotEmpty() -> withStyle(SpanStyle(fontFamily = FontFamily.Monospace)) {
+                    append(groups[3])
+                }
+                else -> withStyle(SpanStyle(color = linkColor, textDecoration = TextDecoration.Underline)) {
+                    append(groups[4])
+                }
+            }
+            last = match.range.last + 1
+        }
+        append(text.substring(last))
+    }
 
 @Composable
 private fun ThemeSelectionCard(
