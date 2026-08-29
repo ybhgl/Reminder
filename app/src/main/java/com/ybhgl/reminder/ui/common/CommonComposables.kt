@@ -192,7 +192,10 @@ fun AutoResizeText(
     color: Color = Color.Unspecified,
     checkHeight: Boolean = false
 ) {
-    var resizedTextStyle by remember { mutableStateOf(style) }
+    // 以 style 为 key：字体/颜色等样式变化时重置并重新测量，避免自定义配置不生效
+    var resizedTextStyle by remember(style) {
+        mutableStateOf(style)
+    }
     val textMeasurer = rememberTextMeasurer()
 
     BoxWithConstraints(modifier = modifier) {

@@ -12,6 +12,7 @@ import com.ybhgl.reminder.ui.detail.DetailViewModel
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.SettingsViewModel
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreViewModel
+import com.ybhgl.reminder.ui.share.ShareViewModel
 import com.ybhgl.reminder.ui.tag.TagManagementViewModel
 
 /**
@@ -53,6 +54,14 @@ object AppViewModelProvider {
                 savedStateHandle = this.createSavedStateHandle(),
                 reminderRepository = reminderApplication().container.reminderRepository,
                 tagRepository = reminderApplication().container.tagRepository
+            )
+        }
+
+        // Initializer for ShareViewModel
+        initializer {
+            ShareViewModel(
+                savedStateHandle = createSavedStateHandle(),
+                reminderRepository = reminderApplication().container.reminderRepository
             )
         }
 

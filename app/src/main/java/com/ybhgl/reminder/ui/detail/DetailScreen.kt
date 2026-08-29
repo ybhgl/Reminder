@@ -1,10 +1,5 @@
 package com.ybhgl.reminder.ui.detail
 
-import android.Manifest
-import android.content.pm.PackageManager
-import android.os.Build
-import androidx.activity.compose.rememberLauncherForActivityResult
-import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.verticalScroll
@@ -20,10 +15,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.asAndroidBitmap
-import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -42,24 +34,17 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
-import androidx.core.content.ContextCompat
-import com.ybhgl.reminder.R
 import com.ybhgl.reminder.ReminderCardVisuals
 import com.ybhgl.reminder.Routes
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.reminderDisplayInfo
-import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayInfo
-import dev.shreyaspatil.capturable.capturable
-import dev.shreyaspatil.capturable.controller.rememberCaptureController
-import kotlinx.coroutines.launch
-import androidx.compose.runtime.withFrameNanos
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
 import java.time.LocalDate
@@ -81,11 +66,9 @@ import com.ybhgl.reminder.ui.add.ReminderCustomizationSection
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
-enum class CaptureAction { SHARE, SAVE }
-
 @OptIn(ExperimentalFoundationApi::class)
 @ExperimentalComposeUiApi
- @Composable
+@Composable
 fun DetailScreen(
     navController: NavController,
     viewModel: DetailViewModel = viewModel(factory = AppViewModelProvider.Factory)
@@ -93,36 +76,8 @@ fun DetailScreen(
     val uiState by viewModel.uiState.collectAsState()
     var editingReminderForTag by remember { mutableStateOf<ReminderItem?>(null) }
     val reminderItems = uiState.reminderItems
-    val captureController = rememberCaptureController()
-    val coroutineScope = rememberCoroutineScope()
     val context = LocalContext.current
     val snackbarHostState = remember { SnackbarHostState() }
-    var captureAction by remember { mutableStateOf<CaptureAction?>(null) }
-    var pendingPermissionAction by remember { mutableStateOf<CaptureAction?>(null) }
-    val needsLegacyStoragePermission = remember { Build.VERSION.SDK_INT < Build.VERSION_CODES.Q }
-    val storagePermissionLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.RequestPermission()
-    ) { granted ->
-        val actionToResume = pendingPermissionAction
-        if (granted && actionToResume != null) {
-            captureAction = actionToResume
-        } else if (!granted) {
-            coroutineScope.launch {
-                snackbarHostState.showSnackbar("请先授予存储权限")
-            }
-        }
-    }
-
-    LaunchedEffect(Unit) {
-        viewModel.saveResult.collect { result ->
-            val message = when (result) {
-                SaveResult.Success -> "已保存到相册"
-                SaveResult.Failure -> "保存失败"
-                SaveResult.PermissionDenied -> "请先授予存储权限"
-            }
-            snackbarHostState.showSnackbar(message)
-        }
-    }
 
     LaunchedEffect(Unit) {
         viewModel.snackbarMessage.collect { message ->
@@ -181,25 +136,6 @@ fun DetailScreen(
                 reminderItems.getOrNull(newIndex)?.let {
                     viewModel.updateCurrentReminder(it)
                 }
-            }
-        }
-
-        LaunchedEffect(captureAction) {
-            val pendingAction = captureAction ?: return@LaunchedEffect
-            try {
-                // 修复数字还渲染就导出导致的数字部分缺失问题
-                repeat(2) { withFrameNanos { } }
-                val imageBitmap = captureController.captureAsync().await()
-                when (pendingAction) {
-                    CaptureAction.SHARE -> currentReminder?.let { viewModel.shareReminder(imageBitmap.asAndroidBitmap(), context) }
-                    CaptureAction.SAVE -> currentReminder?.let { viewModel.saveReminderAsImage(imageBitmap.asAndroidBitmap(), context) }
-                }
-            } catch (_: Throwable) {
-                coroutineScope.launch {
-                    snackbarHostState.showSnackbar("操作失败，请重试")
-                }
-            } finally {
-                captureAction = null
             }
         }
 
@@ -327,18 +263,6 @@ fun DetailScreen(
                 }
             }
 
-            // The invisible composable for capture
-            if (captureAction != null && currentReminder != null) {
-                Box(modifier = Modifier.offset(y = (10000).dp)) {
-                    val isLunarEnabled = showLunarMap[currentReminder.id] ?: currentReminder.isLunar
-                    ShareableReminderImage(
-                        reminderItem = currentReminder,
-                        useLunar = isLunarEnabled,
-                        modifier = Modifier.capturable(captureController)
-                    )
-                }
-            }
-
             val configuration = LocalConfiguration.current
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -386,18 +310,11 @@ fun DetailScreen(
                             viewModel = viewModel,
                             onEditTag = { editingReminderForTag = it },
                             onCustomize = { reminderItemToCustomize = it },
-                            onShareClick = { captureAction = CaptureAction.SHARE },
+                            onShareClick = {
+                                currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
+                            },
                             onSaveClick = {
-                                val hasPermission = !needsLegacyStoragePermission || ContextCompat.checkSelfPermission(
-                                    context,
-                                    Manifest.permission.WRITE_EXTERNAL_STORAGE
-                                ) == PackageManager.PERMISSION_GRANTED
-                                if (hasPermission) {
-                                    captureAction = CaptureAction.SAVE
-                                } else {
-                                    pendingPermissionAction = CaptureAction.SAVE
-                                    storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                                }
+                                currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
                             },
                             onBirthdayListClick = if (currentReminder?.type == ReminderType.BIRTHDAY) {
                                 { navController.navigate(Routes.birthdayList(currentReminder.id)) }
@@ -409,19 +326,10 @@ fun DetailScreen(
                 if (!isLandscape) {
                     ActionButtonsRow(
                         onShareClick = {
-                            captureAction = CaptureAction.SHARE
+                            currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
                         },
                         onSaveClick = {
-                            val hasPermission = !needsLegacyStoragePermission || ContextCompat.checkSelfPermission(
-                                context,
-                                Manifest.permission.WRITE_EXTERNAL_STORAGE
-                            ) == PackageManager.PERMISSION_GRANTED
-                            if (hasPermission) {
-                                captureAction = CaptureAction.SAVE
-                            } else {
-                                pendingPermissionAction = CaptureAction.SAVE
-                                storagePermissionLauncher.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
-                            }
+                            currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
                         },
                         onBirthdayListClick = if (currentReminder?.type == ReminderType.BIRTHDAY) {
                             { navController.navigate(Routes.birthdayList(currentReminder.id)) }
@@ -789,65 +697,6 @@ fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
     )
 }
 
-@Composable
-fun ShareableReminderImage(
-    reminderItem: ReminderItem,
-    useLunar: Boolean = reminderItem.isLunar,
-    modifier: Modifier = Modifier
-) {
-    ReminderTheme(
-        themeOption = AppThemeOption.LIGHT,
-        dynamicColor = false
-    ) {
-        Box(modifier = modifier) {
-            Image(
-                painter = painterResource(id = R.drawable.background),
-                contentDescription = null,
-                contentScale = ContentScale.Crop,
-                modifier = Modifier.matchParentSize()
-            )
-            Column(
-                horizontalAlignment = Alignment.CenterHorizontally
-            ) {
-                Image(
-                    painter = painterResource(id = R.drawable.reminder),
-                    contentDescription = "Reminder",
-                    modifier = Modifier.padding(vertical = 16.dp)
-                )
-                ReminderDetailCard(
-                    reminderItem = reminderItem,
-                    useLunar = useLunar,
-                    modifier = Modifier.padding(horizontal = 32.dp)
-                )
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(16.dp),
-                    horizontalArrangement = Arrangement.Center,
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        painter = painterResource(id = R.drawable.ic_app_logo),
-                        contentDescription = "App Logo",
-                        modifier = Modifier.size(24.dp),
-                        tint = Color.Unspecified
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Image(
-                        painter = painterResource(
-                            id = if (reminderItem.type == ReminderType.COUNT_UP) {
-                                R.drawable.count_up
-                            } else {
-                                R.drawable.annual
-                            }
-                        ),
-                        contentDescription = null
-                    )
-                }
-            }
-        }
-    }
-}
 @Composable
 private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: Boolean = false) {
     val isToday = dayCount == 0 && !isCountUp

@@ -213,6 +213,7 @@ import com.ybhgl.reminder.data.colorPaletteFlow
 import com.ybhgl.reminder.data.AppColorPalette
 import com.ybhgl.reminder.ui.detail.BirthdayListScreen
 import com.ybhgl.reminder.ui.detail.DetailScreen
+import com.ybhgl.reminder.ui.share.ShareScreen
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
@@ -602,6 +603,8 @@ object Routes {
     const val TAG_MANAGEMENT_PATTERN = "$TAG_MANAGEMENT?isSortMode={isSortMode}"
     const val DETAIL_REMINDER_BASE = "detail_reminder"
     const val DETAIL_REMINDER_PATTERN = "$DETAIL_REMINDER_BASE/{reminderId}"
+    const val SHARE_REMINDER_BASE = "share_reminder"
+    const val SHARE_REMINDER_PATTERN = "$SHARE_REMINDER_BASE/{reminderId}"
     const val BIRTHDAY_LIST_BASE = "birthday_list"
     const val BIRTHDAY_LIST_PATTERN = "$BIRTHDAY_LIST_BASE/{reminderId}"
     const val REMINDER_SETTING_BASE = "reminder_setting"
@@ -609,6 +612,7 @@ object Routes {
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
+    fun shareReminder(reminderId: Int): String = "$SHARE_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
     fun addReminder(initialType: String? = null): String {
         return if (initialType != null) "$ADD_REMINDER_BASE?initialType=$initialType" else ADD_REMINDER_BASE
@@ -804,6 +808,12 @@ fun ReminderApp() {
                 arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
             ) {
                 DetailScreen(navController = navController)
+            }
+            composable(
+                route = Routes.SHARE_REMINDER_PATTERN,
+                arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
+            ) {
+                ShareScreen(navController = navController)
             }
             composable(
                 route = Routes.BIRTHDAY_LIST_PATTERN,
