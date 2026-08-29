@@ -28,6 +28,7 @@ import com.ybhgl.reminder.data.viewModeFlow
 import com.ybhgl.reminder.data.saveViewMode
 import com.ybhgl.reminder.data.scrollBehaviorFlow
 import com.ybhgl.reminder.data.saveScrollBehavior
+import com.ybhgl.reminder.data.NotificationStyleOption
 import com.ybhgl.reminder.data.BackupPreferences
 import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
@@ -119,6 +120,13 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
         saveScrollBehavior(context, behavior)
         BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
         BackupPreferences.triggerAutoBackup(context, reminderRepository)
+    }
+
+    fun notificationStylePreferenceFlow(context: Context): Flow<NotificationStyleOption> =
+        com.ybhgl.reminder.data.notificationStyleFlow(context)
+
+    suspend fun updateNotificationStylePreference(context: Context, style: NotificationStyleOption) {
+        com.ybhgl.reminder.data.saveNotificationStyle(context, style)
     }
 
     suspend fun backupToUri(context: Context, targetUri: Uri): String = withContext(Dispatchers.IO) {

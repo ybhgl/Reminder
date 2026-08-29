@@ -150,6 +150,8 @@ import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.util.ReleaseInfo
 import com.ybhgl.reminder.util.UpdateCheckResult
 import com.ybhgl.reminder.util.UpdateManager
+import com.ybhgl.reminder.util.ReminderNotificationHelper
+import com.ybhgl.reminder.data.NotificationStyleOption
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -190,6 +192,8 @@ fun SettingsScreen(
     }
     val isAppLockEnabled by remember(context) { SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = null)
     val isScreenshotBlocked by remember(context) { SecurityPreferences.screenshotBlockedFlow(context) }.collectAsState(initial = false)
+    val notificationStyleFlow = remember(context) { viewModel.notificationStylePreferenceFlow(context) }
+    val notificationStyle by notificationStyleFlow.collectAsState(initial = NotificationStyleOption.STANDARD)
     val scrollState = rememberScrollState()
     
     var showDisableVerify by rememberSaveable { mutableStateOf(false) }
@@ -417,6 +421,19 @@ fun SettingsScreen(
                     description = "管理本地及 WebDAV 备份与恢复",
                     icon = { Icon(Icons.Filled.Storage, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
                     onClick = onNavigateToBackupAndRestore
+                )
+                Text(
+                    text = "通知",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
+                NotificationStyleCard(
+                    selectedStyle = notificationStyle,
+                    onStyleSelected = { style ->
+                        coroutineScope.launch {
+                            viewModel.updateNotificationStylePreference(context, style)
+                        }
+                    }
                 )
                 Text(
                     text = "桌面小部件",
@@ -933,6 +950,86 @@ private fun ThemeSelectionCard(
                 }
             }
         }
+    }
+}
+
+
+@Composable
+private fun NotificationStyleCard(
+    selectedStyle: NotificationStyleOption,
+    onStyleSelected: (NotificationStyleOption) -> Unit
+) {
+    val isMiIslandSupported = remember { ReminderNotificationHelper.isMiIslandSupported() }
+    val isLiveSupported = remember { Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA }
+
+    Card(
+        modifier = Modifier.fillMaxWidth(),
+        colors = CardDefaults.cardColors(
+            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+        )
+    ) {
+        Column(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
+        ) {
+            Text(
+                text = "通知样式",
+                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
+                color = MaterialTheme.colorScheme.onSurface,
+                modifier = Modifier.padding(bottom = 4.dp)
+            )
+            NotificationStyleRow(
+                title = "标准通知",
+                description = "系统默认的提醒通知样式",
+                selected = selectedStyle == NotificationStyleOption.STANDARD,
+                onClick = { onStyleSelected(NotificationStyleOption.STANDARD) }
+            )
+            if (isMiIslandSupported) {
+                NotificationStyleRow(
+                    title = "小米超级岛",
+                    description = "以焦点通知形态展示（澎湃 OS 有白名单限制，需系统允许）",
+                    selected = selectedStyle == NotificationStyleOption.MI_ISLAND,
+                    onClick = { onStyleSelected(NotificationStyleOption.MI_ISLAND) }
+                )
+            }
+            if (isLiveSupported) {
+                NotificationStyleRow(
+                    title = "原生 Live 通知",
+                    description = "Android 16 倒计时进度条样式",
+                    selected = selectedStyle == NotificationStyleOption.LIVE,
+                    onClick = { onStyleSelected(NotificationStyleOption.LIVE) }
+                )
+            }
+        }
+    }
+}
+
+@Composable
+private fun NotificationStyleRow(
+    title: String,
+    description: String,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .selectable(selected = selected, onClick = onClick)
+            .padding(vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(
+                text = title,
+                style = MaterialTheme.typography.bodyLarge,
+                color = MaterialTheme.colorScheme.onSurface
+            )
+            Text(
+                text = description,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        RadioButton(selected = selected, onClick = null)
     }
 }
 
