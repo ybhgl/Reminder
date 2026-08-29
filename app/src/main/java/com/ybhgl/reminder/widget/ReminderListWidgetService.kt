@@ -8,6 +8,7 @@ import android.widget.RemoteViewsService
 import com.ybhgl.reminder.R
 import com.ybhgl.reminder.ReminderApplication
 import com.ybhgl.reminder.data.ReminderItem
+import com.ybhgl.reminder.util.sortRemindersByTime
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
@@ -31,10 +32,10 @@ class ReminderListWidgetFactory(
     override fun onCreate() {}
 
     override fun onDataSetChanged() {
-        val repository = (context.applicationContext as ReminderApplication).container.reminderRepository
+        val container = (context.applicationContext as ReminderApplication).container
         try {
             reminderList = runBlocking {
-                var list = repository.getAllRemindersStream().first()
+                var list = container.reminderRepository.getAllRemindersStream().first()
 
                 if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                     val filterType = WidgetConfigStore.get4x2FilterType(context, appWidgetId)
@@ -49,18 +50,8 @@ class ReminderListWidgetFactory(
                     }
                 }
 
-                list.sortedWith(compareByDescending<ReminderItem> { it.isPinned }
-                    .thenBy { item ->
-                        val displayInfo = WidgetUpdateHelper.getDisplayInfo(context, item)
-                        val daysVal = displayInfo.days.toIntOrNull() ?: 0
-                        if (displayInfo.label.contains("还有") || displayInfo.label.contains("生日")) {
-                            daysVal
-                        } else if (displayInfo.days == "今") {
-                            0
-                        } else {
-                            100000 + daysVal
-                        }
-                    })
+                // 不看标签：置顶在前，其余所有类别事件按时间先后排序
+                sortRemindersByTime(list)
             }
         } catch (e: Exception) {
             e.printStackTrace()
