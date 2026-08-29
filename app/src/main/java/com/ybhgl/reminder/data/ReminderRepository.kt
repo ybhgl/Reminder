@@ -45,6 +45,7 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
             val app = context.applicationContext
             ReminderScheduler.cancelReminder(app, item)
             CalendarManager.deleteEvent(app, item)
+            com.ybhgl.reminder.util.CardBackgroundImageManager.deleteImage(app, item.cardBackgroundImagePath)
         }
         reminderDao.deleteById(id)
         WidgetUpdateHelper.updateAllWidgets(context)
@@ -60,6 +61,7 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
             if (item != null) {
                 ReminderScheduler.cancelReminder(app, item)
                 CalendarManager.deleteEvent(app, item)
+                com.ybhgl.reminder.util.CardBackgroundImageManager.deleteImage(app, item.cardBackgroundImagePath)
             }
         }
         reminderDao.deleteByIds(ids.toList())
@@ -75,6 +77,7 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
             ReminderScheduler.cancelReminder(app, item)
             CalendarManager.deleteEvent(app, item)
         }
+        com.ybhgl.reminder.util.CardBackgroundImageManager.pruneOrphans(app, emptyList())
         reminderDao.deleteAll()
         WidgetUpdateHelper.updateAllWidgets(context)
         BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())

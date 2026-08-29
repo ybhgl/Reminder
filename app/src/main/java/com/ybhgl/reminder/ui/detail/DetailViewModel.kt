@@ -92,13 +92,27 @@ class DetailViewModel(
         reminder: ReminderItem,
         isCustomized: Boolean,
         customHeaderColor: String,
-        customFont: String
+        customFont: String,
+        cardBackgroundType: String = "DEFAULT",
+        cardBackgroundColor: String = "",
+        cardBackgroundImagePath: String = "",
+        cardBackgroundBlurRadius: Float = 0f,
+        cardBackgroundGlassEnabled: Boolean = false,
+        cardBackgroundGlassFrosted: Boolean = false,
+        cardBackgroundGlassDensity: Float = 0.5f
     ) {
         viewModelScope.launch {
             val updatedReminder = reminder.copy(
                 isCustomized = isCustomized,
                 customHeaderColor = customHeaderColor,
-                customFont = customFont
+                customFont = customFont,
+                cardBackgroundType = cardBackgroundType,
+                cardBackgroundColor = cardBackgroundColor,
+                cardBackgroundImagePath = cardBackgroundImagePath,
+                cardBackgroundBlurRadius = cardBackgroundBlurRadius,
+                cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
+                cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
+                cardBackgroundGlassDensity = cardBackgroundGlassDensity
             )
             reminderRepository.updateReminder(updatedReminder)
         }

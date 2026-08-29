@@ -338,7 +338,9 @@ object BackupPreferences {
                 dynamicColorEnabled = dynamicColorEnabled,
                 themeColorPalette = themeColorPalette,
                 customColorSeed = customColorSeed,
-                scrollBehavior = scrollBehavior
+                scrollBehavior = scrollBehavior,
+                cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
+                    .collectForBackup(context, reminders)
             )
 
             val json = kotlinx.serialization.json.Json.encodeToString(backupData)

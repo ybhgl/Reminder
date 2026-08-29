@@ -178,7 +178,14 @@ class AddReminderViewModel(
             reminderUiState = reminderUiState.copy(
                 isCustomized = false,
                 customHeaderColor = "",
-                customFont = ""
+                customFont = "",
+                cardBackgroundType = "DEFAULT",
+                cardBackgroundColor = "",
+                cardBackgroundImagePath = "",
+                cardBackgroundBlurRadius = 0f,
+                cardBackgroundGlassEnabled = false,
+                cardBackgroundGlassFrosted = false,
+                cardBackgroundGlassDensity = 0.5f
             )
         } else {
             val defaultColor = reminderUiState.customHeaderColor
@@ -224,7 +231,14 @@ data class ReminderUiState(
     val notes: String = "",
     val isCustomized: Boolean = false,
     val customHeaderColor: String = "",
-    val customFont: String = ""
+    val customFont: String = "",
+    val cardBackgroundType: String = "DEFAULT",
+    val cardBackgroundColor: String = "",
+    val cardBackgroundImagePath: String = "",
+    val cardBackgroundBlurRadius: Float = 0f,
+    val cardBackgroundGlassEnabled: Boolean = false,
+    val cardBackgroundGlassFrosted: Boolean = false,
+    val cardBackgroundGlassDensity: Float = 0.5f
 )
 
 fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
@@ -240,7 +254,14 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     notes = notes,
     isCustomized = isCustomized,
     customHeaderColor = customHeaderColor,
-    customFont = customFont
+    customFont = customFont,
+    cardBackgroundType = cardBackgroundType,
+    cardBackgroundColor = cardBackgroundColor,
+    cardBackgroundImagePath = cardBackgroundImagePath,
+    cardBackgroundBlurRadius = cardBackgroundBlurRadius,
+    cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
+    cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
+    cardBackgroundGlassDensity = cardBackgroundGlassDensity
 )
 
 fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
@@ -256,5 +277,12 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     notes = notes,
     isCustomized = isCustomized,
     customHeaderColor = customHeaderColor,
-    customFont = customFont
+    customFont = customFont,
+    cardBackgroundType = cardBackgroundType,
+    cardBackgroundColor = cardBackgroundColor,
+    cardBackgroundImagePath = cardBackgroundImagePath,
+    cardBackgroundBlurRadius = cardBackgroundBlurRadius,
+    cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
+    cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
+    cardBackgroundGlassDensity = cardBackgroundGlassDensity
 )

@@ -214,6 +214,13 @@ import com.ybhgl.reminder.data.AppColorPalette
 import com.ybhgl.reminder.ui.detail.BirthdayListScreen
 import com.ybhgl.reminder.ui.detail.DetailScreen
 import com.ybhgl.reminder.ui.share.ShareScreen
+import com.ybhgl.reminder.ui.common.CardBackgroundLayer
+import com.ybhgl.reminder.ui.common.CardBackgroundSpec
+import com.ybhgl.reminder.ui.common.CardBackgroundType
+import com.ybhgl.reminder.ui.common.cardBackgroundLuminance
+import com.ybhgl.reminder.ui.common.cardBackgroundSpec
+import com.ybhgl.reminder.ui.common.parseCardBackgroundType
+import com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
@@ -896,7 +903,8 @@ data class ReminderCardVisuals(
     val footerDividerColor: Color,
     val numberColor: Color,
     val secondaryTextColor: Color,
-    val fontFamily: FontFamily = FontFamily.Default
+    val fontFamily: FontFamily = FontFamily.Default,
+    val backgroundSpec: CardBackgroundSpec? = null
 )
 
 private enum class ReminderTab(val title: String, val filter: (ReminderItem) -> Boolean) {
@@ -1099,14 +1107,21 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
         }
     }
 
-    // 3. 应用个性化的大数 FontFamily 
-    return if (reminder.isCustomized && reminder.customFont.isNotEmpty()) {
-        finalVisuals.copy(
-            fontFamily = reminder.customFont.toFontFamily()
-        )
-    } else {
-        finalVisuals
-    }
+    // 3. 应用个性化的大数 FontFamily 与卡片背景
+    val backgroundSpec = if (reminder.isCustomized &&
+        parseCardBackgroundType(reminder.cardBackgroundType) != CardBackgroundType.DEFAULT
+    ) {
+        reminder.cardBackgroundSpec
+    } else null
+
+    return finalVisuals.copy(
+        fontFamily = if (reminder.isCustomized && reminder.customFont.isNotEmpty()) {
+            reminder.customFont.toFontFamily()
+        } else {
+            finalVisuals.fontFamily
+        },
+        backgroundSpec = backgroundSpec
+    )
 }
 
 @Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
@@ -2316,6 +2331,23 @@ private fun ReminderSummaryCard(
         }
     )
 
+    // 自定义背景：完整覆盖整卡（表头/内容/底栏之下），前景文字按背景亮度实时反色
+    val backgroundSpec = visuals.backgroundSpec
+    val backgroundBitmap = if (backgroundSpec?.type == CardBackgroundType.IMAGE) {
+        rememberCardBackgroundBitmap(backgroundSpec.imagePath)
+    } else null
+    val hasCustomBackground = backgroundSpec != null
+    val effectiveVisuals = if (backgroundSpec != null) {
+        val luminance = cardBackgroundLuminance(backgroundSpec, backgroundBitmap)
+        val foreground = if (luminance > 0.55f) Color(0xDE000000) else Color.White
+        visuals.copy(
+            headerContentColor = foreground,
+            numberColor = foreground,
+            secondaryTextColor = foreground.copy(alpha = 0.92f),
+            footerDividerColor = if (luminance > 0.55f) Color.Black.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.25f)
+        )
+    } else visuals
+
     Card(
         modifier = modifier
             .graphicsLayer {
@@ -2327,7 +2359,7 @@ private fun ReminderSummaryCard(
         shape = ReminderCardShape,
         colors = CardDefaults.cardColors(
             containerColor = Color.Transparent,
-            contentColor = visuals.numberColor
+            contentColor = effectiveVisuals.numberColor
         ),
         elevation = CardDefaults.cardElevation(defaultElevation = 2.dp),
         onClick = {}
@@ -2354,76 +2386,91 @@ private fun ReminderSummaryCard(
                     }
                 ),
             shape = ReminderCardShape,
-            color = visuals.cardBackground,
+            color = if (hasCustomBackground) Color.Transparent else visuals.cardBackground,
             tonalElevation = 0.dp,
             shadowElevation = 0.dp,
             border = null
         ) {
-            Column(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
-                        .background(visuals.headerColor)
-                        .padding(horizontal = 12.dp, vertical = 8.dp)
-                ) {
-                    Text(
-                        text = displayInfo.headerTitle,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .basicMarquee(animationMode = MarqueeAnimationMode.Immediately),
-                        style = MaterialTheme.typography.titleMedium.copy(
-                            fontWeight = FontWeight.Medium,
-                            fontSize = 15.sp,
-                            letterSpacing = 0.sp
-                        ),
-                        color = visuals.headerContentColor,
-                        maxLines = 1,
-                        softWrap = false
+            Box(modifier = Modifier.fillMaxSize()) {
+                if (backgroundSpec != null) {
+                    CardBackgroundLayer(
+                        spec = backgroundSpec,
+                        modifier = Modifier.matchParentSize()
                     )
                 }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(1f)
-                        .padding(horizontal = 8.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    DayCountRow(
-                        dayCount = displayInfo.dayCount,
-                        visuals = visuals,
-                        isCountUp = reminder.type == ReminderType.COUNT_UP
-                    )
-                }
-                HorizontalDivider(
-                    modifier = Modifier.fillMaxWidth(),
-                    thickness = 0.6.dp,
-                    color = visuals.footerDividerColor
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
-                        .background(visuals.footerBackground)
-                ) {
+                Column(modifier = Modifier.fillMaxSize()) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                            .clip(RoundedCornerShape(topStart = 16.dp, topEnd = 16.dp))
+                            .background(
+                                if (hasCustomBackground) Color.Transparent else visuals.headerColor
+                            )
+                            .padding(horizontal = 12.dp, vertical = 8.dp)
+                    ) {
+                        Text(
+                            text = displayInfo.headerTitle,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .basicMarquee(animationMode = MarqueeAnimationMode.Immediately),
+                            style = MaterialTheme.typography.titleMedium.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontSize = 15.sp,
+                                letterSpacing = 0.sp
+                            ),
+                            color = effectiveVisuals.headerContentColor,
+                            maxLines = 1,
+                            softWrap = false
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .weight(1f)
+                            .padding(horizontal = 8.dp),
                         contentAlignment = Alignment.Center
                     ) {
-                        AutoSizeMiddleEllipsisText(
-                            text = displayInfo.referenceText,
-                            style = MaterialTheme.typography.bodyMedium.copy(
-                                letterSpacing = 0.sp,
-                                fontSize = 13.sp,
-                                textAlign = TextAlign.Center
-                            ),
-                            color = visuals.secondaryTextColor,
-                            maxLines = 1,
-                            minTextSizeSp = 13f,
-                            modifier = Modifier.fillMaxWidth()
+                        DayCountRow(
+                            dayCount = displayInfo.dayCount,
+                            visuals = effectiveVisuals,
+                            isCountUp = reminder.type == ReminderType.COUNT_UP
                         )
+                    }
+                    // 自定义卡片背景下隐藏底栏分割线，保持背景视觉完整
+                    if (!hasCustomBackground) {
+                        HorizontalDivider(
+                            modifier = Modifier.fillMaxWidth(),
+                            thickness = 0.6.dp,
+                            color = effectiveVisuals.footerDividerColor
+                        )
+                    }
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(bottomStart = 16.dp, bottomEnd = 16.dp))
+                            .background(
+                                if (hasCustomBackground) Color.Transparent else visuals.footerBackground
+                            )
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(horizontal = 12.dp, vertical = 8.dp),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AutoSizeMiddleEllipsisText(
+                                text = displayInfo.referenceText,
+                                style = MaterialTheme.typography.bodyMedium.copy(
+                                    letterSpacing = 0.sp,
+                                    fontSize = 13.sp,
+                                    textAlign = TextAlign.Center
+                                ),
+                                color = effectiveVisuals.secondaryTextColor,
+                                maxLines = 1,
+                                minTextSizeSp = 13f,
+                                modifier = Modifier.fillMaxWidth()
+                            )
+                        }
                     }
                 }
             }

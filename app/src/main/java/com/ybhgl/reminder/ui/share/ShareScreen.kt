@@ -368,7 +368,8 @@ fun ShareScreen(
                             onFontChange = { font ->
                                 viewModel.updateCustomization(options.isCustomized, options.customHeaderColor, font)
                             },
-                            reminderType = previewItem.type
+                            reminderType = previewItem.type,
+                            showBackgroundOption = false
                         )
                     }
                 }
@@ -458,7 +459,7 @@ private fun ShareBackgroundSection(
             FilterChip(
                 selected = backgroundType == ShareBackgroundType.IMAGE,
                 onClick = onPickCustomImage,
-                label = { Text("自定义图片") },
+                label = { Text("图片") },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Colorize,
@@ -473,7 +474,7 @@ private fun ShareBackgroundSection(
                     onBackgroundTypeChange(ShareBackgroundType.COLOR)
                     showColorPicker = true
                 },
-                label = { Text("自定义颜色") },
+                label = { Text("颜色") },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Palette,

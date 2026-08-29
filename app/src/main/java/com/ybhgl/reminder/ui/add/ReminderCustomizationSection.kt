@@ -137,10 +137,20 @@ fun ReminderCustomizationSection(
     customFont: String,
     onFontChange: (String) -> Unit,
     reminderType: ReminderType,
+    cardBackgroundType: String = "DEFAULT",
+    cardBackgroundColor: String = "",
+    cardBackgroundImagePath: String = "",
+    cardBackgroundBlurRadius: Float = 0f,
+    cardBackgroundGlassEnabled: Boolean = false,
+    cardBackgroundGlassFrosted: Boolean = false,
+    cardBackgroundGlassDensity: Float = 0.5f,
+    onBackgroundConfirmed: (CardBackgroundResult) -> Unit = {},
+    showBackgroundOption: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     var showColorDialog by remember { mutableStateOf(false) }
     var showFontDialog by remember { mutableStateOf(false) }
+    var showBackgroundDialog by remember { mutableStateOf(false) }
 
     Column(
         modifier = modifier
@@ -263,6 +273,54 @@ fun ReminderCustomizationSection(
                         tint = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                 }
+
+                // 卡片背景子选项（分享预览等场景可隐藏，由独立的背景定制入口接管）
+                if (showBackgroundOption) {
+                    Row(
+                        verticalAlignment = Alignment.CenterVertically,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable { showBackgroundDialog = true }
+                            .padding(vertical = 4.dp)
+                    ) {
+                        Text("卡片背景", style = MaterialTheme.typography.bodyLarge)
+                        Spacer(Modifier.width(16.dp))
+                        Row(
+                            modifier = Modifier.weight(1f),
+                            horizontalArrangement = Arrangement.End,
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            val backgroundLabel = when (cardBackgroundType) {
+                                "IMAGE" -> "自定义图片"
+                                "COLOR" -> cardBackgroundColor.uppercase()
+                                else -> "默认"
+                            }
+                            if (cardBackgroundType == "COLOR" && cardBackgroundColor.isNotEmpty()) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(16.dp)
+                                        .background(
+                                            color = cardBackgroundColor.toComposeColor(),
+                                            shape = CircleShape
+                                        )
+                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
+                                )
+                                Spacer(modifier = Modifier.width(8.dp))
+                            }
+                            Text(
+                                text = backgroundLabel,
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Spacer(Modifier.width(8.dp))
+                        Icon(
+                            imageVector = Icons.Filled.ChevronRight,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                }
             }
         }
     }
@@ -287,6 +345,35 @@ fun ReminderCustomizationSection(
             onConfirm = { fontName ->
                 onFontChange(fontName)
                 showFontDialog = false
+            }
+        )
+    }
+
+    // 卡片背景设置对话框
+    if (showBackgroundDialog) {
+        // 默认预览跟随卡片实际表头颜色
+        val actualHeaderColor = if (customHeaderColor.isNotEmpty()) {
+            customHeaderColor
+        } else {
+            when (reminderType) {
+                ReminderType.ANNUAL -> "#1E88E5"
+                ReminderType.COUNT_UP -> "#F28C20"
+                ReminderType.BIRTHDAY -> "#E53935"
+            }
+        }
+        CardBackgroundSettingsDialog(
+            initialType = cardBackgroundType,
+            initialColorHex = cardBackgroundColor,
+            initialImagePath = cardBackgroundImagePath,
+            initialBlurRadius = cardBackgroundBlurRadius,
+            initialGlassEnabled = cardBackgroundGlassEnabled,
+            initialGlassFrosted = cardBackgroundGlassFrosted,
+            initialGlassDensity = cardBackgroundGlassDensity,
+            defaultPreviewColorHex = actualHeaderColor,
+            onDismiss = { showBackgroundDialog = false },
+            onConfirm = { result ->
+                onBackgroundConfirmed(result)
+                showBackgroundDialog = false
             }
         )
     }

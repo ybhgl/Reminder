@@ -63,6 +63,8 @@ import androidx.compose.material.icons.filled.Palette
 import com.ybhgl.reminder.ui.tag.toComposeColor
 import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.ui.add.ReminderCustomizationSection
+import com.ybhgl.reminder.util.CardBackgroundImageManager
+import kotlinx.coroutines.launch
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 
@@ -77,6 +79,7 @@ fun DetailScreen(
     var editingReminderForTag by remember { mutableStateOf<ReminderItem?>(null) }
     val reminderItems = uiState.reminderItems
     val context = LocalContext.current
+    val customizeScope = androidx.compose.runtime.rememberCoroutineScope()
     val snackbarHostState = remember { SnackbarHostState() }
 
     LaunchedEffect(Unit) {
@@ -105,13 +108,28 @@ fun DetailScreen(
         var tempIsCustomized by remember { mutableStateOf(false) }
         var tempHeaderColor by remember { mutableStateOf("") }
         var tempFont by remember { mutableStateOf("") }
+        var tempBgType by remember { mutableStateOf("DEFAULT") }
+        var tempBgColor by remember { mutableStateOf("") }
+        var tempBgImagePath by remember { mutableStateOf("") }
+        var tempBgBlur by remember { mutableStateOf(0f) }
+        var tempBgGlass by remember { mutableStateOf(false) }
+        var tempBgFrosted by remember { mutableStateOf(false) }
+        var tempBgDensity by remember { mutableStateOf(0.5f) }
 
-        LaunchedEffect(reminderItemToCustomize) {
-            reminderItemToCustomize?.let { item ->
-                tempIsCustomized = item.isCustomized
-                tempHeaderColor = item.customHeaderColor
-                tempFont = item.customFont
-            }
+        // 打开个性化对话框时同步初始化 temp 状态。
+        // 若用 LaunchedEffect 同步会晚一帧：首帧 temp 为默认值导致背景卡片整帧消失（闪烁）。
+        fun openCustomizeDialog(item: ReminderItem) {
+            tempIsCustomized = item.isCustomized
+            tempHeaderColor = item.customHeaderColor
+            tempFont = item.customFont
+            tempBgType = item.cardBackgroundType
+            tempBgColor = item.cardBackgroundColor
+            tempBgImagePath = item.cardBackgroundImagePath
+            tempBgBlur = item.cardBackgroundBlurRadius
+            tempBgGlass = item.cardBackgroundGlassEnabled
+            tempBgFrosted = item.cardBackgroundGlassFrosted
+            tempBgDensity = item.cardBackgroundGlassDensity
+            reminderItemToCustomize = item
         }
 
         // Sync currentId/viewModel active reminder item when page changes (via user swipe)
@@ -179,6 +197,13 @@ fun DetailScreen(
                     } else {
                         tempHeaderColor = ""
                         tempFont = ""
+                        tempBgType = "DEFAULT"
+                        tempBgColor = ""
+                        tempBgImagePath = ""
+                        tempBgBlur = 0f
+                        tempBgGlass = false
+                        tempBgFrosted = false
+                        tempBgDensity = 0.5f
                     }
                 }
 
@@ -228,7 +253,31 @@ fun DetailScreen(
                                     onHeaderColorChange = { tempHeaderColor = it },
                                     customFont = tempFont,
                                     onFontChange = { tempFont = it },
-                                    reminderType = item.type
+                                    reminderType = item.type,
+                                    cardBackgroundType = tempBgType,
+                                    cardBackgroundColor = tempBgColor,
+                                    cardBackgroundImagePath = tempBgImagePath,
+                                    cardBackgroundBlurRadius = tempBgBlur,
+                                    cardBackgroundGlassEnabled = tempBgGlass,
+                                    cardBackgroundGlassFrosted = tempBgFrosted,
+                                    cardBackgroundGlassDensity = tempBgDensity,
+                                    onBackgroundConfirmed = { result ->
+                                        // 旧背景图被替换或恢复默认时清理残留图片
+                                        val oldPath = tempBgImagePath
+                                        val newPath = result.imagePath
+                                        if (oldPath.isNotEmpty() && oldPath != newPath) {
+                                            customizeScope.launch {
+                                                CardBackgroundImageManager.deleteImage(context, oldPath)
+                                            }
+                                        }
+                                        tempBgType = result.type.name
+                                        tempBgColor = result.colorHex
+                                        tempBgImagePath = result.imagePath
+                                        tempBgBlur = result.blurRadius
+                                        tempBgGlass = result.glassEnabled
+                                        tempBgFrosted = result.glassFrosted
+                                        tempBgDensity = result.glassDensity
+                                    }
                                 )
 
                                 Spacer(modifier = Modifier.height(24.dp))
@@ -249,7 +298,14 @@ fun DetailScreen(
                                                 reminder = item,
                                                 isCustomized = tempIsCustomized,
                                                 customHeaderColor = tempHeaderColor,
-                                                customFont = tempFont
+                                                customFont = tempFont,
+                                                cardBackgroundType = tempBgType,
+                                                cardBackgroundColor = tempBgColor,
+                                                cardBackgroundImagePath = tempBgImagePath,
+                                                cardBackgroundBlurRadius = tempBgBlur,
+                                                cardBackgroundGlassEnabled = tempBgGlass,
+                                                cardBackgroundGlassFrosted = tempBgFrosted,
+                                                cardBackgroundGlassDensity = tempBgDensity
                                             )
                                             reminderItemToCustomize = null
                                         }
@@ -294,7 +350,14 @@ fun DetailScreen(
                             pageItem.copy(
                                 isCustomized = tempIsCustomized,
                                 customHeaderColor = tempHeaderColor,
-                                customFont = tempFont
+                                customFont = tempFont,
+                                cardBackgroundType = tempBgType,
+                                cardBackgroundColor = tempBgColor,
+                                cardBackgroundImagePath = tempBgImagePath,
+                                cardBackgroundBlurRadius = tempBgBlur,
+                                cardBackgroundGlassEnabled = tempBgGlass,
+                                cardBackgroundGlassFrosted = tempBgFrosted,
+                                cardBackgroundGlassDensity = tempBgDensity
                             )
                         } else {
                             pageItem
@@ -309,7 +372,7 @@ fun DetailScreen(
                             showNotesMap = showNotesMap,
                             viewModel = viewModel,
                             onEditTag = { editingReminderForTag = it },
-                            onCustomize = { reminderItemToCustomize = it },
+                            onCustomize = { openCustomizeDialog(it) },
                             onShareClick = {
                                 currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
                             },
@@ -750,6 +813,22 @@ fun ReminderDetailCard(
     val visuals = displayInfo.visuals
     val density = androidx.compose.ui.platform.LocalDensity.current.density
 
+    // 自定义卡片背景：完整覆盖整卡，前景文字按背景亮度实时反色
+    val backgroundSpec = visuals.backgroundSpec
+    val backgroundBitmap = if (backgroundSpec?.type == com.ybhgl.reminder.ui.common.CardBackgroundType.IMAGE) {
+        com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap(backgroundSpec.imagePath)
+    } else null
+    val hasCustomBackground = backgroundSpec != null
+    val effectiveVisuals = if (backgroundSpec != null) {
+        val bgLuminance = com.ybhgl.reminder.ui.common.cardBackgroundLuminance(backgroundSpec, backgroundBitmap)
+        val foreground = if (bgLuminance > 0.55f) Color(0xDE000000) else Color.White
+        visuals.copy(
+            headerContentColor = foreground,
+            numberColor = foreground,
+            secondaryTextColor = foreground.copy(alpha = 0.92f)
+        )
+    } else visuals
+
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
         animationSpec = spring(
@@ -772,90 +851,106 @@ fun ReminderDetailCard(
             Card(
                 modifier = Modifier.fillMaxSize(),
                 elevation = CardDefaults.cardElevation(defaultElevation = 4.dp),
-                colors = CardDefaults.cardColors(containerColor = visuals.cardBackground)
+                colors = CardDefaults.cardColors(
+                    containerColor = if (hasCustomBackground) Color.Transparent else visuals.cardBackground
+                )
             ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally
-                ) {
-                    // Top section
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(0.22f)
-                            .heightIn(min = 88.dp)
-                            .background(visuals.headerColor),
-                        contentAlignment = Alignment.Center
+                Box(modifier = Modifier.fillMaxSize()) {
+                    if (backgroundSpec != null) {
+                        com.ybhgl.reminder.ui.common.CardBackgroundLayer(
+                            spec = backgroundSpec,
+                            modifier = Modifier.matchParentSize()
+                        )
+                    }
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally
                     ) {
-                        val title = displayInfo.headerTitle
-                        val fontSize = if (title.length > 12) 22.sp else 30.sp
-                        Text(
-                            text = title,
-                            style = MaterialTheme.typography.titleLarge.copy(
-                                fontWeight = FontWeight.Medium,
-                                fontSize = fontSize,
-                                letterSpacing = 0.sp,
-                                textAlign = TextAlign.Center
-                            ),
-                            color = visuals.headerContentColor,
+                        // Top section
+                        Box(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = 20.dp, vertical = 8.dp),
-                            maxLines = 3,
-                            overflow = TextOverflow.Ellipsis
-                        )
-                    }
-
-                    // Middle content section
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(0.56f)
-                            .background(visuals.cardBackground)
-                            .padding(24.dp),
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        DayCountRow(
-                            dayCount = displayInfo.dayCount,
-                            visuals = visuals,
-                            isCountUp = reminderItem.type == ReminderType.COUNT_UP
-                        )
-                    }
-
-                    val clickableModifier = if (onDateClick != null) {
-                        Modifier.clickable(onClick = onDateClick)
-                    } else {
-                        Modifier
-                    }
-
-                    // Bottom date section
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .weight(0.22f)
-                            .background(visuals.footerBackground)
-                            .then(clickableModifier),
-                        contentAlignment = Alignment.Center
-                    ) {
-                        AnimatedContent(
-                            targetState = displayInfo.referenceText,
-                            transitionSpec = {
-                                (slideInVertically { height -> height } + fadeIn()) togetherWith
-                                (slideOutVertically { height -> -height } + fadeOut())
-                            },
-                            label = "DateTransition"
-                        ) { targetText ->
+                                .weight(0.22f)
+                                .heightIn(min = 88.dp)
+                                .background(
+                                    if (hasCustomBackground) Color.Transparent else visuals.headerColor
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            val title = displayInfo.headerTitle
+                            val fontSize = if (title.length > 12) 22.sp else 30.sp
                             Text(
-                                text = if (reminderItem.type == ReminderType.COUNT_UP) {
-                                    "自 ${targetText} 起"
-                                } else {
-                                    "目标日: ${targetText}"
-                                },
-                                color = visuals.secondaryTextColor,
-                                fontSize = 18.sp,
-                                textAlign = TextAlign.Center,
-                                modifier = Modifier.fillMaxWidth()
+                                text = title,
+                                style = MaterialTheme.typography.titleLarge.copy(
+                                    fontWeight = FontWeight.Medium,
+                                    fontSize = fontSize,
+                                    letterSpacing = 0.sp,
+                                    textAlign = TextAlign.Center
+                                ),
+                                color = effectiveVisuals.headerContentColor,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 20.dp, vertical = 8.dp),
+                                maxLines = 3,
+                                overflow = TextOverflow.Ellipsis
                             )
+                        }
+
+                        // Middle content section
+                        Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(0.56f)
+                                .background(
+                                    if (hasCustomBackground) Color.Transparent else visuals.cardBackground
+                                )
+                                .padding(24.dp),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                            verticalArrangement = Arrangement.Center
+                        ) {
+                            DayCountRow(
+                                dayCount = displayInfo.dayCount,
+                                visuals = effectiveVisuals,
+                                isCountUp = reminderItem.type == ReminderType.COUNT_UP
+                            )
+                        }
+
+                        val clickableModifier = if (onDateClick != null) {
+                            Modifier.clickable(onClick = onDateClick)
+                        } else {
+                            Modifier
+                        }
+
+                        // Bottom date section
+                        Box(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .weight(0.22f)
+                                .background(
+                                    if (hasCustomBackground) Color.Transparent else visuals.footerBackground
+                                )
+                                .then(clickableModifier),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            AnimatedContent(
+                                targetState = displayInfo.referenceText,
+                                transitionSpec = {
+                                    (slideInVertically { height -> height } + fadeIn()) togetherWith
+                                    (slideOutVertically { height -> -height } + fadeOut())
+                                },
+                                label = "DateTransition"
+                            ) { targetText ->
+                                Text(
+                                    text = if (reminderItem.type == ReminderType.COUNT_UP) {
+                                        "自 ${targetText} 起"
+                                    } else {
+                                        "目标日: ${targetText}"
+                                    },
+                                    color = effectiveVisuals.secondaryTextColor,
+                                    fontSize = 18.sp,
+                                    textAlign = TextAlign.Center,
+                                    modifier = Modifier.fillMaxWidth()
+                                )
+                            }
                         }
                     }
                 }

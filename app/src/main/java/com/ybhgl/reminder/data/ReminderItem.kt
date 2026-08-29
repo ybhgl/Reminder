@@ -72,7 +72,14 @@ data class ReminderItem(
     val notes: String = "",
     val isCustomized: Boolean = false,
     val customHeaderColor: String = "",
-    val customFont: String = ""
+    val customFont: String = "",
+    val cardBackgroundType: String = "DEFAULT",
+    val cardBackgroundColor: String = "",
+    val cardBackgroundImagePath: String = "",
+    val cardBackgroundBlurRadius: Float = 0f,
+    val cardBackgroundGlassEnabled: Boolean = false,
+    val cardBackgroundGlassFrosted: Boolean = false,
+    val cardBackgroundGlassDensity: Float = 0.5f
 )
 
 @Serializer(forClass = LocalDate::class)
@@ -114,5 +121,6 @@ data class BackupData(
     val dynamicColorEnabled: Boolean? = null,
     val themeColorPalette: AppColorPalette? = null,
     val customColorSeed: Int? = null,
-    val scrollBehavior: String? = null
+    val scrollBehavior: String? = null,
+    val cardBackgroundImages: Map<String, String>? = null
 )

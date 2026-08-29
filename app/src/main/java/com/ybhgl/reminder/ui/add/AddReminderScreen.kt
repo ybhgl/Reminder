@@ -105,6 +105,7 @@ import com.ybhgl.reminder.data.RepeatUnit
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.CalendarUtil
+import com.ybhgl.reminder.util.CardBackgroundImageManager
 import kotlinx.coroutines.launch
 import java.time.Instant
 import java.time.ZoneId
@@ -315,7 +316,35 @@ fun AddReminderScreen(
                     onHeaderColorChange = { viewModel.updateUiState(uiState.copy(customHeaderColor = it)) },
                     customFont = uiState.customFont,
                     onFontChange = { viewModel.updateUiState(uiState.copy(customFont = it)) },
-                    reminderType = uiState.type
+                    reminderType = uiState.type,
+                    cardBackgroundType = uiState.cardBackgroundType,
+                    cardBackgroundColor = uiState.cardBackgroundColor,
+                    cardBackgroundImagePath = uiState.cardBackgroundImagePath,
+                    cardBackgroundBlurRadius = uiState.cardBackgroundBlurRadius,
+                    cardBackgroundGlassEnabled = uiState.cardBackgroundGlassEnabled,
+                    cardBackgroundGlassFrosted = uiState.cardBackgroundGlassFrosted,
+                    cardBackgroundGlassDensity = uiState.cardBackgroundGlassDensity,
+                    onBackgroundConfirmed = { result ->
+                        // 旧背景图被替换或恢复默认时清理应用私有目录中的残留图片
+                        val oldPath = uiState.cardBackgroundImagePath
+                        val newPath = result.imagePath
+                        if (oldPath.isNotEmpty() && oldPath != newPath) {
+                            coroutineScope.launch {
+                                CardBackgroundImageManager.deleteImage(context, oldPath)
+                            }
+                        }
+                        viewModel.updateUiState(
+                            uiState.copy(
+                                cardBackgroundType = result.type.name,
+                                cardBackgroundColor = result.colorHex,
+                                cardBackgroundImagePath = result.imagePath,
+                                cardBackgroundBlurRadius = result.blurRadius,
+                                cardBackgroundGlassEnabled = result.glassEnabled,
+                                cardBackgroundGlassFrosted = result.glassFrosted,
+                                cardBackgroundGlassDensity = result.glassDensity
+                            )
+                        )
+                    }
                 )
 
                 // 6. 分类

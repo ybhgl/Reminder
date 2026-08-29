@@ -141,7 +141,9 @@ class BackupAndRestoreViewModel(
                 dynamicColorEnabled = dynamicColorEnabled,
                 themeColorPalette = themeColorPalette,
                 customColorSeed = customColorSeed,
-                scrollBehavior = scrollBehavior
+                scrollBehavior = scrollBehavior,
+                cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
+                    .collectForBackup(context, reminders)
             )
 
             val json = Json.encodeToString(backupData)
@@ -247,7 +249,9 @@ class BackupAndRestoreViewModel(
             dynamicColorEnabled = dynamicColorEnabled,
             themeColorPalette = themeColorPalette,
             customColorSeed = customColorSeed,
-            scrollBehavior = scrollBehavior
+            scrollBehavior = scrollBehavior,
+            cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
+                .collectForBackup(context, reminders)
         )
 
         val json = Json.encodeToString(backupData)
@@ -412,6 +416,11 @@ class BackupAndRestoreViewModel(
     }
 
     private suspend fun performRestore(context: Context, backupData: BackupData, isSmartMerge: Boolean): String {
+        // 先恢复卡片背景图片，保证提醒项引用的图片文件在插入前就位
+        backupData.cardBackgroundImages?.let { images ->
+            com.ybhgl.reminder.util.CardBackgroundImageManager.restoreFromBackup(context, images)
+        }
+
         // 如果当前 WebDAV 账号为空，则覆盖备份中的 WebDAV 账号及备份提醒设置
         val currentServer = BackupPreferences.webDavServerFlow(context).first()
         val currentUsername = BackupPreferences.webDavUsernameFlow(context).first()
