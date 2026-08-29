@@ -185,7 +185,8 @@ class AddReminderViewModel(
                 cardBackgroundBlurRadius = 0f,
                 cardBackgroundGlassEnabled = false,
                 cardBackgroundGlassFrosted = false,
-                cardBackgroundGlassDensity = 0.5f
+                cardBackgroundGlassDensity = 0.5f,
+                cardBackgroundTextColor = ""
             )
         } else {
             val defaultColor = reminderUiState.customHeaderColor
@@ -238,7 +239,8 @@ data class ReminderUiState(
     val cardBackgroundBlurRadius: Float = 0f,
     val cardBackgroundGlassEnabled: Boolean = false,
     val cardBackgroundGlassFrosted: Boolean = false,
-    val cardBackgroundGlassDensity: Float = 0.5f
+    val cardBackgroundGlassDensity: Float = 0.5f,
+    val cardBackgroundTextColor: String = ""
 )
 
 fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
@@ -261,7 +263,8 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     cardBackgroundBlurRadius = cardBackgroundBlurRadius,
     cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
     cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
-    cardBackgroundGlassDensity = cardBackgroundGlassDensity
+    cardBackgroundGlassDensity = cardBackgroundGlassDensity,
+    cardBackgroundTextColor = cardBackgroundTextColor
 )
 
 fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
@@ -284,5 +287,6 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     cardBackgroundBlurRadius = cardBackgroundBlurRadius,
     cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
     cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
-    cardBackgroundGlassDensity = cardBackgroundGlassDensity
+    cardBackgroundGlassDensity = cardBackgroundGlassDensity,
+    cardBackgroundTextColor = cardBackgroundTextColor
 )

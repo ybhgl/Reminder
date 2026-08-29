@@ -221,6 +221,7 @@ import com.ybhgl.reminder.ui.common.cardBackgroundLuminance
 import com.ybhgl.reminder.ui.common.cardBackgroundSpec
 import com.ybhgl.reminder.ui.common.parseCardBackgroundType
 import com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap
+import com.ybhgl.reminder.ui.common.resolveCardBackgroundForeground
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
@@ -2339,12 +2340,13 @@ private fun ReminderSummaryCard(
     val hasCustomBackground = backgroundSpec != null
     val effectiveVisuals = if (backgroundSpec != null) {
         val luminance = cardBackgroundLuminance(backgroundSpec, backgroundBitmap)
-        val foreground = if (luminance > 0.55f) Color(0xDE000000) else Color.White
+        val foreground = resolveCardBackgroundForeground(backgroundSpec, luminance)
         visuals.copy(
             headerContentColor = foreground,
             numberColor = foreground,
             secondaryTextColor = foreground.copy(alpha = 0.92f),
-            footerDividerColor = if (luminance > 0.55f) Color.Black.copy(alpha = 0.15f) else Color.White.copy(alpha = 0.25f)
+            footerDividerColor = if (foreground == Color.White) Color.White.copy(alpha = 0.25f)
+            else Color.Black.copy(alpha = 0.15f)
         )
     } else visuals
 

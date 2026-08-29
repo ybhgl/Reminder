@@ -79,7 +79,9 @@ data class ReminderItem(
     val cardBackgroundBlurRadius: Float = 0f,
     val cardBackgroundGlassEnabled: Boolean = false,
     val cardBackgroundGlassFrosted: Boolean = false,
-    val cardBackgroundGlassDensity: Float = 0.5f
+    val cardBackgroundGlassDensity: Float = 0.5f,
+    /** 自定义背景下的字体颜色：""=按背景亮度自动反色，"WHITE"/"BLACK"=用户手动指定 */
+    val cardBackgroundTextColor: String = ""
 )
 
 @Serializer(forClass = LocalDate::class)

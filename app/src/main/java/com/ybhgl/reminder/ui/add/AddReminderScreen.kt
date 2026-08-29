@@ -324,6 +324,7 @@ fun AddReminderScreen(
                     cardBackgroundGlassEnabled = uiState.cardBackgroundGlassEnabled,
                     cardBackgroundGlassFrosted = uiState.cardBackgroundGlassFrosted,
                     cardBackgroundGlassDensity = uiState.cardBackgroundGlassDensity,
+                    cardBackgroundTextColor = uiState.cardBackgroundTextColor,
                     onBackgroundConfirmed = { result ->
                         // 旧背景图被替换或恢复默认时清理应用私有目录中的残留图片
                         val oldPath = uiState.cardBackgroundImagePath
@@ -341,7 +342,8 @@ fun AddReminderScreen(
                                 cardBackgroundBlurRadius = result.blurRadius,
                                 cardBackgroundGlassEnabled = result.glassEnabled,
                                 cardBackgroundGlassFrosted = result.glassFrosted,
-                                cardBackgroundGlassDensity = result.glassDensity
+                                cardBackgroundGlassDensity = result.glassDensity,
+                                cardBackgroundTextColor = result.textColor
                             )
                         )
                     }

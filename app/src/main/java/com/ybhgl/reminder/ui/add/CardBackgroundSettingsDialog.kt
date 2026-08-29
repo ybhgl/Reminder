@@ -35,8 +35,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
-import androidx.compose.material3.Card
-import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FilledTonalButton
@@ -62,27 +60,25 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
-import com.ybhgl.reminder.ui.common.CardBackgroundLayer
-import com.ybhgl.reminder.ui.common.CardBackgroundSpec
+import com.ybhgl.reminder.data.ReminderItem
+import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.common.CardBackgroundType
 import com.ybhgl.reminder.ui.common.ImageCropDialog
-import com.ybhgl.reminder.ui.common.cardBackgroundLuminance
 import com.ybhgl.reminder.ui.common.decodeCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.importCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.parseCardBackgroundType
-import com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap
+import com.ybhgl.reminder.ui.detail.ReminderDetailCard
 import com.ybhgl.reminder.ui.settings.CustomColorPickerDialog
 import com.ybhgl.reminder.util.CardBackgroundImageManager
 import kotlinx.coroutines.launch
+import java.time.LocalDate
 import kotlin.math.roundToInt
 import android.graphics.Bitmap
 
@@ -94,7 +90,9 @@ data class CardBackgroundResult(
     val blurRadius: Float,
     val glassEnabled: Boolean,
     val glassFrosted: Boolean,
-    val glassDensity: Float
+    val glassDensity: Float,
+    /** 字体颜色：""=自动，"WHITE"/"BLACK"=手动指定 */
+    val textColor: String
 )
 
 /**
@@ -112,7 +110,9 @@ fun CardBackgroundSettingsDialog(
     initialGlassEnabled: Boolean,
     initialGlassFrosted: Boolean,
     initialGlassDensity: Float,
+    initialTextColor: String = "",
     defaultPreviewColorHex: String = "",
+    reminderType: ReminderType = ReminderType.BIRTHDAY,
     onDismiss: () -> Unit,
     onConfirm: (CardBackgroundResult) -> Unit
 ) {
@@ -126,6 +126,7 @@ fun CardBackgroundSettingsDialog(
     var glassEnabled by remember { mutableStateOf(initialGlassEnabled) }
     var glassFrosted by remember { mutableStateOf(initialGlassFrosted) }
     var glassDensity by remember { mutableStateOf(initialGlassDensity) }
+    var textColor by remember { mutableStateOf(initialTextColor) }
 
     // 本次会话新导入的图片文件名：取消时删除，避免残留
     var newlyImportedPath by remember { mutableStateOf<String?>(null) }
@@ -181,14 +182,30 @@ fun CardBackgroundSettingsDialog(
         imagePath = ""
     }
 
-    val spec = CardBackgroundSpec(
-        type = type,
-        color = parseHexOrFallback(colorHex),
-        imagePath = imagePath,
-        blurRadius = blurRadius,
-        glassEnabled = glassEnabled,
-        glassFrosted = glassFrosted,
-        glassDensity = glassDensity
+    // 预览直接复用详情页渲染：构造合成 ReminderItem，套用对话框当前背景配置，
+    // 保证比例、字体、背景层与详情页完全一致（避免自行重复渲染导致比例失真）
+    val previewItem = ReminderItem(
+        id = 0,
+        title = "",
+        date = if (reminderType == ReminderType.COUNT_UP) {
+            LocalDate.now().minusDays(36)
+        } else {
+            LocalDate.now().plusDays(36)
+        },
+        type = reminderType,
+        isLunar = false,
+        tag = "",
+        isPinned = false,
+        isCustomized = true,
+        customHeaderColor = defaultPreviewColorHex,
+        cardBackgroundType = type.name,
+        cardBackgroundColor = if (type == CardBackgroundType.COLOR) colorHex else "",
+        cardBackgroundImagePath = if (type == CardBackgroundType.IMAGE) imagePath else "",
+        cardBackgroundBlurRadius = blurRadius,
+        cardBackgroundGlassEnabled = glassEnabled,
+        cardBackgroundGlassFrosted = glassFrosted,
+        cardBackgroundGlassDensity = glassDensity,
+        cardBackgroundTextColor = textColor
     )
 
     fun handleDismiss() {
@@ -210,7 +227,8 @@ fun CardBackgroundSettingsDialog(
                 blurRadius = if (type == CardBackgroundType.IMAGE) blurRadius else 0f,
                 glassEnabled = type == CardBackgroundType.IMAGE && glassEnabled,
                 glassFrosted = type == CardBackgroundType.IMAGE && glassFrosted,
-                glassDensity = glassDensity
+                glassDensity = glassDensity,
+                textColor = if (type == CardBackgroundType.DEFAULT) "" else textColor
             )
         )
     }
@@ -288,11 +306,50 @@ fun CardBackgroundSettingsDialog(
                         }
                     }
 
-                    // 实时预览卡片
-                    BackgroundPreviewCard(
-                        spec = spec,
-                        defaultHeaderColorHex = defaultPreviewColorHex
+                    // 实时预览卡片：直接复用详情页渲染
+                    ReminderDetailCard(
+                        reminderItem = previewItem,
+                        modifier = Modifier.fillMaxWidth()
                     )
+
+                    // 字体颜色子选项（图片/颜色模式下可用）：自动按亮度反色，或手动指定白/黑
+                    AnimatedVisibility(
+                        visible = type != CardBackgroundType.DEFAULT,
+                        enter = expandVertically() + fadeIn(),
+                        exit = shrinkVertically() + fadeOut()
+                    ) {
+                        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Text(
+                                "字体颜色",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val textColorOptions = listOf(
+                                "" to "自动",
+                                "WHITE" to "白色",
+                                "BLACK" to "黑色"
+                            )
+                            SingleChoiceSegmentedButtonRow(
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                textColorOptions.forEachIndexed { index, (value, label) ->
+                                    SegmentedButton(
+                                        selected = textColor == value,
+                                        onClick = { textColor = value },
+                                        shape = SegmentedButtonDefaults.itemShape(index, textColorOptions.size),
+                                        icon = {},
+                                        label = {
+                                            Text(
+                                                label,
+                                                maxLines = 1,
+                                                style = MaterialTheme.typography.labelLarge
+                                            )
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
 
                     // 图片模式：选择/更换图片 + 高级设置
                     AnimatedVisibility(
@@ -346,7 +403,7 @@ fun CardBackgroundSettingsDialog(
 
                             // 模糊度
                             SliderRow(
-                                title = "图片模糊度",
+                                title = "图片模糊",
                                 valueText = "${blurRadius.roundToInt()}",
                                 value = blurRadius,
                                 valueRange = 0f..25f,
@@ -359,9 +416,9 @@ fun CardBackgroundSettingsDialog(
                                 verticalAlignment = Alignment.CenterVertically
                             ) {
                                 Column(modifier = Modifier.weight(1f)) {
-                                    Text("光栅玻璃效果", style = MaterialTheme.typography.bodyLarge)
+                                    Text("光栅玻璃", style = MaterialTheme.typography.bodyLarge)
                                     Text(
-                                        "在背景上叠加垂直玻璃光栅线条",
+                                        "在背景上叠加垂直光栅玻璃效果",
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
@@ -382,7 +439,7 @@ fun CardBackgroundSettingsDialog(
                                         Column(modifier = Modifier.weight(1f)) {
                                             Text("磨砂处理", style = MaterialTheme.typography.bodyLarge)
                                             Text(
-                                                "叠加半透明磨砂层，柔化光栅",
+                                                "变为磨砂雾透玻璃效果，柔化光栅",
                                                 style = MaterialTheme.typography.bodySmall,
                                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                                             )
@@ -536,126 +593,5 @@ private fun SliderRow(
             onValueChange = onValueChange,
             valueRange = valueRange
         )
-    }
-}
-
-/** 迷你卡片预览：表头 + 大数 + 分隔线 + 底栏，背景层完整覆盖，文字随背景亮度实时反色 */
-@Composable
-private fun BackgroundPreviewCard(
-    spec: CardBackgroundSpec,
-    defaultHeaderColorHex: String = ""
-) {
-    val bitmap = if (spec.type == CardBackgroundType.IMAGE) {
-        rememberCardBackgroundBitmap(spec.imagePath)
-    } else null
-    val luminance = cardBackgroundLuminance(spec, bitmap)
-    val isCustom = spec.type != CardBackgroundType.DEFAULT
-    val darkOnLight = luminance > 0.55f
-    val headerTextColor = if (isCustom && darkOnLight) Color(0xDE000000) else Color.White
-    val bodyTextColor = if (isCustom) {
-        if (darkOnLight) Color(0xDE000000) else Color.White
-    } else {
-        MaterialTheme.colorScheme.onSurface
-    }
-    val numberColor = if (isCustom) {
-        if (darkOnLight) Color(0xDE000000) else Color.White
-    } else {
-        MaterialTheme.colorScheme.primary
-    }
-    // 默认模式下：表头颜色跟随当前卡片实际颜色（自定义表头色 > 传入的实际色 > 主题 primary）
-    val effectiveHeaderColor = when {
-        isCustom -> Color.Transparent
-        defaultHeaderColorHex.isNotEmpty() -> parseHexOrFallback(defaultHeaderColorHex)
-        else -> MaterialTheme.colorScheme.primary
-    }
-    val headerContentColor = if (isCustom) {
-        headerTextColor
-    } else {
-        if (effectiveHeaderColor.luminance() > 0.55f) Color(0xDE000000) else Color.White
-    }
-
-    Card(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(150.dp),
-        shape = RoundedCornerShape(16.dp),
-        colors = CardDefaults.cardColors(containerColor = Color.Transparent),
-        elevation = CardDefaults.cardElevation(defaultElevation = 2.dp)
-    ) {
-        Box(modifier = Modifier.fillMaxSize()) {
-            if (isCustom) {
-                CardBackgroundLayer(spec = spec, modifier = Modifier.matchParentSize())
-            } else {
-                Box(
-                    Modifier
-                        .matchParentSize()
-                        .background(MaterialTheme.colorScheme.surface)
-                )
-            }
-            Column(modifier = Modifier.fillMaxSize()) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(0.28f)
-                        .background(
-                            if (isCustom) Color.Transparent
-                            else effectiveHeaderColor
-                        )
-                        .padding(horizontal = 12.dp, vertical = 6.dp)
-                ) {
-                    Text(
-                        "生日还有",
-                        style = MaterialTheme.typography.titleSmall,
-                        color = headerContentColor
-                    )
-                }
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(0.44f),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Row(verticalAlignment = Alignment.Bottom) {
-                        Text(
-                            "36",
-                            style = MaterialTheme.typography.displaySmall.copy(
-                                fontWeight = FontWeight.Bold
-                            ),
-                            color = numberColor
-                        )
-                        Spacer(Modifier.width(4.dp))
-                        Text(
-                            "天",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = bodyTextColor,
-                            modifier = Modifier.padding(bottom = 6.dp)
-                        )
-                    }
-                }
-                HorizontalDivider(
-                    thickness = 0.6.dp,
-                    color = if (isCustom) Color.White.copy(alpha = 0.25f)
-                    else MaterialTheme.colorScheme.outlineVariant
-                )
-                Box(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .weight(0.28f)
-                        .background(
-                            if (isCustom) Color.Transparent
-                            else MaterialTheme.colorScheme.surfaceContainerHigh
-                        )
-                        .padding(horizontal = 12.dp, vertical = 6.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Text(
-                        "2026-10-05 星期六",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = if (isCustom) bodyTextColor else MaterialTheme.colorScheme.onSurfaceVariant,
-                        fontSize = if (isCustom) 12.sp else MaterialTheme.typography.bodySmall.fontSize
-                    )
-                }
-            }
-        }
     }
 }

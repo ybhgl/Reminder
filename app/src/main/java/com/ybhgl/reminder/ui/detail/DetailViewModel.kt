@@ -99,7 +99,8 @@ class DetailViewModel(
         cardBackgroundBlurRadius: Float = 0f,
         cardBackgroundGlassEnabled: Boolean = false,
         cardBackgroundGlassFrosted: Boolean = false,
-        cardBackgroundGlassDensity: Float = 0.5f
+        cardBackgroundGlassDensity: Float = 0.5f,
+        cardBackgroundTextColor: String = ""
     ) {
         viewModelScope.launch {
             val updatedReminder = reminder.copy(
@@ -112,7 +113,8 @@ class DetailViewModel(
                 cardBackgroundBlurRadius = cardBackgroundBlurRadius,
                 cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
                 cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
-                cardBackgroundGlassDensity = cardBackgroundGlassDensity
+                cardBackgroundGlassDensity = cardBackgroundGlassDensity,
+                cardBackgroundTextColor = cardBackgroundTextColor
             )
             reminderRepository.updateReminder(updatedReminder)
         }

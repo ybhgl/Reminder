@@ -12,6 +12,11 @@ import android.os.Build
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -48,6 +53,9 @@ import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -295,6 +303,7 @@ fun ShareScreen(
                         backgroundColor = options.backgroundColor.toComposeColor(),
                         backgroundBitmap = backgroundBitmap,
                         showLogo = options.showLogo,
+                        logoColorOverride = options.logoColor,
                         modifier = captureModifier
                     )
                 }
@@ -326,17 +335,55 @@ fun ShareScreen(
                     }
                 }
 
-                // LOGO 显示开关
+                // LOGO 显示开关 + 颜色选项
                 Card {
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(16.dp)
+                            .padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
                     ) {
                         LogoSwitchRow(
                             showLogo = options.showLogo,
                             onShowLogoChange = { viewModel.updateShowLogo(it) }
                         )
+                        AnimatedVisibility(
+                            visible = options.showLogo,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                                Text(
+                                    "Logo 颜色",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                                val logoColorOptions = listOf(
+                                    "" to "自动",
+                                    "BLACK" to "黑色",
+                                    "WHITE" to "白色"
+                                )
+                                SingleChoiceSegmentedButtonRow(
+                                    modifier = Modifier.fillMaxWidth()
+                                ) {
+                                    logoColorOptions.forEachIndexed { index, (value, label) ->
+                                        SegmentedButton(
+                                            selected = options.logoColor == value,
+                                            onClick = { viewModel.updateLogoColor(value) },
+                                            shape = SegmentedButtonDefaults.itemShape(index, logoColorOptions.size),
+                                            icon = {},
+                                            label = {
+                                                Text(
+                                                    label,
+                                                    maxLines = 1,
+                                                    style = MaterialTheme.typography.labelLarge
+                                                )
+                                            }
+                                        )
+                                    }
+                                }
+                            }
+                        }
                     }
                 }
 
@@ -369,7 +416,19 @@ fun ShareScreen(
                                 viewModel.updateCustomization(options.isCustomized, options.customHeaderColor, font)
                             },
                             reminderType = previewItem.type,
-                            showBackgroundOption = false
+                            cardBackgroundType = options.cardBackgroundType,
+                            cardBackgroundColor = options.cardBackgroundColor,
+                            cardBackgroundImagePath = options.cardBackgroundImagePath,
+                            cardBackgroundBlurRadius = options.cardBackgroundBlurRadius,
+                            cardBackgroundGlassEnabled = options.cardBackgroundGlassEnabled,
+                            cardBackgroundGlassFrosted = options.cardBackgroundGlassFrosted,
+                            cardBackgroundGlassDensity = options.cardBackgroundGlassDensity,
+                            cardBackgroundTextColor = options.cardBackgroundTextColor,
+                            onBackgroundConfirmed = { result ->
+                                // 分享会话不写库：旧图仍被数据库引用，不删除；
+                                // 新导入的图片若最终未使用，由 pruneOrphans 统一清理
+                                viewModel.updateCardBackground(result)
+                            }
                         )
                     }
                 }
@@ -536,9 +595,11 @@ fun ShareableReminderImage(
     backgroundType: ShareBackgroundType = ShareBackgroundType.DEFAULT,
     backgroundColor: Color = Color.White,
     backgroundBitmap: Bitmap? = null,
-    showLogo: Boolean = true
+    showLogo: Boolean = true,
+    /** LOGO 颜色：""=自动（默认背景强制白色，自定义背景按亮度反色），"WHITE"/"BLACK"=手动指定 */
+    logoColorOverride: String = ""
 ) {
-    // LOGO 颜色：默认背景强制白色；自定义颜色/图片按背景亮度实时反色
+    // LOGO 颜色：手动指定优先；否则默认背景强制白色，自定义颜色/图片按背景亮度实时反色
     val imageLuminance = remember(backgroundBitmap) {
         backgroundBitmap?.let { bitmapAverageLuminance(it) }
     }
@@ -546,10 +607,14 @@ fun ShareableReminderImage(
         backgroundType == ShareBackgroundType.COLOR -> backgroundColor.luminance()
         else -> imageLuminance ?: 0f
     }
-    val logoColor = when {
-        backgroundType == ShareBackgroundType.DEFAULT -> Color.White
-        backgroundLuminance > 0.55f -> Color(0xDE000000)
-        else -> Color.White
+    val logoColor = when (logoColorOverride.uppercase()) {
+        "WHITE" -> Color.White
+        "BLACK" -> Color(0xDE000000)
+        else -> when {
+            backgroundType == ShareBackgroundType.DEFAULT -> Color.White
+            backgroundLuminance > 0.55f -> Color(0xDE000000)
+            else -> Color.White
+        }
     }
 
     // 锁定密度：420dp 设计宽恒等于 1080px 输出，字体缩放固定为 1

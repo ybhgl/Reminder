@@ -115,6 +115,7 @@ fun DetailScreen(
         var tempBgGlass by remember { mutableStateOf(false) }
         var tempBgFrosted by remember { mutableStateOf(false) }
         var tempBgDensity by remember { mutableStateOf(0.5f) }
+        var tempBgTextColor by remember { mutableStateOf("") }
 
         // 打开个性化对话框时同步初始化 temp 状态。
         // 若用 LaunchedEffect 同步会晚一帧：首帧 temp 为默认值导致背景卡片整帧消失（闪烁）。
@@ -129,6 +130,7 @@ fun DetailScreen(
             tempBgGlass = item.cardBackgroundGlassEnabled
             tempBgFrosted = item.cardBackgroundGlassFrosted
             tempBgDensity = item.cardBackgroundGlassDensity
+            tempBgTextColor = item.cardBackgroundTextColor
             reminderItemToCustomize = item
         }
 
@@ -204,6 +206,7 @@ fun DetailScreen(
                         tempBgGlass = false
                         tempBgFrosted = false
                         tempBgDensity = 0.5f
+                        tempBgTextColor = ""
                     }
                 }
 
@@ -261,6 +264,7 @@ fun DetailScreen(
                                     cardBackgroundGlassEnabled = tempBgGlass,
                                     cardBackgroundGlassFrosted = tempBgFrosted,
                                     cardBackgroundGlassDensity = tempBgDensity,
+                                    cardBackgroundTextColor = tempBgTextColor,
                                     onBackgroundConfirmed = { result ->
                                         // 旧背景图被替换或恢复默认时清理残留图片
                                         val oldPath = tempBgImagePath
@@ -277,6 +281,7 @@ fun DetailScreen(
                                         tempBgGlass = result.glassEnabled
                                         tempBgFrosted = result.glassFrosted
                                         tempBgDensity = result.glassDensity
+                                        tempBgTextColor = result.textColor
                                     }
                                 )
 
@@ -305,7 +310,8 @@ fun DetailScreen(
                                                 cardBackgroundBlurRadius = tempBgBlur,
                                                 cardBackgroundGlassEnabled = tempBgGlass,
                                                 cardBackgroundGlassFrosted = tempBgFrosted,
-                                                cardBackgroundGlassDensity = tempBgDensity
+                                                cardBackgroundGlassDensity = tempBgDensity,
+                                                cardBackgroundTextColor = tempBgTextColor
                                             )
                                             reminderItemToCustomize = null
                                         }
@@ -357,7 +363,8 @@ fun DetailScreen(
                                 cardBackgroundBlurRadius = tempBgBlur,
                                 cardBackgroundGlassEnabled = tempBgGlass,
                                 cardBackgroundGlassFrosted = tempBgFrosted,
-                                cardBackgroundGlassDensity = tempBgDensity
+                                cardBackgroundGlassDensity = tempBgDensity,
+                                cardBackgroundTextColor = tempBgTextColor
                             )
                         } else {
                             pageItem
@@ -821,7 +828,7 @@ fun ReminderDetailCard(
     val hasCustomBackground = backgroundSpec != null
     val effectiveVisuals = if (backgroundSpec != null) {
         val bgLuminance = com.ybhgl.reminder.ui.common.cardBackgroundLuminance(backgroundSpec, backgroundBitmap)
-        val foreground = if (bgLuminance > 0.55f) Color(0xDE000000) else Color.White
+        val foreground = com.ybhgl.reminder.ui.common.resolveCardBackgroundForeground(backgroundSpec, bgLuminance)
         visuals.copy(
             headerContentColor = foreground,
             numberColor = foreground,

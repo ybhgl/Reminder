@@ -54,8 +54,17 @@ data class CardBackgroundSpec(
     val blurRadius: Float = 0f,
     val glassEnabled: Boolean = false,
     val glassFrosted: Boolean = false,
-    val glassDensity: Float = 0.5f
+    val glassDensity: Float = 0.5f,
+    /** 字体颜色：""=按背景亮度自动反色，"WHITE"/"BLACK"=用户手动指定 */
+    val textColor: String = ""
 )
+
+/** 解析字体颜色配置；未指定返回 null（表示自动跟随背景亮度） */
+fun parseCardBackgroundTextColor(textColor: String): Color? = when (textColor.uppercase()) {
+    "WHITE" -> Color.White
+    "BLACK" -> Color(0xDE000000)
+    else -> null
+}
 
 fun parseCardBackgroundType(type: String): CardBackgroundType =
     runCatching { CardBackgroundType.valueOf(type) }.getOrDefault(CardBackgroundType.DEFAULT)
@@ -75,7 +84,8 @@ val ReminderItem.cardBackgroundSpec: CardBackgroundSpec
         blurRadius = cardBackgroundBlurRadius,
         glassEnabled = cardBackgroundGlassEnabled,
         glassFrosted = cardBackgroundGlassFrosted,
-        glassDensity = cardBackgroundGlassDensity
+        glassDensity = cardBackgroundGlassDensity,
+        textColor = cardBackgroundTextColor
     )
 
 /** 异步加载卡片背景位图（带内存缓存：命中缓存时首帧即有图，避免 null→图片 闪烁），路径为空或加载失败返回 null */
@@ -122,6 +132,11 @@ fun cardBackgroundLuminance(spec: CardBackgroundSpec, bitmap: Bitmap?): Float {
         else -> 0.5f
     }
 }
+
+/** 解析自定义背景下的前景文字颜色：用户指定优先，否则按背景亮度自动反色 */
+fun resolveCardBackgroundForeground(spec: CardBackgroundSpec, luminance: Float): Color =
+    parseCardBackgroundTextColor(spec.textColor)
+        ?: if (luminance > 0.55f) Color(0xDE000000) else Color.White
 
 /**
  * 卡片背景渲染层：完整覆盖卡片区域（表头/内容/底栏之下）。
@@ -297,13 +312,13 @@ private const val FLUTED_ADSL = """
     uniform float spacing;
     uniform float distort;
 
-    shader main(vec2 coord) {
+    half4 main(float2 coord) {
         float t = fract(coord.x / spacing);
         float w = sin(t * 6.2831853);
-        float4 r = content.eval(coord + vec2(w * distort * 1.10, 0.0));
-        float4 g = content.eval(coord + vec2(w * distort, 0.0));
-        float4 b = content.eval(coord + vec2(w * distort * 0.90, 0.0));
-        return float4(r.r, g.g, b.b, r.a);
+        half4 r = content.eval(coord + vec2(w * distort * 1.10, 0.0));
+        half4 g = content.eval(coord + vec2(w * distort, 0.0));
+        half4 b = content.eval(coord + vec2(w * distort * 0.90, 0.0));
+        return half4(r.r, g.g, b.b, r.a);
     }
 """
 

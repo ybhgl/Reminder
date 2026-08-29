@@ -16,6 +16,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderRepository
+import com.ybhgl.reminder.ui.add.CardBackgroundResult
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -44,7 +45,17 @@ data class ShareOptions(
     val backgroundType: ShareBackgroundType = ShareBackgroundType.DEFAULT,
     val backgroundColor: String = "#FFFFFF",
     val customImageUri: String = "",
-    val showLogo: Boolean = true
+    val showLogo: Boolean = true,
+    /** LOGO 颜色：""=按背景亮度自动反色，"WHITE"/"BLACK"=用户手动指定 */
+    val logoColor: String = "",
+    val cardBackgroundType: String = "DEFAULT",
+    val cardBackgroundColor: String = "",
+    val cardBackgroundImagePath: String = "",
+    val cardBackgroundBlurRadius: Float = 0f,
+    val cardBackgroundGlassEnabled: Boolean = false,
+    val cardBackgroundGlassFrosted: Boolean = false,
+    val cardBackgroundGlassDensity: Float = 0.5f,
+    val cardBackgroundTextColor: String = ""
 )
 
 class ShareViewModel(
@@ -66,12 +77,20 @@ class ShareViewModel(
     init {
         viewModelScope.launch {
             val item = reminderRepository.getReminderById(reminderId)
-            // 页面首先读取日程原有的个性化配置，供用户在本次分享中修改
+            // 页面首先读取日程原有的个性化配置（含卡片背景），供用户在本次分享中修改
             item?.let {
                 _shareOptions.value = ShareOptions(
                     isCustomized = it.isCustomized,
                     customHeaderColor = it.customHeaderColor,
-                    customFont = it.customFont
+                    customFont = it.customFont,
+                    cardBackgroundType = it.cardBackgroundType,
+                    cardBackgroundColor = it.cardBackgroundColor,
+                    cardBackgroundImagePath = it.cardBackgroundImagePath,
+                    cardBackgroundBlurRadius = it.cardBackgroundBlurRadius,
+                    cardBackgroundGlassEnabled = it.cardBackgroundGlassEnabled,
+                    cardBackgroundGlassFrosted = it.cardBackgroundGlassFrosted,
+                    cardBackgroundGlassDensity = it.cardBackgroundGlassDensity,
+                    cardBackgroundTextColor = it.cardBackgroundTextColor
                 )
             }
             _reminder.value = item
@@ -85,7 +104,15 @@ class ShareViewModel(
         return item.copy(
             isCustomized = options.isCustomized,
             customHeaderColor = options.customHeaderColor,
-            customFont = options.customFont
+            customFont = options.customFont,
+            cardBackgroundType = options.cardBackgroundType,
+            cardBackgroundColor = options.cardBackgroundColor,
+            cardBackgroundImagePath = options.cardBackgroundImagePath,
+            cardBackgroundBlurRadius = options.cardBackgroundBlurRadius,
+            cardBackgroundGlassEnabled = options.cardBackgroundGlassEnabled,
+            cardBackgroundGlassFrosted = options.cardBackgroundGlassFrosted,
+            cardBackgroundGlassDensity = options.cardBackgroundGlassDensity,
+            cardBackgroundTextColor = options.cardBackgroundTextColor
         )
     }
 
@@ -113,6 +140,27 @@ class ShareViewModel(
 
     fun updateShowLogo(show: Boolean) {
         _shareOptions.update { it.copy(showLogo = show) }
+    }
+
+    /** LOGO 颜色：""=自动，"WHITE"/"BLACK"=手动指定 */
+    fun updateLogoColor(color: String) {
+        _shareOptions.update { it.copy(logoColor = color) }
+    }
+
+    /** 套用卡片背景设置对话框确认的结果（仅本次分享会话内生效） */
+    fun updateCardBackground(result: CardBackgroundResult) {
+        _shareOptions.update {
+            it.copy(
+                cardBackgroundType = result.type.name,
+                cardBackgroundColor = result.colorHex,
+                cardBackgroundImagePath = result.imagePath,
+                cardBackgroundBlurRadius = result.blurRadius,
+                cardBackgroundGlassEnabled = result.glassEnabled,
+                cardBackgroundGlassFrosted = result.glassFrosted,
+                cardBackgroundGlassDensity = result.glassDensity,
+                cardBackgroundTextColor = result.textColor
+            )
+        }
     }
 
     suspend fun shareReminder(bitmap: Bitmap, context: Context) {

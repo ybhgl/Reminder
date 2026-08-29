@@ -144,6 +144,7 @@ fun ReminderCustomizationSection(
     cardBackgroundGlassEnabled: Boolean = false,
     cardBackgroundGlassFrosted: Boolean = false,
     cardBackgroundGlassDensity: Float = 0.5f,
+    cardBackgroundTextColor: String = "",
     onBackgroundConfirmed: (CardBackgroundResult) -> Unit = {},
     showBackgroundOption: Boolean = true,
     modifier: Modifier = Modifier
@@ -369,7 +370,9 @@ fun ReminderCustomizationSection(
             initialGlassEnabled = cardBackgroundGlassEnabled,
             initialGlassFrosted = cardBackgroundGlassFrosted,
             initialGlassDensity = cardBackgroundGlassDensity,
+            initialTextColor = cardBackgroundTextColor,
             defaultPreviewColorHex = actualHeaderColor,
+            reminderType = reminderType,
             onDismiss = { showBackgroundDialog = false },
             onConfirm = { result ->
                 onBackgroundConfirmed(result)
