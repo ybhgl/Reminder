@@ -12,7 +12,6 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -33,6 +32,16 @@ import com.google.accompanist.permissions.*
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.CustomToast
+import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.SizeTransform
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import java.time.LocalTime
 import java.time.format.DateTimeFormatter
 import androidx.compose.ui.geometry.Offset
@@ -130,8 +139,7 @@ fun ReminderSettingScreen(
                     end = 16.dp,
                     top = 0.dp,
                     bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
-                ),
-                verticalArrangement = Arrangement.spacedBy(16.dp)
+                )
             ) {
                 item {
                     Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
@@ -139,7 +147,9 @@ fun ReminderSettingScreen(
 
                 item {
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 16.dp),
                     verticalAlignment = Alignment.CenterVertically,
                     horizontalArrangement = Arrangement.SpaceBetween
                 ) {
@@ -153,158 +163,192 @@ fun ReminderSettingScreen(
                 }
             }
 
-            if (uiState.config.isEnabled) {
-                item {
-                    Text("提醒方式", style = MaterialTheme.typography.titleMedium)
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+            item {
+                SettingsLinkedVisibility(
+                    visible = if (viewModel.isInitialized) uiState.config.isEnabled else null
+                ) {
+                    Column(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp)
                     ) {
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
-                                checked = uiState.config.useAppNotification,
-                                onCheckedChange = { checked ->
-                                    if (checked && notificationPermissionState?.status?.isGranted == false) {
-                                        notificationPermissionState.launchPermissionRequest()
-                                    }
-                                    viewModel.updateUseAppNotification(checked)
+                        Column(modifier = Modifier.fillMaxWidth()) {
+                            Text("提醒方式", style = MaterialTheme.typography.titleMedium)
+                            Row(
+                                modifier = Modifier.fillMaxWidth(),
+                                horizontalArrangement = Arrangement.spacedBy(16.dp)
+                            ) {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = uiState.config.useAppNotification,
+                                        onCheckedChange = { checked ->
+                                            if (checked && notificationPermissionState?.status?.isGranted == false) {
+                                                notificationPermissionState.launchPermissionRequest()
+                                            }
+                                            viewModel.updateUseAppNotification(checked)
+                                        }
+                                    )
+                                    Text("应用通知")
                                 }
-                            )
-                            Text("应用通知")
-                        }
-                        Row(verticalAlignment = Alignment.CenterVertically) {
-                            Checkbox(
-                                checked = uiState.config.useSystemCalendar,
-                                onCheckedChange = { checked ->
-                                    if (checked && !calendarPermissionState.allPermissionsGranted) {
-                                        calendarPermissionState.launchMultiplePermissionRequest()
-                                    }
-                                    viewModel.updateUseSystemCalendar(checked)
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Checkbox(
+                                        checked = uiState.config.useSystemCalendar,
+                                        onCheckedChange = { checked ->
+                                            if (checked && !calendarPermissionState.allPermissionsGranted) {
+                                                calendarPermissionState.launchMultiplePermissionRequest()
+                                            }
+                                            viewModel.updateUseSystemCalendar(checked)
+                                        }
+                                    )
+                                    Text("系统日历")
                                 }
-                            )
-                            Text("系统日历")
+                            }
                         }
-                    }
-                }
 
-                // 正数日隐藏连续提醒
-                if (!isCountUp) {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Column(modifier = Modifier.weight(1f)) {
-                                Text("连续提醒", style = MaterialTheme.typography.bodyLarge)
-                                Text(
-                                    "开启后每天按指定时间提醒，直到事件当天",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                            }
-                            Switch(
-                                checked = uiState.config.isContinuous,
-                                onCheckedChange = { viewModel.updateIsContinuous(it) }
-                            )
-                        }
-                    }
-                }
-
-                if (uiState.config.isContinuous && !isCountUp) {
-                    item {
-                        val continuousTime = uiState.config.notificationTimes.firstOrNull()?.time ?: LocalTime.of(9, 0)
-                        var showTimePicker by remember { mutableStateOf(false) }
-                        
-                        SettingItem(
-                            title = "提醒时间",
-                            value = continuousTime.format(DateTimeFormatter.ofPattern("HH:mm")),
-                            onClick = { showTimePicker = true }
-                        )
-                        
-                        if (showTimePicker) {
-                            TimePickerDialogM3(
-                                initialTime = continuousTime,
-                                onDismiss = { showTimePicker = false },
-                                onConfirm = { time ->
-                                    viewModel.updateNotificationTime(0, 0, time)
-                                    showTimePicker = false
-                                }
-                            )
-                        }
-                        
-                        // Ensure at least one time exists for continuous mode
-                        LaunchedEffect(uiState.config.isContinuous) {
-                            if (uiState.config.notificationTimes.isEmpty()) {
-                                viewModel.addNotificationTime(0, LocalTime.of(9, 0))
-                            }
-                        }
-                    }
-                } else {
-                    item {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.SpaceBetween
-                        ) {
-                            Text("提醒时间", style = MaterialTheme.typography.titleMedium)
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                IconButton(onClick = {
-                                    showImportDialog = true
-                                }) {
-                                    Icon(Icons.Default.Download, contentDescription = "导入设置")
-                                }
-                                IconButton(onClick = {
-                                    editingTimeIndex = -1
-                                    showTimeConfigDialog = true
-                                }) {
-                                    Icon(Icons.Default.Add, contentDescription = "添加时间")
-                                }
-                            }
-                        }
-                    }
-
-                    itemsIndexed(uiState.config.notificationTimes) { index, item ->
-                        Card(
-                            modifier = Modifier.fillMaxWidth(),
-                            onClick = {
-                                editingTimeIndex = index
-                                showTimeConfigDialog = true
-                            }
-                        ) {
+                        // 正数日隐藏连续提醒（类型在页面生命周期内不变，无需动画）
+                        if (!isCountUp) {
                             Row(
                                 modifier = Modifier
-                                    .padding(16.dp)
-                                    .fillMaxWidth(),
+                                    .fillMaxWidth()
+                                    .padding(top = 16.dp),
                                 verticalAlignment = Alignment.CenterVertically,
                                 horizontalArrangement = Arrangement.SpaceBetween
                             ) {
-                                Column {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text("连续提醒", style = MaterialTheme.typography.bodyLarge)
                                     Text(
-                                        if (item.daysBefore == 0) "当天提醒，${item.time.format(DateTimeFormatter.ofPattern("HH:mm"))}"
-                                        else "$dayLabel ${item.daysBefore} $daySuffix，${item.time.format(DateTimeFormatter.ofPattern("HH:mm"))}",
-                                        style = MaterialTheme.typography.bodyLarge
+                                        "开启后每天按指定时间提醒，直到事件当天",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
-                                    viewModel.eventDate?.let { date ->
-                                        val reminderDate = if (isCountUp) {
-                                            val daysOffset = if (uiState.config.includeStartDay && item.daysBefore > 0) {
-                                                item.daysBefore - 1
-                                            } else {
-                                                item.daysBefore
+                                }
+                                Switch(
+                                    checked = uiState.config.isContinuous,
+                                    onCheckedChange = { viewModel.updateIsContinuous(it) }
+                                )
+                            }
+                        }
+
+                        val continuousOn = uiState.config.isContinuous && !isCountUp
+
+                        // 连续提醒的单时间与多时间列表为互斥内容替换：
+                        // AnimatedContent 在单一槽位内双向过渡，展开/收起动画对称且不受 LazyColumn 空间回收影响
+                        AnimatedContent(
+                            targetState = continuousOn,
+                            transitionSpec = {
+                                val springSpec = spring<androidx.compose.ui.unit.IntSize>(stiffness = Spring.StiffnessMediumLow)
+                                (expandVertically(animationSpec = springSpec) + fadeIn())
+                                    .togetherWith(shrinkVertically(animationSpec = springSpec) + fadeOut())
+                                    .using(SizeTransform(clip = false))
+                            },
+                            contentAlignment = Alignment.TopStart,
+                            modifier = Modifier.fillMaxWidth()
+                        ) { showContinuous ->
+                            if (showContinuous) {
+                                Column(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(top = 16.dp)
+                                ) {
+                                    val continuousTime = uiState.config.notificationTimes.firstOrNull()?.time ?: LocalTime.of(9, 0)
+                                    var showTimePicker by remember { mutableStateOf(false) }
+
+                                    SettingItem(
+                                        title = "提醒时间",
+                                        value = continuousTime.format(DateTimeFormatter.ofPattern("HH:mm")),
+                                        onClick = { showTimePicker = true }
+                                    )
+
+                                    if (showTimePicker) {
+                                        TimePickerDialogM3(
+                                            initialTime = continuousTime,
+                                            onDismiss = { showTimePicker = false },
+                                            onConfirm = { time ->
+                                                viewModel.updateNotificationTime(0, 0, time)
+                                                showTimePicker = false
                                             }
-                                            date.plusDays(daysOffset.toLong())
-                                        } else {
-                                            date.minusDays(item.daysBefore.toLong())
-                                        }
-                                        Text(
-                                            text = reminderDate.toString(),
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
                                         )
                                     }
+
+                                    // Ensure at least one time exists for continuous mode
+                                    LaunchedEffect(uiState.config.isContinuous) {
+                                        if (uiState.config.notificationTimes.isEmpty()) {
+                                            viewModel.addNotificationTime(0, LocalTime.of(9, 0))
+                                        }
+                                    }
                                 }
-                                IconButton(onClick = { viewModel.removeNotificationTime(index) }) {
-                                    Icon(Icons.Default.Delete, contentDescription = "删除")
+                            } else {
+                                Column(modifier = Modifier.fillMaxWidth()) {
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(top = 16.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.SpaceBetween
+                                    ) {
+                                        Text("提醒时间", style = MaterialTheme.typography.titleMedium)
+                                        Row(verticalAlignment = Alignment.CenterVertically) {
+                                            IconButton(onClick = {
+                                                showImportDialog = true
+                                            }) {
+                                                Icon(Icons.Default.Download, contentDescription = "导入设置")
+                                            }
+                                            IconButton(onClick = {
+                                                editingTimeIndex = -1
+                                                showTimeConfigDialog = true
+                                            }) {
+                                                Icon(Icons.Default.Add, contentDescription = "添加时间")
+                                            }
+                                        }
+                                    }
+
+                                    uiState.config.notificationTimes.forEachIndexed { index, item ->
+                                        Card(
+                                            modifier = Modifier
+                                                .fillMaxWidth()
+                                                .padding(top = 16.dp),
+                                            onClick = {
+                                                editingTimeIndex = index
+                                                showTimeConfigDialog = true
+                                            }
+                                        ) {
+                                            Row(
+                                                modifier = Modifier
+                                                    .padding(16.dp)
+                                                    .fillMaxWidth(),
+                                                verticalAlignment = Alignment.CenterVertically,
+                                                horizontalArrangement = Arrangement.SpaceBetween
+                                            ) {
+                                                Column {
+                                                    Text(
+                                                        if (item.daysBefore == 0) "当天提醒，${item.time.format(DateTimeFormatter.ofPattern("HH:mm"))}"
+                                                        else "$dayLabel ${item.daysBefore} $daySuffix，${item.time.format(DateTimeFormatter.ofPattern("HH:mm"))}",
+                                                        style = MaterialTheme.typography.bodyLarge
+                                                    )
+                                                    viewModel.eventDate?.let { date ->
+                                                        val reminderDate = if (isCountUp) {
+                                                            val daysOffset = if (uiState.config.includeStartDay && item.daysBefore > 0) {
+                                                                item.daysBefore - 1
+                                                            } else {
+                                                                item.daysBefore
+                                                            }
+                                                            date.plusDays(daysOffset.toLong())
+                                                        } else {
+                                                            date.minusDays(item.daysBefore.toLong())
+                                                        }
+                                                        Text(
+                                                            text = reminderDate.toString(),
+                                                            style = MaterialTheme.typography.bodySmall,
+                                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                        )
+                                                    }
+                                                }
+                                                IconButton(onClick = { viewModel.removeNotificationTime(index) }) {
+                                                    Icon(Icons.Default.Delete, contentDescription = "删除")
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                             }
                         }
