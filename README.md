@@ -1,82 +1,93 @@
+<div align="center">
+
 # Reminder
 
-> 本项目 fork 自 [lentikr/Reminder](https://github.com/lentikr/Reminder)，感谢原作者的贡献！
+<img src="./app/src/main/res/mipmap-xxxhdpi/ic_launcher.webp" width="120px" style="border-radius:12px"/>
 
-本项目在原有基础上，加入了多项分支独有功能。
+### 一款 Material 3 风格的安卓纪念日 / 倒数日管理应用
+
+![Android](https://img.shields.io/badge/Platform-Android-green?logo=android)
+![Jetpack Compose](https://img.shields.io/badge/UI-Jetpack%20Compose-blue)
+![Material 3](https://img.shields.io/badge/Design-Material%203-6750A4)
+![License](https://img.shields.io/badge/License-GPLv3-orange)
+
+</div>
+
+---
+
+## 项目简介
+
+Reminder 是一款简洁的安卓纪念日 / 倒数日管理应用，支持倒数与正数两种模式，帮助你轻松掌握重要日期。应用完全使用 **Jetpack Compose** 构建，全面对齐 Material 3 设计标准。
+
+本项目 fork 自 [lentikr/Reminder](https://github.com/lentikr/Reminder)，在原有基础上加入了多项分支独有功能，感谢原作者的贡献！
 
 > [!CAUTION]
 > **注意事项：**
 > 由于应用包名不同，系统会视其为一个**全新的应用**。你将无法直接覆盖安装老版本。在安装此版本前，请务必先**备份老版本的数据**，卸载老版本后再安装新版本，并使用内置的 JSON 备份导入功能恢复数据。
 
+## 功能概览
 
+### ✨ 分支新增特性
 
-## ✨ 分支特性
+- **界面焕然一新：** 全新的视觉设计与流畅动画；可自由定制每条提醒的颜色、图标和背景，还能统一显示所有事件、滚动时自动收起底栏，大屏和横屏下显示效果也更好
+- **隐私更安全：** 支持手势密码和指纹、面部解锁，离开应用再回来需要验证，还能禁止截屏录屏，防止日程被偷看
+- **提醒更贴心：** 支持公农历生日提醒，自动显示生肖、星座和年龄；到点精确提醒，重启手机也不会漏掉；能自动同步到手机日历，还能在"提醒管理"里集中查看和修改所有提醒
+- **数据不丢失：** 一键备份到自己的网盘或手机本地，内容加密保存，换机、重装都能轻松恢复
+- **桌面小组件：** 提供三种大小的桌面小组件，文字大小自动调整，重要日子一眼可见
+- **分享与记录：** 可以把提醒做成精美图片卡片保存或分享给朋友，支持光栅玻璃质感的个性化背景；详情页翻一翻卡片就能查看备注
+- **通知新玩法：** 多种通知样式可选：普通通知、实时提醒，小米手机还支持灵动岛
+- **更多细节：** 应用内检查更新、多标签整理与高级搜索，以及大量体验细节优化
 
-相比于原版本，本项目具有以下独有特性：
+### 📌 原有基础功能
 
-*   **动画重构：** 全面优化、统一各处动画，带来更流畅、更一致的体验；重构 NavHost 导航，采用平滑的左右滑入与渐变转场；新增列表分组平滑折叠、备份页弹性滑动及标签编辑的自定义弹簧动效
-*   **视觉升级：** 全面对齐 Material 3 设计标准，引入类 Windows Mica Alt 风格 Toast，统一卡片圆角、阴影层级及分段控件配色，全面模块化、标准化设置页 UI 组件；支持 Material You 动态配色、自定义调色盘与取色器，支持为单条提醒单独定制卡片背景色、图标与主题样式；深度优化详情页（DetailScreen）横屏两栏以及大屏/折叠屏响应式卡片布局
-*   **启动优化：** 适配 AndroidX SplashScreen 替代原有遮罩；支持自定义默认启动页
-*   **沉浸适配：** 全面适配 Edge-to-Edge 边到边显示；支持预测性返回动画并重构滑动交互；支持软键盘弹起与输入框界面的完美同步，解决输入区域遮挡问题
-*   **应用安全：** 引入全套本地隐私安全方案，支持手势密码与设备硬件生物识别（指纹/面部等）双重验证；支持应用冷启动及从后台唤醒时的安全验证拦截，并在关闭应用锁时引入二次身份验证防止越权；支持全局阻断系统截图与录屏（FLAG_SECURE），严防敏感日程数据泄露
-*   **生日功能：** 新增生日提醒类型，支持公农历换算、生肖星座展示、年龄自动更新及专属列表视图
-*   **通知提醒：** 通过 `AlarmManager` 实现秒级精确提醒，通知栏动态显示剩余/累计天数；支持设备重启后自动恢复所有提醒不失效，重复提醒在触发后自动计算并注册下次提醒；支持在通知栏中展示提醒事件的备注内容
-*   **日历提醒：** 支持将提醒事件自动双向同步至系统本地日历，生日同步支持按年份显示年龄信息，智能保留历史日程；支持自动同步提醒备注至系统日历日程
-*   **桌面小组件：** 提供 1x2、2x2、4x2 三种规格主屏幕小组件，支持自定义过滤、背景透明度调节（0-100%）及即时预览配置，跟随系统时间、时区变化自动刷新
-*   **数据备份：** 基于 WebDAV 的云端备份与恢复，一键备份到私有云/NAS并支持完整导出/导入偏好设置；支持本地与 WebDAV 自动异步静默备份、多版本备份管理；支持 `AES-256` 备份安全加密，全面守护隐私安全
-*   **标签系统：** 全面重构标签（Tags）系统，支持多标签归类、快速筛选、基于标签的多维排序与高级搜索过滤
-*   **提醒备注：** 支持为提醒事件添加文字备注；详情页引入翻转卡片（Flippable Card）手势交互，点击即可翻转查阅、快速编辑备注
-*   **人性化设计：** 全新的日期选择器，支持快速选择公/农历日期；新建提醒时支持逗号/空格/分号批量录入提前通知天数并支持一键导入配置；升级高级搜索过滤，支持局部日期与精确时间段范围的检索
-*   **Bug 修复：** 修复大量已知问题
+- **倒数日与正数日：** 倒数日提醒生日、纪念日等未来事件；正数日记录"来到世界的第 N 天"；支持农历并可选自动换算下一个农历日期
+- **分组与置顶：** 为每个提醒设置分类快速整理，重要提醒置顶显示
+- **重复周期：** 支持设置重复周期（x 天、x 周、x 月、x 年）
+- **分享与导出：** 以图片形式保存或分享纪念日
+- **外观设置：** 自动 / 浅色 / 深色三种主题模式；深色模式下可启用纯黑主题适配 AMOLED；卡片化与列表两种布局
 
----
+## 开源致谢
 
-Reminder 是一款简洁的安卓纪念日/倒数日管理应用，支持倒数与正数两种模式，帮助你轻松掌握重要日期。应用完全使用 Jetpack Compose 构建。
+Reminder 的实现受益于以下上游项目与开源组件，感谢所有贡献者：
 
-## 主要功能
+- [lentikr/Reminder](https://github.com/lentikr/Reminder)：上游原始项目；
+- [Tyme](https://github.com/6tail/tyme4kt)：强大的公农历 / 干支 / 星座换算日历工具库；
+- [Accompanist](https://github.com/google/accompanist)：权限申请与分页指示组件；
+- [Capturable](https://github.com/PatilShreyas/Capturable)：Compose 界面截图分享；
+- [compose-m3-picker](https://github.com/Seo-4d696b75/compose-m3-picker)：Material 3 风格滚轮选择器；
+- [HyperNotification](https://github.com/xzakota/HyperNotification)：小米超级岛通知适配；
+- [Shizuku](https://github.com/RikkaApps/Shizuku-API)：高级系统通知能力支持。
 
-- **倒数日与正数日**
+## 许可证与第三方声明
 
-  - 倒数日：用来提醒生日、纪念日等未来事件。
-  - 正数日：记录人生中值得纪念的天数，比如“来到世界的第 N 天”。
-  - 支持农历，并可选自动换算下一个农历日期。
+Reminder 主体代码以 [GNU General Public License v3](LICENSE) 发布。任何二次分发或衍生作品须遵循 GPLv3 条款同样开源。
 
-- **分组与置顶**
+第三方库不因本项目的 GPLv3 而自动转为 GPLv3，各自遵循其原始许可证（主要为 Apache License 2.0 与 MIT）。完整的依赖清单、版本号、许可证类型及项目链接，请查看应用内 **设置 → 关于 → 开放源代码许可** 页面。
 
-  - 可以为每个提醒设置分类，快速整理不同场景的事件。
-  - 重要提醒可以置顶显示，随时掌握最新状态。
+## 软件界面预览
 
-- **重复周期**
-
-  - 支持设置重复周期（x天、x周、x月、x年）
-
-- **分享与导出图片**
-
-  - 允许用户以图片形式保存或分享纪念日
-
-- **外观设置**
-
-  - 自动 / 浅色 / 深色三种主题模式可选。
-  - 深色模式下可启用纯黑主题，适配 AMOLED 屏幕更省电。
-  - UI 采用卡片化布局，同时支持列表模式，满足不同浏览习惯。
-
-- **数据备份与恢复**
-
-  - 内置备份功能，一键导出到 JSON 文件，保留所有提醒信息。
-  - 支持从 JSON 备份中恢复，换机或重装也能快速同步数据。
-
-## 界面预览
+<table>
+  <tr>
+    <td><img src="./screenshots/home.jpg" width="200" alt="主界面"></td>
+    <td><img src="./screenshots/edit.jpg" width="200" alt="新建和编辑提醒"></td>
+    <td><img src="./screenshots/settings.jpg" width="200" alt="设置页面"></td>
+    <td><img src="./screenshots/search.jpg" width="200" alt="搜索页面"></td>
+    <td><img src="./screenshots/share.jpg" width="200" alt="分享页面"></td>
+    <td><img src="./screenshots/backup.jpg" width="200" alt="备份页面"></td>
+    <td><img src="./screenshots/tag.jpg" width="200" alt="标签页面"></td>
+    <td><img src="./screenshots/notification.jpg" width="200" alt="通知页面"></td>
+    <td><img src="./screenshots/custom.jpg" width="200" alt="个性化设置"></td>
+  </tr>
+</table>
 
 <p align="center">
-  <img src="screenshots/home.png" alt="主界面" width="30%" />
-  <img src="screenshots/edit.png" alt="新建和编辑提醒" width="30%" />
-  <img src="screenshots/settings.png" alt="设置页面" width="30%" />
-</p>
-
-<p align="center">
-<img src="screenshots/share.png" alt="=效果" width="50%" />
+  <img src="./screenshots/share.png" width="300" alt="分享卡片效果">
 </p>
 
 ## 反馈与贡献
 
-欢迎在 Issues 中提交 bug 反馈或功能建议，也欢迎直接提交 Pull Request 参与改进。如果这个项目对你有帮助，别忘了点个 Star 支持一下。
+欢迎在 [Issues](https://github.com/ybhgl/Reminder/issues) 中提交 bug 反馈或功能建议，也欢迎直接提交 Pull Request 参与改进。如果这个项目对你有帮助，别忘了点个 Star 支持一下。
+
+## 免责声明
+
+本项目 fork 自开源项目并仅供学习、研究和个人使用。使用本项目进行日程提醒、日历同步、WebDAV 云端备份等功能时，请自行妥善保管账号凭据与备份数据，并遵守当地法律法规及相关服务的使用条款。项目维护者不对数据丢失、第三方服务可用性或因使用本项目产生的任何后果承担责任。
