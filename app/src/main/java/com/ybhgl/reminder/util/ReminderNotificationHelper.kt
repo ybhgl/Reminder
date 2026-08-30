@@ -5,15 +5,33 @@ import android.app.NotificationChannel
 import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
+import android.content.Intent
+import android.graphics.Bitmap
+import android.graphics.Canvas
 import android.graphics.Color
 import android.os.Build
 import android.os.Parcelable
+import android.util.Log
+import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import com.xzakota.hyper.notification.focus.FocusNotification
+import com.ybhgl.reminder.MainActivity
 import com.ybhgl.reminder.R
 import com.ybhgl.reminder.data.NotificationStyleOption
+import com.ybhgl.reminder.data.miIslandBypassFlow
+import com.ybhgl.reminder.util.shizuku.XiaomiBypassHelper
+import kotlinx.coroutines.flow.firstOrNull
 
 const val REMINDER_CHANNEL_ID = "reminder_channel"
+
+/** 超级岛/实时动态专用通道：HyperOS 需要 ongoing 通知才会归类为"实时动态" */
+const val REMINDER_LIVE_CHANNEL_ID = "reminder_live_channel"
+
+/** 测试通知固定 id，便于单独清除 */
+const val TEST_NOTIFICATION_ID = 999_001
+
+private const val NOTIFICATION_LOG_TAG = "ReminderNotifier"
 
 data class NotificationProgress(
     val elapsedDays: Int,
@@ -42,21 +60,85 @@ object ReminderNotificationHelper {
             ).apply {
                 description = "应用提醒通知"
             }
+            val liveChannel = NotificationChannel(
+                REMINDER_LIVE_CHANNEL_ID,
+                "实时提醒",
+                NotificationManager.IMPORTANCE_HIGH
+            ).apply {
+                description = "以实时动态/超级岛形态展示的提醒"
+            }
             val manager = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
             manager.createNotificationChannel(channel)
+            manager.createNotificationChannel(liveChannel)
         }
     }
 
     /**
-     * 是否为可能支持小米超级岛（焦点通知）的小米系设备
+     * 是否支持小米超级岛：复刻 InstallerX DeviceCapabilityProviderImpl 的判定方式，
+     * 以系统设置项 notification_focus_protocol == 3（HyperOS 3 焦点通知协议 V3）为准，
+     * 与 buildV3 对应；比品牌/系统属性判断更精确。
      */
-    fun isMiIslandSupported(): Boolean {
-        val manufacturer = Build.MANUFACTURER?.uppercase() ?: return false
-        if (manufacturer != "XIAOMI" && manufacturer != "REDMI" && manufacturer != "POCO") {
-            return false
+    fun isMiIslandSupported(context: Context): Boolean = try {
+        android.provider.Settings.System.getInt(
+            context.contentResolver,
+            "notification_focus_protocol",
+            0
+        ) == 3
+    } catch (_: Exception) {
+        false
+    }
+
+    /**
+     * 发送测试通知：走与 ReminderReceiver 完全一致的样式/绕过分支，全链路打日志，便于排查。
+     */
+    suspend fun sendTestNotification(context: Context, style: NotificationStyleOption) {
+        ensureReminderChannel(context)
+        val notificationManager =
+            context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            0,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        )
+        val content = ReminderNotificationContent(
+            title = "测试提醒",
+            subtitle = "样式：$style",
+            notes = "",
+            contentIntent = pendingIntent
+        )
+        val notifyId = TEST_NOTIFICATION_ID
+
+        try {
+            if (style == NotificationStyleOption.MI_ISLAND) {
+                val bypassEnabled = miIslandBypassFlow(context).firstOrNull() ?: false
+                if (bypassEnabled) {
+                    val islandNotification = buildNotification(
+                        context, content, NotificationStyleOption.MI_ISLAND
+                    )
+                    val fallbackNotification = buildNotification(
+                        context, content, NotificationStyleOption.STANDARD
+                    )
+                    XiaomiBypassHelper.notifyWithXiaomiMagic(
+                        context, notificationManager, notifyId,
+                        islandNotification, fallbackNotification
+                    )
+                } else {
+                    notificationManager.notify(
+                        notifyId,
+                        buildNotification(context, content, NotificationStyleOption.STANDARD)
+                    )
+                }
+            } else {
+                notificationManager.notify(
+                    notifyId, buildNotification(context, content, style)
+                )
+            }
+        } catch (e: Exception) {
+            Log.e(NOTIFICATION_LOG_TAG, "测试通知发送失败", e)
         }
-        return !getSystemProperty("ro.mi.os.version.name").isNullOrBlank() ||
-                !getSystemProperty("ro.miui.ui.version.name").isNullOrBlank()
     }
 
     fun buildNotification(
@@ -106,27 +188,37 @@ object ReminderNotificationHelper {
     }
 
     /**
-     * 小米超级岛（焦点通知 V3）：在普通通知上合并 miui.focus.param 扩展字段
+     * 小米超级岛（焦点通知 V3）：在普通通知上合并 miui.focus 扩展字段。
+     * 布局逐字段复刻 InstallerX MiIslandNotificationBuilder：
+     * 大岛左图标右标题、小岛图标、下拉展开态 iconTextInfo、状态栏 picInfo。
+     * 空文本一律兜底为 " "（空串会导致系统解析异常）。
      */
     private fun buildMiIslandNotification(
         context: Context,
         info: ReminderNotificationContent
     ): Notification {
+        val displayTitle = info.title
+        val displayContent = if (info.notes.isNotBlank()) info.notes else info.subtitle
+
+        // 圆角应用图标：正方形直接上岛很突兀
+        val roundedIcon = createRoundedAppIconBitmap(context)
+
         val islandExtras = FocusNotification.buildV3 {
             val iconKey = createPicture(
                 MI_ISLAND_APP_ICON_KEY,
-                android.graphics.drawable.Icon.createWithResource(context, R.mipmap.ic_launcher)
-                    as Parcelable
+                android.graphics.drawable.Icon.createWithBitmap(roundedIcon) as Parcelable
             )
-
-            updatable = true
-            enableFloat = true
             islandFirstFloat = true
-            ticker = info.title
+            enableFloat = true
+            updatable = false
+            ticker = displayTitle
             tickerPic = iconKey
 
+            // 1. 超级岛配置（小岛状态 + 大岛展开态）
+            // maxSize=false：岛宽度随内容自适应收缩（true=占满全部可用空间）
             island {
                 islandProperty = 1
+                maxSize = false
                 bigIslandArea {
                     imageTextInfoLeft {
                         type = 1
@@ -135,11 +227,11 @@ object ReminderNotificationHelper {
                             pic = iconKey
                         }
                     }
+                    // 右侧文本组件
                     imageTextInfoRight {
                         type = 3
                         textInfo {
-                            title = info.title
-                            content = info.subtitle
+                            title = displayTitle
                         }
                     }
                 }
@@ -150,11 +242,30 @@ object ReminderNotificationHelper {
                     }
                 }
             }
+
+            // 2. 焦点通知下拉展开态
+            iconTextInfo {
+                title = displayTitle
+                content = displayContent.ifEmpty { " " }
+                animIconInfo {
+                    type = 0
+                    src = iconKey
+                }
+            }
+
+            // 3. 状态栏图标
+            picInfo {
+                type = 1
+                pic = iconKey
+            }
         }
 
-        val builder = Notification.Builder(context, REMINDER_CHANNEL_ID)
+        // 焦点通知必须挂在专用 live 通道上，由 HyperOS 岛渲染器处理；
+        // 通知为 ongoing，点击后通过 autoCancel 移除。
+        val builder = Notification.Builder(context, REMINDER_LIVE_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
-            .setTicker(info.title)
+            .setTicker(displayTitle)
+            .setOngoing(true)
             .setAutoCancel(true)
             .setContentIntent(info.contentIntent)
             .addExtras(islandExtras)
@@ -171,15 +282,21 @@ object ReminderNotificationHelper {
     }
 
     /**
-     * Android 16 原生 Live 通知：ProgressStyle 倒计时进度条
+     * Android 16 原生 Live 通知：ProgressStyle 倒计时进度条。
+     * 复刻 InstallerX ModernNotificationBuilder：必须是 ongoing + requestPromotedOngoing，
+     * 否则系统不会将其归类为实时动态，会按普通通知渲染。
+     * setRequestPromotedOngoing 为 API 36.1 的能力，经由 NotificationCompat（core 1.17+）安全调用。
      */
     private fun buildLiveNotification(
         context: Context,
         info: ReminderNotificationContent
     ): Notification {
-        val builder = Notification.Builder(context, REMINDER_CHANNEL_ID)
+        val builder = NotificationCompat.Builder(context, REMINDER_LIVE_CHANNEL_ID)
             .setSmallIcon(R.mipmap.ic_launcher)
+            .setOngoing(true)
             .setAutoCancel(true)
+            .setSilent(true)
+            .setRequestPromotedOngoing(true)
             .setContentIntent(info.contentIntent)
 
         if (info.notes.isNotBlank()) {
@@ -194,26 +311,41 @@ object ReminderNotificationHelper {
         val progress = info.progress
         if (progress != null && progress.totalDays > 0) {
             val elapsed = progress.elapsedDays.coerceIn(0, progress.totalDays)
-            val progressStyle = Notification.ProgressStyle()
-                .setProgress(progress.totalDays)
-                .setProgressSegments(
-                    listOf(
-                        Notification.ProgressStyle.Segment(elapsed)
-                            .setColor(LIVE_PROGRESS_COLOR),
-                        Notification.ProgressStyle.Segment(progress.totalDays - elapsed)
-                            .setColor(Color.TRANSPARENT)
+            builder.setStyle(
+                NotificationCompat.ProgressStyle()
+                    .setProgress(elapsed)
+                    .setProgressSegments(
+                        listOf(
+                            NotificationCompat.ProgressStyle.Segment(elapsed)
+                                .setColor(LIVE_PROGRESS_COLOR),
+                            NotificationCompat.ProgressStyle.Segment(progress.totalDays - elapsed)
+                                .setColor(Color.TRANSPARENT)
+                        )
                     )
-                )
-            builder.setStyle(progressStyle)
+            )
         }
         return builder.build()
     }
 
-    private fun getSystemProperty(key: String): String? = try {
-        val systemProperties = Class.forName("android.os.SystemProperties")
-        val getMethod = systemProperties.getMethod("get", String::class.java)
-        getMethod.invoke(null, key) as? String
-    } catch (_: Exception) {
-        null
+    /** 将启动图标渲染为带圆角的位图（约 20% 圆角，接近系统图标观感） */
+    private fun createRoundedAppIconBitmap(context: Context): Bitmap {
+        val size = 192
+        val drawable = ContextCompat.getDrawable(context, R.mipmap.ic_launcher)
+            ?: return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888)
+        // 先把（可能是 AdaptiveIcon 的）drawable 光栅化为方形位图
+        val source = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val sourceCanvas = Canvas(source)
+        drawable.setBounds(0, 0, size, size)
+        drawable.draw(sourceCanvas)
+        // 裁圆角后再光栅化输出
+        val roundedDrawable = RoundedBitmapDrawableFactory.create(context.resources, source).apply {
+            cornerRadius = size / 5f
+            setAntiAlias(true)
+        }
+        val output = Bitmap.createBitmap(size, size, Bitmap.Config.ARGB_8888)
+        val outputCanvas = Canvas(output)
+        roundedDrawable.setBounds(0, 0, size, size)
+        roundedDrawable.draw(outputCanvas)
+        return output
     }
 }

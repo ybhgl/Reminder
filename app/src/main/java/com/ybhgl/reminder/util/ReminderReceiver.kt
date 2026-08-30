@@ -9,7 +9,9 @@ import com.ybhgl.reminder.MainActivity
 import com.ybhgl.reminder.ReminderApplication
 import com.ybhgl.reminder.data.NotificationStyleOption
 import com.ybhgl.reminder.data.notificationStyleFlow
+import com.ybhgl.reminder.data.miIslandBypassFlow
 import com.ybhgl.reminder.util.ReminderNotificationHelper.buildNotification
+import com.ybhgl.reminder.util.shizuku.XiaomiBypassHelper
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.firstOrNull
@@ -97,7 +99,35 @@ class ReminderReceiver : BroadcastReceiver() {
             try {
                 val style = notificationStyleFlow(context).firstOrNull()
                     ?: NotificationStyleOption.STANDARD
-                notificationManager.notify(notifyId, buildNotification(context, content, style))
+                if (style == NotificationStyleOption.MI_ISLAND) {
+                    val bypassEnabled = miIslandBypassFlow(context).firstOrNull() ?: false
+                    if (bypassEnabled) {
+                        val islandNotification = buildNotification(
+                            context, content, NotificationStyleOption.MI_ISLAND
+                        )
+                        val fallbackNotification = buildNotification(
+                            context, content, NotificationStyleOption.STANDARD
+                        )
+                        val usedIsland = XiaomiBypassHelper.notifyWithXiaomiMagic(
+                            context, notificationManager, notifyId,
+                            islandNotification, fallbackNotification
+                        )
+                        if (!usedIsland) {
+                            android.util.Log.w("ReminderReceiver", "超级岛绕过未生效，已降级为标准通知")
+                        }
+                    } else {
+                        // 焦点参数通知在无权限且 xmsf 可联网时会被系统整体吞掉，
+                        // 未开启绕过时直接降级为标准通知
+                        notificationManager.notify(
+                            notifyId,
+                            buildNotification(context, content, NotificationStyleOption.STANDARD)
+                        )
+                    }
+                } else {
+                    notificationManager.notify(
+                        notifyId, buildNotification(context, content, style)
+                    )
+                }
             } catch (e: Exception) {
                 android.util.Log.e("ReminderReceiver", "发送通知失败，回退标准通知", e)
                 try {

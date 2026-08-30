@@ -98,6 +98,8 @@ android {
 }
 
 dependencies {
+    // 隐藏 API 编译期桩：仅参与编译，运行期解析到 framework 真实 Stub/Proxy
+    compileOnly(project(":hiddenapi"))
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.fragment.ktx)
     implementation("androidx.documentfile:documentfile:1.0.1")
@@ -129,6 +131,7 @@ dependencies {
     implementation("androidx.lifecycle:lifecycle-process:2.8.4")
     implementation("com.xzakota.hyper.notification:focus-api:1.4")
     implementation("dev.rikka.shizuku:api:13.1.5")
+    implementation("dev.rikka.shizuku:aidl:13.1.5")
     implementation("dev.rikka.shizuku:provider:13.1.5")
     testImplementation(libs.junit)
     androidTestImplementation(libs.androidx.junit)

@@ -21,3 +21,4 @@ dependencyResolutionManagement {
 
 rootProject.name = "Reminder"
 include(":app")
+include(":hiddenapi")

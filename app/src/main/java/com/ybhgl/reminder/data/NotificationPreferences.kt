@@ -3,6 +3,7 @@ package com.ybhgl.reminder.data
 import android.content.Context
 import androidx.datastore.core.DataStore
 import androidx.datastore.preferences.core.Preferences
+import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -22,6 +23,7 @@ enum class NotificationStyleOption {
 
 private const val NOTIFICATION_DATA_STORE_NAME = "notification_preferences"
 private val NOTIFICATION_STYLE_KEY = stringPreferencesKey("notification_style")
+private val MI_ISLAND_BYPASS_KEY = booleanPreferencesKey("mi_island_bypass_enabled")
 
 private val Context.notificationDataStore: DataStore<Preferences> by preferencesDataStore(
     name = NOTIFICATION_DATA_STORE_NAME
@@ -45,5 +47,24 @@ fun notificationStyleFlow(context: Context): Flow<NotificationStyleOption> =
 suspend fun saveNotificationStyle(context: Context, option: NotificationStyleOption) {
     context.notificationDataStore.edit { preferences ->
         preferences[NOTIFICATION_STYLE_KEY] = option.name
+    }
+}
+
+fun miIslandBypassFlow(context: Context): Flow<Boolean> =
+    context.notificationDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[MI_ISLAND_BYPASS_KEY] ?: false
+        }
+
+suspend fun saveMiIslandBypass(context: Context, enabled: Boolean) {
+    context.notificationDataStore.edit { preferences ->
+        preferences[MI_ISLAND_BYPASS_KEY] = enabled
     }
 }

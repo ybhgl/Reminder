@@ -189,6 +189,7 @@ import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
+import com.ybhgl.reminder.ui.settings.ReminderManageScreen
 import com.ybhgl.reminder.ui.settings.SettingsScreen
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
 import com.ybhgl.reminder.ui.tag.TagManagementScreen
@@ -617,7 +618,8 @@ object Routes {
     const val BIRTHDAY_LIST_BASE = "birthday_list"
     const val BIRTHDAY_LIST_PATTERN = "$BIRTHDAY_LIST_BASE/{reminderId}"
     const val REMINDER_SETTING_BASE = "reminder_setting"
-    const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}"
+    const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}&fromManage={fromManage}"
+    const val REMINDER_MANAGE = "reminder_manage"
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
@@ -626,13 +628,14 @@ object Routes {
     fun addReminder(initialType: String? = null): String {
         return if (initialType != null) "$ADD_REMINDER_BASE?initialType=$initialType" else ADD_REMINDER_BASE
     }
-    fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null, eventDate: String? = null): String {
+    fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null, eventDate: String? = null, fromManage: Boolean = false): String {
         val base = "$REMINDER_SETTING_BASE?"
         val idPart = if (reminderId != null) "reminderId=$reminderId" else ""
         val configPart = if (initialConfig != null) "initialConfig=$initialConfig" else ""
         val typePart = if (reminderType != null) "reminderType=$reminderType" else ""
         val datePart = if (eventDate != null) "eventDate=$eventDate" else ""
-        return base + listOf(idPart, configPart, typePart, datePart).filter { it.isNotEmpty() }.joinToString("&")
+        val managePart = if (fromManage) "fromManage=true" else ""
+        return base + listOf(idPart, configPart, typePart, datePart, managePart).filter { it.isNotEmpty() }.joinToString("&")
     }
     fun tagManagement(isSortMode: Boolean = false): String = "$TAG_MANAGEMENT?isSortMode=$isSortMode"
 }
@@ -806,6 +809,10 @@ fun ReminderApp() {
                         type = NavType.StringType
                         nullable = true
                         defaultValue = null
+                    },
+                    navArgument("fromManage") {
+                        type = NavType.BoolType
+                        defaultValue = false
                     }
                 )
             ) {
@@ -840,8 +847,17 @@ fun ReminderApp() {
                     onNavigateBack = { navController.navigateUp() },
                     onNavigateToBackupAndRestore = { navController.navigate(Routes.BACKUP_AND_RESTORE) },
                     onNavigateToTagManagement = { navController.navigate(Routes.tagManagement()) },
+                    onNavigateToReminderManage = { navController.navigate(Routes.REMINDER_MANAGE) },
                     onNavigateToGestureSetup = { navController.navigate(Routes.GESTURE_SETUP) },
                     onNavigateToGestureModify = { navController.navigate(Routes.GESTURE_MODIFY) }
+                )
+            }
+            composable(route = Routes.REMINDER_MANAGE) {
+                ReminderManageScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToReminderSetting = { reminderId ->
+                        navController.navigate(Routes.reminderSetting(reminderId = reminderId, fromManage = true))
+                    }
                 )
             }
             composable(route = Routes.BACKUP_AND_RESTORE) {
