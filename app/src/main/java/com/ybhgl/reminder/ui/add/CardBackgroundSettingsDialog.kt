@@ -421,7 +421,14 @@ fun CardBackgroundSettingsDialog(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
                                 }
-                                Switch(checked = glassEnabled, onCheckedChange = { glassEnabled = it })
+                                Switch(
+                                    checked = glassEnabled,
+                                    onCheckedChange = {
+                                        glassEnabled = it
+                                        // 磨砂为光栅玻璃子选项：关闭光栅时自动关闭磨砂
+                                        if (!it) glassFrosted = false
+                                    }
+                                )
                             }
 
                             SettingsLinkedVisibility(visible = glassEnabled) {

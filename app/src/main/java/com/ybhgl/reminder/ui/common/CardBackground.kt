@@ -199,8 +199,8 @@ fun CardBackgroundLayer(
                     frostBlurPx = frostBlurPx
                 ).asComposeRenderEffect()
             }
-            spec.type == CardBackgroundType.IMAGE && spec.glassFrosted -> {
-                // AGSL 不可用 / 未开启光栅：磨砂回退为真实雾面模糊
+            spec.type == CardBackgroundType.IMAGE && spec.glassEnabled && spec.glassFrosted -> {
+                // AGSL 不可用 / 未开启光栅：磨砂回退为真实雾面模糊（磨砂为光栅玻璃子选项，仅在开启光栅时生效）
                 frostOnlyEffect(frostBlurPx).asComposeRenderEffect()
             }
             else -> null
@@ -284,8 +284,8 @@ fun CardBackgroundLayer(
             }
         }
 
-        // 磨砂颗粒：图片背景开启磨砂时叠加（配合 graphicsLayer 的雾面模糊形成真实磨砂质感）
-        if (spec.type == CardBackgroundType.IMAGE && spec.glassFrosted && loadedBitmap != null) {
+        // 磨砂颗粒：图片背景开启光栅玻璃 + 磨砂时叠加（配合 graphicsLayer 的雾面模糊形成真实磨砂质感）
+        if (spec.type == CardBackgroundType.IMAGE && spec.glassEnabled && spec.glassFrosted && loadedBitmap != null) {
             FrostNoiseOverlay()
         }
     }

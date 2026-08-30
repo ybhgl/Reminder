@@ -808,8 +808,10 @@ fun ShareableReminderImage(
                         )
                     }
                     backgroundBitmap != null -> {
-                        val hasEffects = backgroundBlurRadius > 0f ||
-                            backgroundGlassEnabled || backgroundGlassFrosted
+                        // 图片效果仅对"图片"背景类型生效：默认内置图/纯色背景不做任何处理
+                        val hasEffects = backgroundType == ShareBackgroundType.IMAGE &&
+                            (backgroundBlurRadius > 0f ||
+                                backgroundGlassEnabled || backgroundGlassFrosted)
                         if (hasEffects) {
                             // 复用卡片背景效果渲染链：模糊 / 光栅玻璃（折射+竖纹）/ 磨砂
                             CardBackgroundLayer(

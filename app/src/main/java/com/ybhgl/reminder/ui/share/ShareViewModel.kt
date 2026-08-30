@@ -151,9 +151,14 @@ class ShareViewModel(
         _shareOptions.update { it.copy(backgroundBlurRadius = radius) }
     }
 
-    /** 图片背景：光栅玻璃开关 */
+    /** 图片背景：光栅玻璃开关（磨砂为其子选项，关闭光栅时自动关闭磨砂） */
     fun updateBackgroundGlassEnabled(enabled: Boolean) {
-        _shareOptions.update { it.copy(backgroundGlassEnabled = enabled) }
+        _shareOptions.update {
+            it.copy(
+                backgroundGlassEnabled = enabled,
+                backgroundGlassFrosted = if (enabled) it.backgroundGlassFrosted else false
+            )
+        }
     }
 
     /** 图片背景：磨砂处理开关 */
