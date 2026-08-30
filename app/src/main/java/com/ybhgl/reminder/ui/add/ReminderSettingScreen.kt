@@ -48,13 +48,12 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.runtime.saveable.rememberSaveable
 import com.ybhgl.reminder.ui.common.StatusBarScrim
+import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalPermissionsApi::class)
 @Composable
@@ -103,34 +102,17 @@ fun ReminderSettingScreen(
 
     BackHandler(enabled = true, onBack = handleBack)
 
-    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
-    var topBarHeightPx by remember { mutableStateOf(0f) }
-
-    val customNestedScrollConnection = remember(topBarHeightPx) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (topBarHeightPx > 0f) {
-                    val delta = available.y
-                    val oldOffset = titleOffsetPx
-                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
-                    val consumed = newOffset - oldOffset
-                    titleOffsetPx = newOffset
-                    return Offset(0f, consumed)
-                }
-                return Offset.Zero
-            }
-        }
-    }
+    val topBarState = rememberCollapsingTopBarState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        modifier = Modifier.nestedScroll(customNestedScrollConnection)
+        modifier = Modifier.nestedScroll(topBarState.nestedScrollConnection)
     ) { padding ->
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+            val topBarHeightDp = with(LocalDensity.current) { topBarState.topBarHeightPx.toDp() }
 
             LazyColumn(
                 modifier = Modifier.fillMaxSize(),
@@ -142,7 +124,7 @@ fun ReminderSettingScreen(
                 )
             ) {
                 item {
-                    Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
+                    Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
                 }
 
                 item {
@@ -384,15 +366,18 @@ fun ReminderSettingScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .onSizeChanged {
-                    topBarHeightPx = it.height.toFloat()
+                    topBarState.topBarHeightPx = it.height.toFloat()
                 }
                 .graphicsLayer {
-                    translationY = titleOffsetPx
+                    translationY = topBarState.titleOffsetPx
                 }
                 .then(topAppBarModifier)
         ) {
             TopAppBar(
-                title = { Text("提醒设置") },
+                title = {
+                    // 从"提醒管理"进入时顶栏显示对应事件名
+                    Text(viewModel.eventTitle ?: "提醒设置")
+                },
                 windowInsets = TopAppBarDefaults.windowInsets,
                 colors = topAppBarColors,
                 navigationIcon = {
@@ -415,6 +400,9 @@ fun ReminderSettingScreen(
                             if (uiState.config.isEnabled && missingPermissions.isNotEmpty()) {
                                 permissionDialogText = "开启提醒需要以下权限：${missingPermissions.joinToString("、")}。请在设置中开启以确保提醒功能正常工作。"
                                 showPermissionDialog = true
+                            } else if (viewModel.fromManage) {
+                                // 从"提醒管理"进入：直接入库后返回
+                                viewModel.saveToRepository(viewModel.getConfigJson()) { onNavigateBack() }
                             } else {
                                 onSave(viewModel.getConfigJson())
                             }

@@ -81,6 +81,7 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.navigationBars
@@ -1388,7 +1389,8 @@ internal fun SettingsActionItem(
     onClick: (() -> Unit)? = null,
     trailingContent: @Composable (() -> Unit)? = null,
     bottomContent: @Composable (() -> Unit)? = null,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+    containerColor: Color = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp),
+    contentPadding: PaddingValues = PaddingValues(16.dp)
 ) {
     val cardModifier = Modifier.fillMaxWidth()
     val cardColors = CardDefaults.cardColors(containerColor = containerColor)
@@ -1398,7 +1400,7 @@ internal fun SettingsActionItem(
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(16.dp),
+                    .padding(contentPadding),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {

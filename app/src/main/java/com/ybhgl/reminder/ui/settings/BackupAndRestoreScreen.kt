@@ -90,8 +90,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -106,6 +104,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.StatusBarScrim
+import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.async
 import com.ybhgl.reminder.ui.common.CustomToast
@@ -234,35 +233,18 @@ fun BackupAndRestoreScreen(
         }
     }
 
-    // Custom nested scroll to match top app bar scrolling behavior in SettingsScreen
-    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
-    var topBarHeightPx by remember { mutableStateOf(0f) }
-
-    val customNestedScrollConnection = remember(topBarHeightPx) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (topBarHeightPx > 0f) {
-                    val delta = available.y
-                    val oldOffset = titleOffsetPx
-                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
-                    val consumed = newOffset - oldOffset
-                    titleOffsetPx = newOffset
-                    return Offset(0f, consumed)
-                }
-                return Offset.Zero
-            }
-        }
-    }
+    // 沉浸式可收起顶栏状态
+    val topBarState = rememberCollapsingTopBarState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        modifier = modifier.nestedScroll(customNestedScrollConnection)
+        modifier = modifier.nestedScroll(topBarState.nestedScrollConnection)
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+            val topBarHeightDp = with(LocalDensity.current) { topBarState.topBarHeightPx.toDp() }
 
             Column(
                 modifier = Modifier
@@ -272,7 +254,7 @@ fun BackupAndRestoreScreen(
                     .padding(top = 0.dp, bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 12.dp).coerceAtLeast(0.dp)))
+                Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() } + 12.dp).coerceAtLeast(0.dp)))
 
                 // Section 1: Backup Reminder (备份提醒)
                 Text(
@@ -662,8 +644,8 @@ fun BackupAndRestoreScreen(
                 )
                 HorizontalDivider()
                 SettingsActionItem(
-                    title = "导出为 JSON",
-                    description = "导出所有提醒及偏好设置数据为 JSON 文件",
+                    title = "导出为文件",
+                    description = "导出所有提醒及偏好设置数据为 JSON 备份文件",
                     icon = Icons.Default.Archive,
                     enabled = !isProcessing
                 ) {
@@ -881,10 +863,10 @@ fun BackupAndRestoreScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onSizeChanged {
-                        topBarHeightPx = it.height.toFloat()
+                        topBarState.topBarHeightPx = it.height.toFloat()
                     }
                     .graphicsLayer {
-                        translationY = titleOffsetPx
+                        translationY = topBarState.titleOffsetPx
                     }
                     .then(topAppBarModifier)
             ) {

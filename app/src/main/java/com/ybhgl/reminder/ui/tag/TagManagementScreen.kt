@@ -97,8 +97,6 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -114,6 +112,7 @@ import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.common.StatusBarScrim
+import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 
 // Hex 颜色解析扩展
 fun String.toComposeColor(): Color {
@@ -163,32 +162,15 @@ fun TagManagementScreen(
     var dragOffsetY by remember { mutableStateOf(0f) }
 
     // 沉浸式滑动折叠顶栏逻辑
-    var titleOffsetPx by remember { mutableStateOf(0f) }
-    var topBarHeightPx by remember { mutableStateOf(0f) }
+    val topBarState = rememberCollapsingTopBarState()
 
-    val customNestedScrollConnection = remember(topBarHeightPx) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (topBarHeightPx > 0f) {
-                    val delta = available.y
-                    val oldOffset = titleOffsetPx
-                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
-                    val consumed = newOffset - oldOffset
-                    titleOffsetPx = newOffset
-                    return Offset(0f, consumed)
-                }
-                return Offset.Zero
-            }
-        }
-    }
-
-    val topBarHeightDp = with(density) { topBarHeightPx.toDp() }
-    val titleOffsetDp = with(density) { titleOffsetPx.toDp() }
+    val topBarHeightDp = with(density) { topBarState.topBarHeightPx.toDp() }
+    val titleOffsetDp = with(density) { topBarState.titleOffsetPx.toDp() }
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        modifier = modifier.nestedScroll(customNestedScrollConnection),
+        modifier = modifier.nestedScroll(topBarState.nestedScrollConnection),
         floatingActionButton = {
             if (!uiState.isSortMode) {
                 FloatingActionButton(
@@ -289,10 +271,10 @@ fun TagManagementScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onSizeChanged {
-                        topBarHeightPx = it.height.toFloat()
+                        topBarState.topBarHeightPx = it.height.toFloat()
                     }
                     .graphicsLayer {
-                        translationY = titleOffsetPx
+                        translationY = topBarState.titleOffsetPx
                     }
                     .then(topAppBarModifier)
             ) {

@@ -25,8 +25,6 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
@@ -35,6 +33,7 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import com.ybhgl.reminder.ui.common.StatusBarScrim
+import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayListItem
@@ -64,34 +63,17 @@ fun BirthdayListScreen(
         }
     }
 
-    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
-    var topBarHeightPx by remember { mutableStateOf(0f) }
-
-    val customNestedScrollConnection = remember(topBarHeightPx) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (topBarHeightPx > 0f) {
-                    val delta = available.y
-                    val oldOffset = titleOffsetPx
-                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
-                    val consumed = newOffset - oldOffset
-                    titleOffsetPx = newOffset
-                    return Offset(0f, consumed)
-                }
-                return Offset.Zero
-            }
-        }
-    }
+    val topBarState = rememberCollapsingTopBarState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        modifier = Modifier.nestedScroll(customNestedScrollConnection)
+        modifier = Modifier.nestedScroll(topBarState.nestedScrollConnection)
     ) { paddingValues ->
         Box(
             modifier = Modifier.fillMaxSize()
         ) {
-            val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+            val topBarHeightDp = with(LocalDensity.current) { topBarState.topBarHeightPx.toDp() }
 
             if (reminderItem == null) {
                 Box(
@@ -108,7 +90,7 @@ fun BirthdayListScreen(
                     BirthdayCalculator.generateBirthdayList(reminderItem.date, reminderItem.isLunar)
                 }
 
-                val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 16.dp).coerceAtLeast(0.dp)
+                val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() } + 16.dp).coerceAtLeast(0.dp)
                 LazyColumn(
                     modifier = Modifier
                         .fillMaxSize(),
@@ -158,10 +140,10 @@ fun BirthdayListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onSizeChanged {
-                        topBarHeightPx = it.height.toFloat()
+                        topBarState.topBarHeightPx = it.height.toFloat()
                     }
                     .graphicsLayer {
-                        translationY = titleOffsetPx
+                        translationY = topBarState.titleOffsetPx
                     }
                     .then(topAppBarModifier)
             ) {
