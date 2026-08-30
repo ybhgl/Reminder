@@ -51,6 +51,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Slider
 import androidx.compose.material3.SnackbarHost
 import androidx.compose.material3.SnackbarHostState
 import androidx.compose.material3.Surface
@@ -99,6 +100,10 @@ import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.ReminderCustomizationSection
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.CardBackgroundLayer
+import com.ybhgl.reminder.ui.common.CardBackgroundSpec
+import com.ybhgl.reminder.ui.common.CardBackgroundType
+import com.ybhgl.reminder.ui.common.ImageCropDialog
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.detail.ReminderDetailCard
 import com.ybhgl.reminder.ui.settings.CustomColorPickerDialog
@@ -108,6 +113,8 @@ import dev.shreyaspatil.capturable.capturable
 import dev.shreyaspatil.capturable.controller.rememberCaptureController
 import kotlin.math.max
 import kotlin.math.roundToInt
+import java.io.File
+import java.io.FileOutputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -167,6 +174,10 @@ fun ShareScreen(
 
     val needsLegacyStoragePermission = remember { Build.VERSION.SDK_INT < Build.VERSION_CODES.Q }
     var pendingSaveAction by remember { mutableStateOf<ShareAction?>(null) }
+    // 分享预览实际输出尺寸（px，锁定密度下测量值即输出值）：背景裁剪框比例与其保持一致
+    var previewSize by remember { mutableStateOf(IntSize.Zero) }
+    // 选图后待裁剪的位图
+    var pendingCropBitmap by remember { mutableStateOf<Bitmap?>(null) }
     val storagePermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { granted ->
@@ -180,22 +191,21 @@ fun ShareScreen(
         }
     }
 
-    // 自定义图片选择器
+    // 自定义图片选择器：选图后进入裁剪，裁剪框比例与生成的分享图一致
     val imagePickerLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.PickVisualMedia()
     ) { uri ->
         if (uri != null) {
-            // 持久化读取权限，保证本会话及后续渲染可访问
-            try {
-                context.contentResolver.takePersistableUriPermission(
-                    uri,
-                    android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION
-                )
-            } catch (_: Exception) {
-                // 部分来源不支持持久授权，忽略
+            coroutineScope.launch {
+                val bitmap = withContext(Dispatchers.IO) {
+                    decodeSampledBitmap(context, uri, SHARE_OUTPUT_WIDTH_PX)
+                }
+                if (bitmap != null) {
+                    pendingCropBitmap = bitmap
+                } else {
+                    snackbarHostState.showSnackbar("图片加载失败")
+                }
             }
-            viewModel.updateCustomImageUri(uri.toString())
-            viewModel.updateBackgroundType(ShareBackgroundType.IMAGE)
         }
     }
 
@@ -208,6 +218,51 @@ fun ShareScreen(
             }
             snackbarHostState.showSnackbar(message)
         }
+    }
+
+    // 背景裁剪对话框：裁剪框比例与分享图输出比例一致，所见即所得
+    pendingCropBitmap?.let { pending ->
+        ImageCropDialog(
+            bitmap = pending,
+            aspectRatio = if (previewSize.width > 0 && previewSize.height > 0) {
+                previewSize.width.toFloat() / previewSize.height
+            } else {
+                1f
+            },
+            onCancel = {
+                pendingCropBitmap = null
+                // 不主动 recycle：裁剪结果可能与解码位图共享像素，交由 GC
+            },
+            onConfirmed = { cropped ->
+                pendingCropBitmap = null
+                coroutineScope.launch {
+                    // 裁剪结果转存私有目录：分享背景为会话级配置，file URI 即可，无需持久授权
+                    val savedUri = withContext(Dispatchers.IO) {
+                        try {
+                            val dir = File(context.filesDir, "share_backgrounds").apply { mkdirs() }
+                            val file = File(dir, "share_bg_${System.currentTimeMillis()}.jpg")
+                            FileOutputStream(file).use {
+                                cropped.compress(Bitmap.CompressFormat.JPEG, 90, it)
+                            }
+                            Uri.fromFile(file)
+                        } catch (_: Throwable) {
+                            null
+                        }
+                    }
+                    if (savedUri != null) {
+                        // 删除本会话上一张已导入的私有目录背景图，避免残留
+                        val old = Uri.parse(options.customImageUri)
+                        if (old.scheme == "file") {
+                            File(old.path ?: "").takeIf { it.parentFile?.name == "share_backgrounds" }?.delete()
+                        }
+                        viewModel.updateCustomImageUri(savedUri.toString())
+                        viewModel.updateBackgroundType(ShareBackgroundType.IMAGE)
+                    } else {
+                        snackbarHostState.showSnackbar("图片处理失败")
+                    }
+                }
+            }
+        )
     }
 
     // 预览项在组合体顶层由 State 推导：reminder/options 更新时触发本作用域重组
@@ -290,7 +345,8 @@ fun ShareScreen(
             ) {
                 // 预览（所见即所得，仅预览圆角；导出图为直角满幅）
                 SharePreviewContainer(
-                    captureModifier = Modifier.capturable(captureController)
+                    captureModifier = Modifier.capturable(captureController),
+                    onContentSizeChanged = { previewSize = it }
                 ) { captureModifier ->
                     ShareableReminderImage(
                         reminderItem = previewItem,
@@ -298,6 +354,10 @@ fun ShareScreen(
                         backgroundType = options.backgroundType,
                         backgroundColor = options.backgroundColor.toComposeColor(),
                         backgroundBitmap = backgroundBitmap,
+                        backgroundBlurRadius = options.backgroundBlurRadius,
+                        backgroundGlassEnabled = options.backgroundGlassEnabled,
+                        backgroundGlassFrosted = options.backgroundGlassFrosted,
+                        backgroundGlassDensity = options.backgroundGlassDensity,
                         showLogo = options.showLogo,
                         logoColorOverride = options.logoColor,
                         modifier = captureModifier
@@ -320,13 +380,21 @@ fun ShareScreen(
                         ShareBackgroundSection(
                             backgroundType = options.backgroundType,
                             backgroundColorHex = options.backgroundColor,
+                            backgroundBlurRadius = options.backgroundBlurRadius,
+                            backgroundGlassEnabled = options.backgroundGlassEnabled,
+                            backgroundGlassFrosted = options.backgroundGlassFrosted,
+                            backgroundGlassDensity = options.backgroundGlassDensity,
                             onBackgroundTypeChange = { viewModel.updateBackgroundType(it) },
                             onBackgroundColorChange = { viewModel.updateBackgroundColor(it) },
                             onPickCustomImage = {
                                 imagePickerLauncher.launch(
                                     PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
                                 )
-                            }
+                            },
+                            onBlurRadiusChange = { viewModel.updateBackgroundBlurRadius(it) },
+                            onGlassEnabledChange = { viewModel.updateBackgroundGlassEnabled(it) },
+                            onGlassFrostedChange = { viewModel.updateBackgroundGlassFrosted(it) },
+                            onGlassDensityChange = { viewModel.updateBackgroundGlassDensity(it) }
                         )
                     }
                 }
@@ -435,10 +503,12 @@ fun ShareScreen(
 /**
  * 预览容器：内部以固定设计宽度渲染（锁定密度），外层等比缩放适配屏幕宽度。
  * capturable 修饰符挂在内层原始尺寸节点上，保证导出图不受预览缩放影响。
+ * 测量到的内容尺寸（即实际输出像素尺寸）通过 [onContentSizeChanged] 上抛。
  */
 @Composable
 private fun SharePreviewContainer(
     captureModifier: Modifier = Modifier,
+    onContentSizeChanged: (IntSize) -> Unit = {},
     content: @Composable (Modifier) -> Unit
 ) {
     var contentSize by remember { mutableStateOf(IntSize.Zero) }
@@ -472,7 +542,10 @@ private fun SharePreviewContainer(
             ) {
                 content(
                     captureModifier
-                        .onSizeChanged { contentSize = it }
+                        .onSizeChanged {
+                            contentSize = it
+                            onContentSizeChanged(it)
+                        }
                         .width(SHARE_DESIGN_WIDTH_DP.dp)
                 )
             }
@@ -484,9 +557,17 @@ private fun SharePreviewContainer(
 private fun ShareBackgroundSection(
     backgroundType: ShareBackgroundType,
     backgroundColorHex: String,
+    backgroundBlurRadius: Float,
+    backgroundGlassEnabled: Boolean,
+    backgroundGlassFrosted: Boolean,
+    backgroundGlassDensity: Float,
     onBackgroundTypeChange: (ShareBackgroundType) -> Unit,
     onBackgroundColorChange: (String) -> Unit,
-    onPickCustomImage: () -> Unit
+    onPickCustomImage: () -> Unit,
+    onBlurRadiusChange: (Float) -> Unit,
+    onGlassEnabledChange: (Boolean) -> Unit,
+    onGlassFrostedChange: (Boolean) -> Unit,
+    onGlassDensityChange: (Float) -> Unit
 ) {
     var showColorPicker by remember { mutableStateOf(false) }
 
@@ -538,6 +619,63 @@ private fun ShareBackgroundSection(
                 }
             )
         }
+
+        // 图片背景效果：与卡片背景设置一致（模糊 / 光栅玻璃 / 磨砂 / 密度）
+        SettingsLinkedVisibility(visible = backgroundType == ShareBackgroundType.IMAGE) {
+            Column(modifier = Modifier.padding(top = 4.dp)) {
+                SliderRow(
+                    title = "图片模糊",
+                    valueText = "${backgroundBlurRadius.roundToInt()}",
+                    value = backgroundBlurRadius,
+                    valueRange = 0f..25f,
+                    onValueChange = onBlurRadiusChange
+                )
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 12.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text("光栅玻璃", style = MaterialTheme.typography.bodyLarge)
+                        Text(
+                            "在背景上叠加垂直光栅玻璃效果",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                    Switch(checked = backgroundGlassEnabled, onCheckedChange = onGlassEnabledChange)
+                }
+                SettingsLinkedVisibility(visible = backgroundGlassEnabled) {
+                    Column(
+                        modifier = Modifier.padding(top = 12.dp),
+                        verticalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            verticalAlignment = Alignment.CenterVertically
+                        ) {
+                            Column(modifier = Modifier.weight(1f)) {
+                                Text("磨砂处理", style = MaterialTheme.typography.bodyLarge)
+                                Text(
+                                    "变为磨砂雾透玻璃效果，柔化光栅",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                            Switch(checked = backgroundGlassFrosted, onCheckedChange = onGlassFrostedChange)
+                        }
+                        SliderRow(
+                            title = "光栅密度",
+                            valueText = "${(backgroundGlassDensity * 100).roundToInt()}%",
+                            value = backgroundGlassDensity,
+                            valueRange = 0f..1f,
+                            onValueChange = onGlassDensityChange
+                        )
+                    }
+                }
+            }
+        }
     }
 
     if (showColorPicker) {
@@ -554,6 +692,38 @@ private fun ShareBackgroundSection(
 
 private fun colorToHex(color: Color): String =
     String.format("#%06X", color.toArgb() and 0x00FFFFFF)
+
+/** 带标题与数值展示的滑块行（与卡片背景设置对话框样式一致） */
+@Composable
+private fun SliderRow(
+    title: String,
+    valueText: String,
+    value: Float,
+    valueRange: ClosedFloatingPointRange<Float>,
+    onValueChange: (Float) -> Unit
+) {
+    Column(modifier = Modifier.fillMaxWidth()) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween
+        ) {
+            Text(
+                title,
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Text(
+                valueText,
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+            )
+        }
+        Slider(
+            value = value,
+            onValueChange = onValueChange,
+            valueRange = valueRange
+        )
+    }
+}
 
 @Composable
 private fun LogoSwitchRow(
@@ -590,6 +760,14 @@ fun ShareableReminderImage(
     backgroundType: ShareBackgroundType = ShareBackgroundType.DEFAULT,
     backgroundColor: Color = Color.White,
     backgroundBitmap: Bitmap? = null,
+    /** 图片背景：模糊度（dp，0..25） */
+    backgroundBlurRadius: Float = 0f,
+    /** 图片背景：光栅玻璃效果开关 */
+    backgroundGlassEnabled: Boolean = false,
+    /** 图片背景：磨砂处理（雾面玻璃）开关 */
+    backgroundGlassFrosted: Boolean = false,
+    /** 图片背景：光栅密度（0..1） */
+    backgroundGlassDensity: Float = 0.5f,
     showLogo: Boolean = true,
     /** LOGO 颜色：""=自动（默认背景强制白色，自定义背景按亮度反色），"WHITE"/"BLACK"=手动指定 */
     logoColorOverride: String = ""
@@ -630,12 +808,30 @@ fun ShareableReminderImage(
                         )
                     }
                     backgroundBitmap != null -> {
-                        Image(
-                            bitmap = backgroundBitmap.asImageBitmap(),
-                            contentDescription = null,
-                            contentScale = ContentScale.Crop,
-                            modifier = Modifier.matchParentSize()
-                        )
+                        val hasEffects = backgroundBlurRadius > 0f ||
+                            backgroundGlassEnabled || backgroundGlassFrosted
+                        if (hasEffects) {
+                            // 复用卡片背景效果渲染链：模糊 / 光栅玻璃（折射+竖纹）/ 磨砂
+                            CardBackgroundLayer(
+                                spec = CardBackgroundSpec(
+                                    type = CardBackgroundType.IMAGE,
+                                    imagePath = "",
+                                    blurRadius = backgroundBlurRadius,
+                                    glassEnabled = backgroundGlassEnabled,
+                                    glassFrosted = backgroundGlassFrosted,
+                                    glassDensity = backgroundGlassDensity
+                                ),
+                                bitmap = backgroundBitmap,
+                                modifier = Modifier.matchParentSize()
+                            )
+                        } else {
+                            Image(
+                                bitmap = backgroundBitmap.asImageBitmap(),
+                                contentDescription = null,
+                                contentScale = ContentScale.Crop,
+                                modifier = Modifier.matchParentSize()
+                            )
+                        }
                     }
                 }
                 Column(horizontalAlignment = Alignment.CenterHorizontally) {

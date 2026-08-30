@@ -143,23 +143,27 @@ fun resolveCardBackgroundForeground(spec: CardBackgroundSpec, luminance: Float):
  * 层级：颜色或图片（含模糊）→ 光栅玻璃（折射 + 竖纹 + 磨砂噪点 + 表面光泽）。
  * 折射效果参考 Fluted Glass 实现：每道竖直棱纹是一枚柱面透镜，
  * 通过 RuntimeShader（AGSL）对背景做水平位移折射。
+ *
+ * @param bitmap 外部位图（可选）：传入时跳过按 [CardBackgroundSpec.imagePath] 的内部加载，
+ *   供分享图等不在 `CardBackgroundImageManager` 体系内的背景复用同一套效果渲染。
  */
 @Composable
 fun CardBackgroundLayer(
     spec: CardBackgroundSpec,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    bitmap: Bitmap? = null
 ) {
     if (spec.type == CardBackgroundType.DEFAULT) return
 
-    val bitmap = if (spec.type == CardBackgroundType.IMAGE) {
-        rememberCardBackgroundBitmap(spec.imagePath)
+    val loadedBitmap = if (spec.type == CardBackgroundType.IMAGE) {
+        bitmap ?: rememberCardBackgroundBitmap(spec.imagePath)
     } else null
 
     val density = LocalDensity.current
     // 密度 0..1 → 条纹间距 40dp..6dp（密度越高条纹越密）
     val spacingDp = 40f - 34f * spec.glassDensity.coerceIn(0f, 1f)
     val spacingPx = with(density) { spacingDp.dp.toPx() }
-    val glassActive = spec.type == CardBackgroundType.IMAGE && spec.glassEnabled && bitmap != null
+    val glassActive = spec.type == CardBackgroundType.IMAGE && spec.glassEnabled && loadedBitmap != null
     val runtimeGlass = glassActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     // AGSL 编译开销大，缓存 shader 仅更新 uniform
     val flutedShader = rememberFlutedShader()
@@ -201,9 +205,9 @@ fun CardBackgroundLayer(
                     Box(Modifier.fillMaxSize().background(spec.color))
                 }
                 CardBackgroundType.IMAGE -> {
-                    if (bitmap != null) {
+                    if (loadedBitmap != null) {
                         Image(
-                            bitmap = bitmap.asImageBitmap(),
+                            bitmap = loadedBitmap.asImageBitmap(),
                             contentDescription = "卡片背景",
                             contentScale = ContentScale.Crop,
                             modifier = Modifier
@@ -266,7 +270,7 @@ fun CardBackgroundLayer(
         }
 
         // 磨砂颗粒：图片背景开启磨砂时叠加（配合 graphicsLayer 的雾面模糊形成真实磨砂质感）
-        if (spec.type == CardBackgroundType.IMAGE && spec.glassFrosted && bitmap != null) {
+        if (spec.type == CardBackgroundType.IMAGE && spec.glassFrosted && loadedBitmap != null) {
             FrostNoiseOverlay()
         }
     }

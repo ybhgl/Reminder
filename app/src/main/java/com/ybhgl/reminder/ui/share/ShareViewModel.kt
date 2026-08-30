@@ -45,6 +45,14 @@ data class ShareOptions(
     val backgroundType: ShareBackgroundType = ShareBackgroundType.DEFAULT,
     val backgroundColor: String = "#FFFFFF",
     val customImageUri: String = "",
+    /** 图片背景：模糊度（dp，0..25） */
+    val backgroundBlurRadius: Float = 0f,
+    /** 图片背景：光栅玻璃效果开关 */
+    val backgroundGlassEnabled: Boolean = false,
+    /** 图片背景：磨砂处理（雾面玻璃）开关 */
+    val backgroundGlassFrosted: Boolean = false,
+    /** 图片背景：光栅密度（0..1，越高条纹越密） */
+    val backgroundGlassDensity: Float = 0.5f,
     val showLogo: Boolean = true,
     /** LOGO 颜色：""=按背景亮度自动反色，"WHITE"/"BLACK"=用户手动指定 */
     val logoColor: String = "",
@@ -136,6 +144,26 @@ class ShareViewModel(
 
     fun updateCustomImageUri(uri: String) {
         _shareOptions.update { it.copy(customImageUri = uri) }
+    }
+
+    /** 图片背景：模糊度（dp） */
+    fun updateBackgroundBlurRadius(radius: Float) {
+        _shareOptions.update { it.copy(backgroundBlurRadius = radius) }
+    }
+
+    /** 图片背景：光栅玻璃开关 */
+    fun updateBackgroundGlassEnabled(enabled: Boolean) {
+        _shareOptions.update { it.copy(backgroundGlassEnabled = enabled) }
+    }
+
+    /** 图片背景：磨砂处理开关 */
+    fun updateBackgroundGlassFrosted(frosted: Boolean) {
+        _shareOptions.update { it.copy(backgroundGlassFrosted = frosted) }
+    }
+
+    /** 图片背景：光栅密度（0..1） */
+    fun updateBackgroundGlassDensity(density: Float) {
+        _shareOptions.update { it.copy(backgroundGlassDensity = density) }
     }
 
     fun updateShowLogo(show: Boolean) {
