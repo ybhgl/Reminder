@@ -26,6 +26,12 @@ class ReminderSettingViewModel(
 
     private val reminderId: Int? = savedStateHandle.get<String>("reminderId")?.toIntOrNull()
     private val initialConfigJson: String? = savedStateHandle.get<String>("initialConfig")
+
+    /** 从"提醒管理"页进入时，保存直接写入数据库而非回传给编辑页 */
+    val fromManage: Boolean = savedStateHandle.get<Boolean>("fromManage") == true
+
+    private var loadedReminder: ReminderItem? = null
+
     val eventDate: LocalDate? = savedStateHandle.get<String>("eventDate")?.let { LocalDate.parse(it) }
     val reminderType: ReminderType = savedStateHandle.get<String>("reminderType")?.let { typeName ->
         ReminderType.entries.find { it.name == typeName }
@@ -42,12 +48,18 @@ class ReminderSettingViewModel(
     var isInitialized by mutableStateOf(false)
         private set
 
+    /** 从"提醒管理"进入时顶栏显示的事件名 */
+    var eventTitle by mutableStateOf<String?>(null)
+        private set
+
     private var originalConfig: ReminderNotificationConfig = ReminderNotificationConfig()
 
     init {
         viewModelScope.launch {
             if (reminderId != null && reminderId != -1) {
                 val reminder = reminderRepository.getReminderStream(reminderId).filterNotNull().first()
+                loadedReminder = reminder
+                eventTitle = reminder.title
                 originalConfig = reminder.notificationConfig
                 uiState = uiState.copy(config = originalConfig)
             } else if (initialConfigJson != null) {
@@ -108,6 +120,18 @@ class ReminderSettingViewModel(
     
     fun getConfigJson(): String {
         return Json.encodeToString(uiState.config)
+    }
+
+    /** fromManage 模式：将配置直接持久化到数据库，完成后回调（用于返回上一页） */
+    fun saveToRepository(configJson: String, onDone: () -> Unit) {
+        val reminder = loadedReminder ?: return
+        val config = runCatching { Json.decodeFromString<ReminderNotificationConfig>(configJson) }
+            .getOrNull() ?: return
+        viewModelScope.launch {
+            reminderRepository.updateReminder(reminder.copy(notificationConfig = config))
+            originalConfig = config
+            onDone()
+        }
     }
 
     fun importNotificationConfig(config: ReminderNotificationConfig) {
