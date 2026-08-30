@@ -35,7 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Colorize
+import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material3.Card
@@ -585,7 +585,7 @@ private fun ShareBackgroundSection(
                 label = { Text("默认") },
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Image,
+                        imageVector = Icons.Default.Home,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
@@ -597,7 +597,7 @@ private fun ShareBackgroundSection(
                 label = { Text("图片") },
                 leadingIcon = {
                     Icon(
-                        imageVector = Icons.Default.Colorize,
+                        imageVector = Icons.Default.Image,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
