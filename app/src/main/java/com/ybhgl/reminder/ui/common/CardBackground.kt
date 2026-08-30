@@ -33,6 +33,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.unit.dp
@@ -40,7 +41,15 @@ import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.util.CardBackgroundImageManager
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.exp
 import kotlin.math.max
+import kotlin.math.min
+import kotlin.math.pow
+import kotlin.math.roundToInt
+import kotlin.math.sin
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 /** 卡片背景类型 */
@@ -160,9 +169,15 @@ fun CardBackgroundLayer(
     } else null
 
     val density = LocalDensity.current
-    // 密度 0..1 → 条纹间距 40dp..6dp（密度越高条纹越密）
-    val spacingDp = 40f - 34f * spec.glassDensity.coerceIn(0f, 1f)
+    // 密度 0..1 → 条纹间距 72dp..6dp（密度越高条纹越密）
+    val spacingDp = 72f - 66f * spec.glassDensity.coerceIn(0f, 1f)
     val spacingPx = with(density) { spacingDp.dp.toPx() }
+    // 量取卡片实际宽度，把间距取整为「宽度 / 整数条纹数」，保证棱纹完整铺满、不出现半道条纹
+    var cardWidthPx by remember { mutableStateOf(0f) }
+    val ridgeSpacingPx = if (cardWidthPx > 0f && spacingPx > 0f) {
+        val count = (cardWidthPx / spacingPx).roundToInt().coerceAtLeast(1)
+        cardWidthPx / count
+    } else spacingPx
     val glassActive = spec.type == CardBackgroundType.IMAGE && spec.glassEnabled && loadedBitmap != null
     val runtimeGlass = glassActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     // AGSL 编译开销大，缓存 shader 仅更新 uniform
@@ -170,14 +185,14 @@ fun CardBackgroundLayer(
     val frostBlurPx = with(density) { 12.dp.toPx() }
     // RenderEffect 按参数缓存：graphicsLayer 每次重组赋新对象会触发 Skia 重建图层产生一帧空白（闪烁）
     val glassRenderEffect = remember(
-        runtimeGlass, flutedShader, spec.glassFrosted, spec.type, spacingPx, frostBlurPx
+        runtimeGlass, flutedShader, spec.glassFrosted, spec.type, ridgeSpacingPx, frostBlurPx
     ) {
         when {
             runtimeGlass && flutedShader != null -> {
-                flutedShader.setFloatUniform("spacing", spacingPx)
+                flutedShader.setFloatUniform("spacing", ridgeSpacingPx)
                 // 幅度 > 间距/(2π) 时棱纹中部会出现真实柱面透镜的图像翻转，
-                // 取 0.3 让每道棱纹呈现"独立小透镜"的折射观感
-                flutedShader.setFloatUniform("distort", spacingPx * 0.3f)
+                // 取 0.24 让每道棱纹呈现"独立小透镜"的折射观感（幅度克制，保持自然透明）
+                flutedShader.setFloatUniform("distort", ridgeSpacingPx * 0.24f)
                 flutedGlassEffect(
                     shader = flutedShader,
                     frosted = spec.glassFrosted,
@@ -192,7 +207,7 @@ fun CardBackgroundLayer(
         }
     }
 
-    Box(modifier) {
+    Box(modifier.onSizeChanged { cardWidthPx = it.width.toFloat() }) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -223,7 +238,7 @@ fun CardBackgroundLayer(
         when {
             runtimeGlass -> {
                 // 柱面明暗竖纹（高光/阴影/凹槽），周期 = 条纹间距
-                RidgesOverlay(spacingPx = spacingPx)
+                RidgesOverlay(spacingPx = ridgeSpacingPx)
                 // 玻璃色调
                 Box(
                     Modifier
@@ -326,7 +341,7 @@ private const val FLUTED_ADSL = """
     }
 """
 
-/** 竖纹层：边缘高光 + 柱面明暗 + 凹槽暗缝，三层平铺线性渐变（对应 HTML .ridges） */
+/** 竖纹层：按柱面透镜光照模型采样生成平滑明暗（漫反射 + 镜面高光 + 槽缝阴影），对应 HTML .ridges */
 @Composable
 private fun RidgesOverlay(spacingPx: Float) {
     val paint = remember { Paint() }
@@ -335,34 +350,47 @@ private fun RidgesOverlay(spacingPx: Float) {
             .fillMaxSize()
             .drawWithCache {
                 val s = spacingPx.coerceAtLeast(2f)
-                // ① 左缘高光：0px .62 → 1px .20 → 4px 透明
-                val highlight = LinearGradient(
-                    0f, 0f, s, 0f,
-                    intArrayOf(0x9EFFFFFF.toInt(), 0x33FFFFFF.toInt(), 0x00FFFFFF, 0x00FFFFFF),
-                    floatArrayOf(0f, (1f / s).coerceAtMost(0.4f), (4f / s).coerceAtMost(0.9f), 1f),
-                    Shader.TileMode.REPEAT
-                )
-                // ② 柱面明暗：白 .15→.30→.07 → 黑 .05→.16→.26
-                val shading = LinearGradient(
-                    0f, 0f, s, 0f,
-                    intArrayOf(0x26FFFFFF, 0x4DFFFFFF, 0x12FFFFFF, 0x0D000000, 0x29000000, 0x42000000),
-                    floatArrayOf(0f, 0.2f, 0.46f, 0.62f, 0.86f, 1f),
-                    Shader.TileMode.REPEAT
-                )
-                // ③ 右缘凹槽暗缝
-                val groove = LinearGradient(
-                    0f, 0f, s, 0f,
-                    intArrayOf(0x00000000, 0x57000000.toInt(), 0x57000000.toInt(), 0x1AFFFFFF),
-                    floatArrayOf(0f, ((s - 2f) / s).coerceAtLeast(0.5f), ((s - 1f) / s).coerceAtLeast(0.6f), 1f),
-                    Shader.TileMode.REPEAT
-                )
+                // 一个周期 = 一道棱纹（半圆柱面），法线沿条纹宽度旋转；
+                // 用 64 个色标采样连续光照函数，避免少色标线性渐变的折角与硬边
+                val steps = 64
+                val positions = FloatArray(steps + 1) { it.toFloat() / steps }
+                val whiteColors = IntArray(steps + 1)
+                val blackColors = IntArray(steps + 1)
+                // 光源位于左上方（横截面内：x 指向条纹右侧，z 指向观察者）
+                val lx = -0.45f
+                val lz = 0.89f
+                // 半程向量（视线取表面法向），用于镜面高光
+                val hx = lx
+                val hz = lz + 1f
+                val hLen = sqrt(hx * hx + hz * hz)
+                for (i in 0..steps) {
+                    val t = positions[i]
+                    // 柱面法线：φ ∈ [-π/2, π/2]，t=0/1 为棱纹交界槽缝，t=0.5 为棱纹中心
+                    val phi = (t - 0.5f) * PI.toFloat()
+                    val nx = sin(phi)
+                    val nz = cos(phi)
+                    // 漫反射：朝光坡面渐亮、背光坡面渐暗（玻璃反射的柔和明暗）
+                    val diffuse = (nx * lx + nz * lz).coerceAtLeast(0f)
+                    // 宽域弱高光：只提供柔和光泽，避免出现突兀的白色竖条（玻璃应保持自然透明）
+                    val sheen = ((nx * hx + nz * hz) / hLen).coerceAtLeast(0f).pow(12f)
+                    // 槽缝：交界处的窄阴影（高斯衰减）
+                    val d = min(t, 1f - t)
+                    val seam = exp(-(d / 0.03f) * (d / 0.03f))
+                    // 缝缘亮线：掠射光在槽缝边缘形成的细高光
+                    val g = (d - 0.06f) / 0.02f
+                    val gleam = exp(-g * g)
+                    val whiteA = (0.02f + diffuse * 0.06f + sheen * 0.09f + gleam * 0.08f).coerceIn(0f, 1f)
+                    val blackA = ((1f - diffuse).pow(1.5f) * 0.18f + seam * 0.28f).coerceIn(0f, 1f)
+                    whiteColors[i] = ((whiteA * 255f).toInt() shl 24) or 0x00FFFFFF
+                    blackColors[i] = ((blackA * 255f).toInt() shl 24) or 0x00000000
+                }
+                val whiteShader = LinearGradient(0f, 0f, s, 0f, whiteColors, positions, Shader.TileMode.REPEAT)
+                val blackShader = LinearGradient(0f, 0f, s, 0f, blackColors, positions, Shader.TileMode.REPEAT)
                 onDrawBehind {
                     val canvas = drawContext.canvas.nativeCanvas
-                    paint.shader = highlight
+                    paint.shader = whiteShader
                     canvas.drawRect(0f, 0f, size.width, size.height, paint)
-                    paint.shader = shading
-                    canvas.drawRect(0f, 0f, size.width, size.height, paint)
-                    paint.shader = groove
+                    paint.shader = blackShader
                     canvas.drawRect(0f, 0f, size.width, size.height, paint)
                 }
             }
@@ -376,7 +404,7 @@ private fun FrostNoiseOverlay() {
     val paint = remember {
         Paint().apply {
             xfermode = android.graphics.PorterDuffXfermode(android.graphics.PorterDuff.Mode.OVERLAY)
-            alpha = 120
+            alpha = 80
         }
     }
     Box(
