@@ -14,6 +14,7 @@ import android.os.Parcelable
 import android.util.Log
 import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationCompat
+import androidx.core.graphics.drawable.IconCompat
 import androidx.core.graphics.drawable.RoundedBitmapDrawableFactory
 import com.xzakota.hyper.notification.focus.FocusNotification
 import com.ybhgl.reminder.MainActivity
@@ -32,6 +33,9 @@ const val REMINDER_LIVE_CHANNEL_ID = "reminder_live_channel"
 const val TEST_NOTIFICATION_ID = 999_001
 
 private const val NOTIFICATION_LOG_TAG = "ReminderNotifier"
+
+/** 副标题中备注的最大显示长度，超出截断 */
+private const val NOTIFICATION_NOTES_MAX_LENGTH = 30
 
 data class NotificationProgress(
     val elapsedDays: Int,
@@ -105,8 +109,8 @@ object ReminderNotificationHelper {
         )
         val content = ReminderNotificationContent(
             title = "测试提醒",
-            subtitle = "样式：$style",
-            notes = "",
+            subtitle = "就是今天",
+            notes = "样式：$style",
             contentIntent = pendingIntent
         )
         val notifyId = TEST_NOTIFICATION_ID
@@ -161,6 +165,35 @@ object ReminderNotificationHelper {
         }
     }
 
+    /** 提取备注首个非空行并限制长度，超出截断 */
+    private fun compactNotes(info: ReminderNotificationContent): String {
+        val firstLine = info.notes.trim().lines().firstOrNull { it.isNotBlank() } ?: ""
+        return if (firstLine.length > NOTIFICATION_NOTES_MAX_LENGTH) {
+            firstLine.take(NOTIFICATION_NOTES_MAX_LENGTH) + "…"
+        } else {
+            firstLine
+        }
+    }
+
+    /**
+     * 超级岛专用天数文本精简："还有5天"→"5天"、"就是今天"→"今天"、"第10天"→"10天"，
+     * 其余文本原样返回（其他通知样式不受影响，仍显示完整文本）。
+     */
+    private fun compactIslandSubtitle(subtitle: String): String {
+        if (subtitle == "就是今天") return "今天"
+        val match = Regex("^(?:还有|第)(\\d+)天$").find(subtitle) ?: return subtitle
+        return "${match.groupValues[1]}天"
+    }
+
+    /**
+     * 组装副标题：有备注时显示 "时间\n备注"，否则仅显示时间。
+     * 备注只取第一个非空行并限制长度，避免通知过长。
+     */
+    private fun buildDisplaySubtitle(info: ReminderNotificationContent): String {
+        if (info.notes.isBlank()) return info.subtitle
+        return "${info.subtitle}\n${compactNotes(info)}"
+    }
+
     private fun buildStandardNotification(
         context: Context,
         content: ReminderNotificationContent
@@ -170,20 +203,8 @@ object ReminderNotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_HIGH)
             .setAutoCancel(true)
             .setContentIntent(content.contentIntent)
-
-        if (content.notes.isNotBlank()) {
-            val titleWithStatus = "${content.title} ${content.subtitle}"
-            builder.setContentTitle(titleWithStatus)
-            builder.setContentText(content.notes)
-            builder.setStyle(
-                NotificationCompat.BigTextStyle()
-                    .setBigContentTitle(titleWithStatus)
-                    .bigText(content.notes)
-            )
-        } else {
-            builder.setContentTitle(content.title)
-            builder.setContentText(content.subtitle)
-        }
+            .setContentTitle(content.title)
+            .setContentText(buildDisplaySubtitle(content))
         return builder.build()
     }
 
@@ -192,13 +213,20 @@ object ReminderNotificationHelper {
      * 布局逐字段复刻 InstallerX MiIslandNotificationBuilder：
      * 大岛左图标右标题、小岛图标、下拉展开态 iconTextInfo、状态栏 picInfo。
      * 空文本一律兜底为 " "（空串会导致系统解析异常）。
+     *
+     * 岛内副标题不支持换行，单独适配标题规则：
+     * - 无备注：同普通样式，标题=事件名、副标题=时间
+     * - 有备注：标题="事件名 · 5天"、副标题=备注
+     * 天数文本在岛内精简（"还有5天"→"5天"），其他样式保持完整文本。
      */
     private fun buildMiIslandNotification(
         context: Context,
         info: ReminderNotificationContent
     ): Notification {
-        val displayTitle = info.title
-        val displayContent = if (info.notes.isNotBlank()) info.notes else info.subtitle
+        val hasNotes = info.notes.isNotBlank()
+        val islandSubtitle = compactIslandSubtitle(info.subtitle)
+        val displayTitle = if (hasNotes) "${info.title} · $islandSubtitle" else info.title
+        val displayContent = if (hasNotes) compactNotes(info) else islandSubtitle
 
         // 圆角应用图标：正方形直接上岛很突兀
         val roundedIcon = createRoundedAppIconBitmap(context)
@@ -231,7 +259,7 @@ object ReminderNotificationHelper {
                     imageTextInfoRight {
                         type = 3
                         textInfo {
-                            title = displayTitle
+                            title =  info.title
                         }
                     }
                 }
@@ -269,15 +297,8 @@ object ReminderNotificationHelper {
             .setAutoCancel(true)
             .setContentIntent(info.contentIntent)
             .addExtras(islandExtras)
-
-        if (info.notes.isNotBlank()) {
-            val titleWithStatus = "${info.title} ${info.subtitle}"
-            builder.setContentTitle(titleWithStatus)
-                .setContentText(info.notes)
-        } else {
-            builder.setContentTitle(info.title)
-                .setContentText(info.subtitle)
-        }
+            .setContentTitle(displayTitle)
+            .setContentText(displayContent)
         return builder.build()
     }
 
@@ -291,22 +312,17 @@ object ReminderNotificationHelper {
         context: Context,
         info: ReminderNotificationContent
     ): Notification {
+        // 与超级岛一致使用圆角图标，避免直接显示方形图标
+        val roundedIcon = createRoundedAppIconBitmap(context)
         val builder = NotificationCompat.Builder(context, REMINDER_LIVE_CHANNEL_ID)
-            .setSmallIcon(R.mipmap.ic_launcher)
+            .setSmallIcon(IconCompat.createWithBitmap(roundedIcon))
             .setOngoing(true)
             .setAutoCancel(true)
             .setSilent(true)
             .setRequestPromotedOngoing(true)
             .setContentIntent(info.contentIntent)
-
-        if (info.notes.isNotBlank()) {
-            val titleWithStatus = "${info.title} ${info.subtitle}"
-            builder.setContentTitle(titleWithStatus)
-                .setContentText(info.notes)
-        } else {
-            builder.setContentTitle(info.title)
-                .setContentText(info.subtitle)
-        }
+            .setContentTitle(info.title)
+            .setContentText(buildDisplaySubtitle(info))
 
         val progress = info.progress
         if (progress != null && progress.totalDays > 0) {
