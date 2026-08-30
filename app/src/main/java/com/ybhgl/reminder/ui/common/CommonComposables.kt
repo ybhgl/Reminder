@@ -20,14 +20,21 @@ import androidx.compose.foundation.background
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.Stable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.Saver
+import androidx.compose.runtime.saveable.listSaver
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.UiComposable
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -267,6 +274,43 @@ fun StatusBarScrim(modifier: Modifier = Modifier) {
             )
     )
 }
+
+/**
+ * 沉浸式可收起顶栏的状态持有者：
+ * - [topBarHeightPx]：由调用方在顶栏 `onSizeChanged` 中测量写入
+ * - [titleOffsetPx]：顶栏当前的垂直偏移（0 = 完全展开，-topBarHeightPx = 完全收起）
+ * - [nestedScrollConnection]：在内容滚动前优先消费增量驱动顶栏收起/展开
+ */
+@Stable
+class CollapsingTopBarState {
+    var titleOffsetPx by mutableStateOf(0f)
+    var topBarHeightPx by mutableStateOf(0f)
+
+    val nestedScrollConnection = object : NestedScrollConnection {
+        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            if (topBarHeightPx > 0f) {
+                val delta = available.y
+                val oldOffset = titleOffsetPx
+                val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
+                val consumed = newOffset - oldOffset
+                titleOffsetPx = newOffset
+                return Offset(0f, consumed)
+            }
+            return Offset.Zero
+        }
+    }
+
+    companion object {
+        val Saver: Saver<CollapsingTopBarState, out Any> = listSaver(
+            save = { listOf(it.titleOffsetPx) },
+            restore = { CollapsingTopBarState().apply { titleOffsetPx = it[0] } }
+        )
+    }
+}
+
+@Composable
+fun rememberCollapsingTopBarState(): CollapsingTopBarState =
+    rememberSaveable(saver = CollapsingTopBarState.Saver) { CollapsingTopBarState() }
 
 /**
  * 设置项联动展开/收起动画的统一实现。

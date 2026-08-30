@@ -129,6 +129,13 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
         com.ybhgl.reminder.data.saveNotificationStyle(context, style)
     }
 
+    fun miIslandBypassPreferenceFlow(context: Context): Flow<Boolean> =
+        com.ybhgl.reminder.data.miIslandBypassFlow(context)
+
+    suspend fun updateMiIslandBypassPreference(context: Context, enabled: Boolean) {
+        com.ybhgl.reminder.data.saveMiIslandBypass(context, enabled)
+    }
+
     suspend fun backupToUri(context: Context, targetUri: Uri): String = withContext(Dispatchers.IO) {
         return@withContext try {
             val reminders = reminderRepository.getAllRemindersStream().first()

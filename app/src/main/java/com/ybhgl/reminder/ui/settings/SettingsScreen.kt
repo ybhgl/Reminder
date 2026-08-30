@@ -1,5 +1,6 @@
 package com.ybhgl.reminder.ui.settings
 
+import android.content.Context
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -24,6 +25,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.List
+import androidx.compose.material.icons.filled.Alarm
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Widgets
@@ -89,14 +91,13 @@ import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.BuildConfig
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
-import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import com.ybhgl.reminder.ui.common.StatusBarScrim
+import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.data.AppColorPalette
@@ -150,8 +151,6 @@ import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.util.ReleaseInfo
 import com.ybhgl.reminder.util.UpdateCheckResult
 import com.ybhgl.reminder.util.UpdateManager
-import com.ybhgl.reminder.util.ReminderNotificationHelper
-import com.ybhgl.reminder.data.NotificationStyleOption
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
@@ -159,6 +158,7 @@ fun SettingsScreen(
     onNavigateBack: () -> Unit,
     onNavigateToBackupAndRestore: () -> Unit,
     onNavigateToTagManagement: () -> Unit,
+    onNavigateToReminderManage: () -> Unit,
     onNavigateToGestureSetup: () -> Unit,
     onNavigateToGestureModify: () -> Unit,
     modifier: Modifier = Modifier,
@@ -192,18 +192,15 @@ fun SettingsScreen(
     }
     val isAppLockEnabled by remember(context) { SecurityPreferences.appLockEnabledFlow(context) }.collectAsState(initial = null)
     val isScreenshotBlocked by remember(context) { SecurityPreferences.screenshotBlockedFlow(context) }.collectAsState(initial = false)
-    val notificationStyleFlow = remember(context) { viewModel.notificationStylePreferenceFlow(context) }
-    val notificationStyle by notificationStyleFlow.collectAsState(initial = NotificationStyleOption.STANDARD)
     val scrollState = rememberScrollState()
-    
+
     var showDisableVerify by rememberSaveable { mutableStateOf(false) }
 
     val updateInfo by UpdateManager.updateInfo.collectAsState()
     val isCheckingUpdate by UpdateManager.isChecking.collectAsState()
     var showUpdateDialog by rememberSaveable { mutableStateOf(false) }
 
-    var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
-    var topBarHeightPx by remember { mutableStateOf(0f) }
+    val topBarState = rememberCollapsingTopBarState()
 
     val appWidgetManager = remember { AppWidgetManager.getInstance(context) }
     val active1x2Ids = remember { appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget1x2::class.java)) }
@@ -226,27 +223,11 @@ fun SettingsScreen(
 
     var configuringWidget by remember { mutableStateOf<ActiveWidgetInfo?>(null) }
 
-    val customNestedScrollConnection = remember(topBarHeightPx) {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (topBarHeightPx > 0f) {
-                    val delta = available.y
-                    val oldOffset = titleOffsetPx
-                    val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
-                    val consumed = newOffset - oldOffset
-                    titleOffsetPx = newOffset
-                    return Offset(0f, consumed)
-                }
-                return Offset.Zero
-            }
-        }
-    }
-
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
-        modifier = modifier.nestedScroll(customNestedScrollConnection)
+        modifier = modifier.nestedScroll(topBarState.nestedScrollConnection)
     ) { innerPadding ->
         Box(
             modifier = Modifier.fillMaxSize()
@@ -331,7 +312,7 @@ fun SettingsScreen(
                 }
             }
 
-            val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
+            val topBarHeightDp = with(LocalDensity.current) { topBarState.topBarHeightPx.toDp() }
 
             Column(
                 modifier = Modifier
@@ -341,7 +322,7 @@ fun SettingsScreen(
                     .padding(top = 0.dp, bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 12.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
-                Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() } + 12.dp).coerceAtLeast(0.dp)))
+                Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() } + 12.dp).coerceAtLeast(0.dp)))
                 Text(
                     text = "外观",
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
@@ -417,23 +398,16 @@ fun SettingsScreen(
                     onClick = onNavigateToTagManagement
                 )
                 SettingsActionItem(
+                    title = "提醒管理",
+                    description = "通知样式与各事件提醒设置",
+                    icon = { Icon(Icons.Filled.Alarm, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    onClick = onNavigateToReminderManage
+                )
+                SettingsActionItem(
                     title = "备份与恢复",
                     description = "管理本地及 WebDAV 备份与恢复",
                     icon = { Icon(Icons.Filled.Storage, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
                     onClick = onNavigateToBackupAndRestore
-                )
-                Text(
-                    text = "通知",
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
-                )
-                HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
-                NotificationStyleCard(
-                    selectedStyle = notificationStyle,
-                    onStyleSelected = { style ->
-                        coroutineScope.launch {
-                            viewModel.updateNotificationStylePreference(context, style)
-                        }
-                    }
                 )
                 Text(
                     text = "桌面小部件",
@@ -603,10 +577,10 @@ fun SettingsScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onSizeChanged {
-                        topBarHeightPx = it.height.toFloat()
+                        topBarState.topBarHeightPx = it.height.toFloat()
                     }
                     .graphicsLayer {
-                        translationY = titleOffsetPx
+                        translationY = topBarState.titleOffsetPx
                     }
                     .then(topAppBarModifier)
             ) {
@@ -950,86 +924,6 @@ private fun ThemeSelectionCard(
                 }
             }
         }
-    }
-}
-
-
-@Composable
-private fun NotificationStyleCard(
-    selectedStyle: NotificationStyleOption,
-    onStyleSelected: (NotificationStyleOption) -> Unit
-) {
-    val isMiIslandSupported = remember { ReminderNotificationHelper.isMiIslandSupported() }
-    val isLiveSupported = remember { Build.VERSION.SDK_INT >= Build.VERSION_CODES.BAKLAVA }
-
-    Card(
-        modifier = Modifier.fillMaxWidth(),
-        colors = CardDefaults.cardColors(
-            containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
-        )
-    ) {
-        Column(
-            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
-        ) {
-            Text(
-                text = "通知样式",
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 4.dp)
-            )
-            NotificationStyleRow(
-                title = "标准通知",
-                description = "系统默认的提醒通知样式",
-                selected = selectedStyle == NotificationStyleOption.STANDARD,
-                onClick = { onStyleSelected(NotificationStyleOption.STANDARD) }
-            )
-            if (isMiIslandSupported) {
-                NotificationStyleRow(
-                    title = "小米超级岛",
-                    description = "以焦点通知形态展示（澎湃 OS 有白名单限制，需系统允许）",
-                    selected = selectedStyle == NotificationStyleOption.MI_ISLAND,
-                    onClick = { onStyleSelected(NotificationStyleOption.MI_ISLAND) }
-                )
-            }
-            if (isLiveSupported) {
-                NotificationStyleRow(
-                    title = "原生 Live 通知",
-                    description = "Android 16 倒计时进度条样式",
-                    selected = selectedStyle == NotificationStyleOption.LIVE,
-                    onClick = { onStyleSelected(NotificationStyleOption.LIVE) }
-                )
-            }
-        }
-    }
-}
-
-@Composable
-private fun NotificationStyleRow(
-    title: String,
-    description: String,
-    selected: Boolean,
-    onClick: () -> Unit
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .selectable(selected = selected, onClick = onClick)
-            .padding(vertical = 10.dp),
-        verticalAlignment = Alignment.CenterVertically
-    ) {
-        Column(modifier = Modifier.weight(1f)) {
-            Text(
-                text = title,
-                style = MaterialTheme.typography.bodyLarge,
-                color = MaterialTheme.colorScheme.onSurface
-            )
-            Text(
-                text = description,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-        }
-        RadioButton(selected = selected, onClick = null)
     }
 }
 
@@ -1486,7 +1380,7 @@ private fun SettingsSwitchRow(
 }
 
 @Composable
-private fun SettingsActionItem(
+internal fun SettingsActionItem(
     title: String,
     description: String,
     icon: @Composable (() -> Unit)? = null,
