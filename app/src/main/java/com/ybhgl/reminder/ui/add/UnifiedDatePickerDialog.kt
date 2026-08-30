@@ -186,15 +186,15 @@ fun UnifiedDatePickerDialog(
         solar.getLunarDay()
     }
 
-    var selectedYear by remember { mutableStateOf<Int?>(if (supportFlexibleFilter) initialFilter?.startYear else lunarInit.getYear()) }
+    var selectedYear by remember { mutableStateOf<Int?>(if (supportFlexibleFilter) initialFilter?.startYear else lunarInit.year) }
     var activeMonthName by remember { mutableStateOf<String?>(if (supportFlexibleFilter) {
         initialFilter?.startMonth?.let { mIdx ->
-            val yr = initialFilter.startYear ?: lunarInit.getYear()
+            val yr = initialFilter.startYear ?: lunarInit.year
             LunarYear.fromYear(yr).getMonths().getOrNull(mIdx - 1)?.getName()
         }
     } else lunarInit.getLunarMonth()!!.getName()) }
     var selectedMonthIndex by remember { mutableIntStateOf(0) }
-    var activeDay by remember { mutableStateOf<Int?>(if (supportFlexibleFilter) initialFilter?.startDay else lunarInit.getDay()) }
+    var activeDay by remember { mutableStateOf<Int?>(if (supportFlexibleFilter) initialFilter?.startDay else lunarInit.day) }
 
     // Year options: 1901 - 2100, labeled as GanZhi(Year)
     val yearOptions = remember {
@@ -209,7 +209,7 @@ fun UnifiedDatePickerDialog(
         list.toPersistentList()
     }
     val initYearIdx = remember {
-        val targetYr = if (supportFlexibleFilter) initialFilter?.startYear else lunarInit.getYear()
+        val targetYr = if (supportFlexibleFilter) initialFilter?.startYear else lunarInit.year
         yearOptions.indexOfFirst { it.value == targetYr }.coerceAtLeast(0)
     }
     val yearPickerState = rememberPickerState(values = yearOptions, initialIndex = initYearIdx)
@@ -239,7 +239,7 @@ fun UnifiedDatePickerDialog(
     val initMonthIdx = remember {
         val targetMonthName = if (supportFlexibleFilter) {
             initialFilter?.startMonth?.let { mIdx ->
-                val yr = initialFilter.startYear ?: lunarInit.getYear()
+                val yr = initialFilter.startYear ?: lunarInit.year
                 LunarYear.fromYear(yr).getMonths().getOrNull(mIdx - 1)?.getName()
             }
         } else lunarInit.getLunarMonth()!!.getName()
@@ -283,7 +283,7 @@ fun UnifiedDatePickerDialog(
         list.toPersistentList()
     }
     val initDayIdx = remember {
-        val targetD = if (supportFlexibleFilter) initialFilter?.startDay else lunarInit.getDay()
+        val targetD = if (supportFlexibleFilter) initialFilter?.startDay else lunarInit.day
         dayOptions.indexOfFirst { it.value == targetD }.coerceAtLeast(0)
     }
     val dayPickerState = rememberPickerState(values = dayOptions, initialIndex = initDayIdx)
@@ -463,9 +463,9 @@ fun UnifiedDatePickerDialog(
                                                         try {
                                                             val lunarDayObj = LunarDay.fromYmd(selectedYear ?: 2026, curMonth.getMonthWithLeap(), activeDay ?: 1)
                                                             val solarDayObj = lunarDayObj.getSolarDay()
-                                                            val targetSolarYear = solarDayObj.getYear()
-                                                            val targetSolarMonth = solarDayObj.getMonth()
-                                                            val targetSolarDay = solarDayObj.getDay()
+                                                            val targetSolarYear = solarDayObj.year
+                                                            val targetSolarMonth = solarDayObj.month
+                                                            val targetSolarDay = solarDayObj.day
 
                                                             selectedSolarYear = targetSolarYear
                                                             selectedSolarMonth = targetSolarMonth
@@ -520,9 +520,9 @@ fun UnifiedDatePickerDialog(
                                                     try {
                                                         val solar = SolarDay.fromYmd(selectedSolarYear ?: 2026, selectedSolarMonth ?: 1, selectedSolarDay ?: 1)
                                                         val lunar = solar.getLunarDay()
-                                                        val targetYear = lunar.getYear()
+                                                        val targetYear = lunar.year
                                                         val targetMonthName = lunar.getLunarMonth()!!.getName()
-                                                        val targetDay = lunar.getDay()
+                                                        val targetDay = lunar.day
 
                                                         selectedYear = targetYear
                                                         activeMonthName = targetMonthName
@@ -704,7 +704,7 @@ fun UnifiedDatePickerDialog(
                                         val yr = selectedYear ?: 2026
                                         val lunarDayObj = LunarDay.fromYmd(yr, m.getMonthWithLeap(), activeDay ?: 1)
                                         val solarDayObj = lunarDayObj.getSolarDay()
-                                        val resultDate = LocalDate.of(solarDayObj.getYear(), solarDayObj.getMonth(), solarDayObj.getDay())
+                                        val resultDate = LocalDate.of(solarDayObj.year, solarDayObj.month, solarDayObj.day)
                                         onConfirm(resultDate, true)
                                     }
                                 } else {
@@ -741,7 +741,7 @@ fun UnifiedDatePickerDialog(
                     if (curMonth != null) {
                         val lunarDayObj = LunarDay.fromYmd(selectedYear ?: 2026, curMonth.getMonthWithLeap(), activeDay ?: 1)
                         val solarDayObj = lunarDayObj.getSolarDay()
-                        LocalDate.of(solarDayObj.getYear(), solarDayObj.getMonth(), solarDayObj.getDay())
+                        LocalDate.of(solarDayObj.year, solarDayObj.month, solarDayObj.day)
                     } else {
                         LocalDate.now()
                     }
@@ -813,7 +813,7 @@ fun UnifiedDatePickerDialog(
                     if (yr != null && m != null && d != null) {
                         val solar = SolarDay.fromYmd(yr, m, d)
                         val lunar = solar.getLunarDay()
-                        val yearNum = lunar.getYear()
+                        val yearNum = lunar.year
                         val ganZhi = LunarYear.fromYear(yearNum).getSixtyCycle().toString()
 
                         val rawMonthName = lunar.getLunarMonth()!!.getName()
@@ -1083,9 +1083,9 @@ fun UnifiedDatePickerDialog(
                                     try {
                                         val solar = SolarDay.fromYmd(yr, m, d)
                                         val lunar = solar.getLunarDay()
-                                        val targetYear = lunar.getYear()
+                                        val targetYear = lunar.year
                                         val targetMonthName = lunar.getLunarMonth()!!.getName()
-                                        val targetDay = lunar.getDay()
+                                        val targetDay = lunar.day
 
                                         selectedYear = targetYear
                                         activeMonthName = targetMonthName

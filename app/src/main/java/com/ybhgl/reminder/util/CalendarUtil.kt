@@ -35,11 +35,11 @@ object CalendarUtil {
             // 优化：通过出生农历年份和今天农历年份差确定 approximateAge，将搜索起点设为 max(0, approximateAge - 1)，避免从 0 岁开始重复计算
             val birthSolar = SolarDay.fromYmd(reminderItem.date.year, reminderItem.date.monthValue, reminderItem.date.dayOfMonth)
             val birthLunar = birthSolar.getLunarDay()
-            val birthLunarYear = birthLunar.getYear()
+            val birthLunarYear = birthLunar.year
 
             val baseSolar = SolarDay.fromYmd(baseDate.year, baseDate.monthValue, baseDate.dayOfMonth)
             val baseLunar = baseSolar.getLunarDay()
-            val baseLunarYear = baseLunar.getYear()
+            val baseLunarYear = baseLunar.year
 
             val approximateAge = baseLunarYear - birthLunarYear
             var age = maxOf(0, approximateAge - 1)
@@ -83,12 +83,12 @@ object CalendarUtil {
 
     private fun getNextLunarYearDate(currentSolarDate: LocalDate, interval: Int): LocalDate {
         val currentLunar = SolarDay.fromYmd(currentSolarDate.year, currentSolarDate.monthValue, currentSolarDate.dayOfMonth).getLunarDay()
-        val targetYear = currentLunar.getYear() + interval
-        var targetDay = currentLunar.getDay()
+        val targetYear = currentLunar.year + interval
+        var targetDay = currentLunar.day
         var nextLunar: com.tyme.lunar.LunarDay? = null
         while (nextLunar == null && targetDay > 0) {
             try {
-                nextLunar = com.tyme.lunar.LunarDay.fromYmd(targetYear, currentLunar.getMonth(), targetDay)
+                nextLunar = com.tyme.lunar.LunarDay.fromYmd(targetYear, currentLunar.month, targetDay)
             } catch (e: IllegalArgumentException) {
                 targetDay--
             }
@@ -97,18 +97,18 @@ object CalendarUtil {
             return currentSolarDate.plusYears(interval.toLong())
         }
         val nextSolar = nextLunar.getSolarDay()
-        return LocalDate.of(nextSolar.getYear(), nextSolar.getMonth(), nextSolar.getDay())
+        return LocalDate.of(nextSolar.year, nextSolar.month, nextSolar.day)
     }
 
     private fun getNextLunarMonthDate(currentSolarDate: LocalDate, interval: Int): LocalDate {
         val currentLunarDay = SolarDay.fromYmd(currentSolarDate.year, currentSolarDate.monthValue, currentSolarDate.dayOfMonth).getLunarDay()
         val currentLunarMonth = currentLunarDay.getLunarMonth()
         val nextLunarMonth = currentLunarMonth.next(interval)
-        var targetDay = currentLunarDay.getDay()
+        var targetDay = currentLunarDay.day
         var nextLunar: com.tyme.lunar.LunarDay? = null
         while (nextLunar == null && targetDay > 0) {
             try {
-                nextLunar = com.tyme.lunar.LunarDay.fromYmd(nextLunarMonth.getYear(), nextLunarMonth.getMonth(), targetDay)
+                nextLunar = com.tyme.lunar.LunarDay.fromYmd(nextLunarMonth.year, nextLunarMonth.month, targetDay)
             } catch (e: IllegalArgumentException) {
                 targetDay--
             }
@@ -117,7 +117,7 @@ object CalendarUtil {
             return currentSolarDate.plusMonths(interval.toLong())
         }
         val nextSolar = nextLunar.getSolarDay()
-        return LocalDate.of(nextSolar.getYear(), nextSolar.getMonth(), nextSolar.getDay())
+        return LocalDate.of(nextSolar.year, nextSolar.month, nextSolar.day)
     }
 
 
@@ -134,7 +134,7 @@ object CalendarUtil {
     fun formatLunarDate(date: LocalDate): String {
         val solar = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth)
         val lunar = solar.getLunarDay()
-        val year = lunar.getYear()
+        val year = lunar.year
         val ganZhi = com.tyme.lunar.LunarYear.fromYear(year).getSixtyCycle().toString()
         val rawMonthName = lunar.getLunarMonth()!!.getName()
         val monthLabel = getMappedMonthName(rawMonthName)
@@ -146,7 +146,7 @@ object CalendarUtil {
     fun formatLunarDateShort(date: LocalDate): String {
         val solar = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth)
         val lunar = solar.getLunarDay()
-        val year = lunar.getYear()
+        val year = lunar.year
         val chineseYear = year.toString().map { char ->
             val digits = arrayOf('〇', '一', '二', '三', '四', '五', '六', '七', '八', '九')
             if (char in '0'..'9') digits[char - '0'] else char
@@ -166,7 +166,7 @@ object CalendarUtil {
         val lunar = solar.getLunarDay()
         
         // 1. 获取年份天干地支及数字：丙午(2026)年
-        val year = lunar.getYear()
+        val year = lunar.year
         val ganZhi = com.tyme.lunar.LunarYear.fromYear(year).getSixtyCycle()
         val yearLabel = "${ganZhi}(${year})年"
 

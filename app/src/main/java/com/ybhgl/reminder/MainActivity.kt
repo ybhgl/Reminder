@@ -432,11 +432,11 @@ fun matchDateFilter(itemDate: java.time.LocalDate, filter: SearchDateFilter): Bo
                 try {
                     val lunarStart = com.tyme.lunar.LunarDay.fromYmd(startYr!!, startM!!, startD!!)
                     val solarStart = lunarStart.getSolarDay()
-                    val start = java.time.LocalDate.of(solarStart.getYear(), solarStart.getMonth(), solarStart.getDay())
+                    val start = java.time.LocalDate.of(solarStart.year, solarStart.month, solarStart.day)
                     
                     val lunarEnd = com.tyme.lunar.LunarDay.fromYmd(endYr!!, endM!!, endD!!)
                     val solarEnd = lunarEnd.getSolarDay()
-                    val end = java.time.LocalDate.of(solarEnd.getYear(), solarEnd.getMonth(), solarEnd.getDay())
+                    val end = java.time.LocalDate.of(solarEnd.year, solarEnd.month, solarEnd.day)
                     
                     return !itemDate.isBefore(start) && !itemDate.isAfter(end)
                 } catch (e: Exception) {
@@ -457,10 +457,9 @@ fun matchDateFilter(itemDate: java.time.LocalDate, filter: SearchDateFilter): Bo
                 try {
                     val solar = com.tyme.solar.SolarDay.fromYmd(itemDate.year, itemDate.monthValue, itemDate.dayOfMonth)
                     val lunar = solar.getLunarDay()
-                    val lunarYear = lunar.getYear()
-                    val lunarMonthObj = lunar.getLunarMonth()
-                    val lunarMonth = lunarMonthObj?.getMonthWithLeap() ?: lunar.getMonth()
-                    val lunarDay = lunar.getDay()
+                    val lunarYear = lunar.year
+                    val lunarMonth = lunar.getLunarMonth().getMonthWithLeap()
+                    val lunarDay = lunar.day
 
                     val yearMonthOk = if (startYr != null && endYr != null && startM != null && endM != null && startD == null && endD == null) {
                         val lm = kotlin.math.abs(lunarMonth)
@@ -577,10 +576,9 @@ fun matchDateFilter(itemDate: java.time.LocalDate, filter: SearchDateFilter): Bo
             try {
                 val solar = com.tyme.solar.SolarDay.fromYmd(itemDate.year, itemDate.monthValue, itemDate.dayOfMonth)
                 val lunar = solar.getLunarDay()
-                val lunarYear = lunar.getYear()
-                val lunarMonthObj = lunar.getLunarMonth()
-                val lunarMonth = lunarMonthObj?.getMonthWithLeap() ?: lunar.getMonth()
-                val lunarDay = lunar.getDay()
+                val lunarYear = lunar.year
+                val lunarMonth = lunar.getLunarMonth().getMonthWithLeap()
+                val lunarDay = lunar.day
                 
                 val yearMatch = startYr == null || startYr == lunarYear
                 val monthMatch = startM == null || startM == lunarMonth

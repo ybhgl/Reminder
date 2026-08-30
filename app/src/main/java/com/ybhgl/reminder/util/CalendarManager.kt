@@ -133,7 +133,7 @@ object CalendarManager {
                             val birthLunar = birthSolar.getLunarDay()
                             val targetSolar = SolarDay.fromYmd(tDate.year, tDate.monthValue, tDate.dayOfMonth)
                             val targetLunar = targetSolar.getLunarDay()
-                            targetLunar.getYear() - birthLunar.getYear()
+                            targetLunar.year - birthLunar.year
                         } else {
                             tDate.year - item.date.year
                         }

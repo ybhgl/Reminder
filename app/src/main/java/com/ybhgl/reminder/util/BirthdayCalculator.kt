@@ -48,7 +48,7 @@ object BirthdayCalculator {
             val birthLunar = birthSolar.getLunarDay()
             val todaySolar = SolarDay.fromYmd(today.year, today.monthValue, today.dayOfMonth)
             val todayLunar = todaySolar.getLunarDay()
-            val lunarYearDiff = todayLunar.getYear() - birthLunar.getYear()
+            val lunarYearDiff = todayLunar.year - birthLunar.year
             // 计算今年该农历生日对应的公历日期
             val birthdayThisYear = getLunarBirthdayInYear(birthDate, lunarYearDiff)
             // 检查今年农历生日是否已过（不包含今天）
@@ -88,7 +88,7 @@ object BirthdayCalculator {
     private fun getChineseZodiac(birthDate: LocalDate): String {
         val solar = SolarDay.fromYmd(birthDate.year, birthDate.monthValue, birthDate.dayOfMonth)
         val lunar = solar.getLunarDay()
-        val lunarYear = lunar.getYear()
+        val lunarYear = lunar.year
         val index = (lunarYear - 4) % 12
         return CHINESE_ZODIAC[index]
     }
@@ -127,8 +127,8 @@ object BirthdayCalculator {
     fun getLunarBirthdayInYear(birthDate: LocalDate, yearsToAdd: Int): LocalDate {
         val solar = SolarDay.fromYmd(birthDate.year, birthDate.monthValue, birthDate.dayOfMonth)
         val lunar = solar.getLunarDay()
-        val targetLunarYear = lunar.getYear() + yearsToAdd
-        val birthMonth = lunar.getMonth()
+        val targetLunarYear = lunar.year + yearsToAdd
+        val birthMonth = lunar.month
         var result: com.tyme.lunar.LunarDay? = null
 
         if (birthMonth < 0) {
@@ -136,7 +136,7 @@ object BirthdayCalculator {
             val normalMonth = kotlin.math.abs(birthMonth)
 
             // 1. 先尝试在目标年份寻找对应的闰月生日 (例如 闰二月初十)
-            var targetDay = lunar.getDay()
+            var targetDay = lunar.day
             while (result == null && targetDay > 0) {
                 try {
                     result = com.tyme.lunar.LunarDay.fromYmd(targetLunarYear, birthMonth, targetDay)
@@ -147,7 +147,7 @@ object BirthdayCalculator {
 
             // 2. 如果在目标年份没找到对应的闰月，则“无闰过前”：找对应的正常月份生日 (例如 二月初十)
             if (result == null) {
-                targetDay = lunar.getDay()
+                targetDay = lunar.day
                 while (result == null && targetDay > 0) {
                     try {
                         result = com.tyme.lunar.LunarDay.fromYmd(targetLunarYear, normalMonth, targetDay)
@@ -158,7 +158,7 @@ object BirthdayCalculator {
             }
         } else {
             // 出生于正常月份
-            var targetDay = lunar.getDay()
+            var targetDay = lunar.day
             while (result == null && targetDay > 0) {
                 try {
                     result = com.tyme.lunar.LunarDay.fromYmd(targetLunarYear, birthMonth, targetDay)
@@ -173,6 +173,6 @@ object BirthdayCalculator {
         }
 
         val nextSolar = result.getSolarDay()
-        return LocalDate.of(nextSolar.getYear(), nextSolar.getMonth(), nextSolar.getDay())
+        return LocalDate.of(nextSolar.year, nextSolar.month, nextSolar.day)
     }
 }
