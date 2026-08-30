@@ -26,6 +26,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
 import androidx.compose.material.icons.automirrored.filled.List
 import androidx.compose.material.icons.filled.Alarm
+import androidx.compose.material.icons.filled.Description
 import androidx.compose.material.icons.filled.Storage
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Widgets
@@ -162,6 +163,7 @@ fun SettingsScreen(
     onNavigateToReminderManage: () -> Unit,
     onNavigateToGestureSetup: () -> Unit,
     onNavigateToGestureModify: () -> Unit,
+    onNavigateToOpenSourceLicenses: () -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
@@ -550,6 +552,12 @@ fun SettingsScreen(
                         val intent = Intent(Intent.ACTION_VIEW, "https://github.com/ybhgl/Reminder".toUri())
                         context.startActivity(intent)
                     }
+                )
+                SettingsActionItem(
+                    title = "开放源代码许可",
+                    description = "查看本应用使用的开源库及许可证",
+                    icon = { Icon(Icons.Default.Description, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    onClick = onNavigateToOpenSourceLicenses
                 )
             }
 

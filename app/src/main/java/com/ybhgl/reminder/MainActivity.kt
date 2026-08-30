@@ -620,6 +620,7 @@ object Routes {
     const val REMINDER_SETTING_BASE = "reminder_setting"
     const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}&fromManage={fromManage}"
     const val REMINDER_MANAGE = "reminder_manage"
+    const val OPEN_SOURCE_LICENSES = "open_source_licenses"
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
@@ -849,7 +850,13 @@ fun ReminderApp() {
                     onNavigateToTagManagement = { navController.navigate(Routes.tagManagement()) },
                     onNavigateToReminderManage = { navController.navigate(Routes.REMINDER_MANAGE) },
                     onNavigateToGestureSetup = { navController.navigate(Routes.GESTURE_SETUP) },
-                    onNavigateToGestureModify = { navController.navigate(Routes.GESTURE_MODIFY) }
+                    onNavigateToGestureModify = { navController.navigate(Routes.GESTURE_MODIFY) },
+                    onNavigateToOpenSourceLicenses = { navController.navigate(Routes.OPEN_SOURCE_LICENSES) }
+                )
+            }
+            composable(route = Routes.OPEN_SOURCE_LICENSES) {
+                com.ybhgl.reminder.ui.settings.OpenSourceLicensesScreen(
+                    onNavigateBack = { navController.navigateUp() }
                 )
             }
             composable(route = Routes.REMINDER_MANAGE) {
