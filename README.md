@@ -66,17 +66,21 @@ Reminder 主体代码以 [GNU General Public License v3](LICENSE) 发布。任�
 
 ## 软件界面预览
 
-<table>
+<table align="center">
   <tr>
     <td><img src="./screenshots/home.jpg" width="200" alt="主界面"></td>
     <td><img src="./screenshots/edit.jpg" width="200" alt="新建和编辑提醒"></td>
     <td><img src="./screenshots/settings.jpg" width="200" alt="设置页面"></td>
     <td><img src="./screenshots/search.jpg" width="200" alt="搜索页面"></td>
+  </tr>
+</table>
+
+<table align="center">
+  <tr>
     <td><img src="./screenshots/share.jpg" width="200" alt="分享页面"></td>
     <td><img src="./screenshots/backup.jpg" width="200" alt="备份页面"></td>
     <td><img src="./screenshots/tag.jpg" width="200" alt="标签页面"></td>
     <td><img src="./screenshots/notification.jpg" width="200" alt="通知页面"></td>
-    <td><img src="./screenshots/custom.jpg" width="200" alt="个性化设置"></td>
   </tr>
 </table>
 
