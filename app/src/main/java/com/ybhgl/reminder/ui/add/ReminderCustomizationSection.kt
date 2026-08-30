@@ -159,7 +159,7 @@ fun ReminderCustomizationSection(
             Column(modifier = Modifier.weight(1f)) {
                 Text("个性化", style = MaterialTheme.typography.bodyLarge)
                 Text(
-                    "定制卡片颜色和字体",
+                    "定制卡片颜色、字体和背景",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )

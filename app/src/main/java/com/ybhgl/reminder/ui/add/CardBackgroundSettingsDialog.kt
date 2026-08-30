@@ -509,10 +509,10 @@ fun CardBackgroundSettingsDialog(
                         }
                     }
 
-                    HorizontalDivider(color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f))
-
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(top = 16.dp),
                         horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.End)
                     ) {
                         TextButton(onClick = ::handleDismiss) {
