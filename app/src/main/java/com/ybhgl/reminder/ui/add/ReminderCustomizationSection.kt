@@ -25,9 +25,11 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.TextFields
+import androidx.compose.material.icons.filled.Wallpaper
 import androidx.compose.material3.AlertDialogDefaults
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -59,14 +61,13 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
+import com.ybhgl.reminder.ui.common.TonalCardRow
 
 // 7种不占用应用体积的高表现力系统内置 FontFamily 静态声明
 val SansSerifCondensed: FontFamily = FontFamily(Typeface.create("sans-serif-condensed", Typeface.NORMAL))
@@ -149,159 +150,111 @@ fun ReminderCustomizationSection(
             .fillMaxWidth()
     ) {
         // 1. 主控开关
-        Row(
-            verticalAlignment = Alignment.CenterVertically,
-            modifier = Modifier
-                .fillMaxWidth()
-                .clickable { onCustomizedChange(!isCustomized) }
-                .padding(vertical = 4.dp)
-        ) {
-            Column(modifier = Modifier.weight(1f)) {
-                Text("个性化", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    "定制卡片颜色、字体和背景",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-            Switch(
-                checked = isCustomized,
-                onCheckedChange = onCustomizedChange
-            )
-        }
+        TonalCardRow(
+            icon = Icons.Filled.AutoAwesome,
+            title = "个性化",
+            subtitle = "定制卡片颜色、字体和背景",
+            trailing = {
+                // 整卡可点击切换，Switch 仅作状态指示，避免双触发
+                Switch(checked = isCustomized, onCheckedChange = null)
+            },
+            onClick = { onCustomizedChange(!isCustomized) }
+        )
 
         // 2. 子选项面板（开启时展开；loaded 为 false 表示外部数据未就绪，不渲染也不播动画）
         SettingsLinkedVisibility(visible = if (loaded) isCustomized else null) {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(vertical = 8.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+                    .padding(top = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 // 标头颜色子选项
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showColorDialog = true }
-                        .padding(vertical = 4.dp)
-                ) {
-                    Text("卡片颜色", style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.width(16.dp))
-                    Row(
-                        modifier = Modifier.weight(1f),
-                        horizontalArrangement = Arrangement.End,
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        val previewColor = if (customHeaderColor.isEmpty()) {
-                            when (reminderType) {
-                                ReminderType.ANNUAL -> "#1E88E5".toComposeColor()
-                                ReminderType.COUNT_UP -> "#F28C20".toComposeColor()
-                                ReminderType.BIRTHDAY -> "#E53935".toComposeColor()
-                            }
-                        } else {
-                            customHeaderColor.toComposeColor()
-                        }
-                        val labelText = if (customHeaderColor.isEmpty()) "默认" else customHeaderColor.uppercase()
-
-                        // 颜色预览小圆点
-                        Box(
-                            modifier = Modifier
-                                .size(16.dp)
-                                .background(
-                                    color = previewColor,
-                                    shape = CircleShape
-                                )
-                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
-                        )
-                        Spacer(modifier = Modifier.width(8.dp))
-                        Text(
-                            text = labelText,
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-                    Spacer(Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Filled.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // 数字字体子选项
-                Row(
-                    verticalAlignment = Alignment.CenterVertically,
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .clickable { showFontDialog = true }
-                        .padding(vertical = 4.dp)
-                ) {
-                    Text("数字字体", style = MaterialTheme.typography.bodyLarge)
-                    Spacer(Modifier.width(16.dp))
-                    Text(
-                        text = customFont.toFontLabel(),
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        modifier = Modifier.weight(1f),
-                        textAlign = TextAlign.End
-                    )
-                    Spacer(Modifier.width(8.dp))
-                    Icon(
-                        imageVector = Icons.Filled.ChevronRight,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
-
-                // 卡片背景子选项（分享预览等场景可隐藏，由独立的背景定制入口接管）
-                if (showBackgroundOption) {
-                    Row(
-                        verticalAlignment = Alignment.CenterVertically,
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clickable { showBackgroundDialog = true }
-                            .padding(vertical = 4.dp)
-                    ) {
-                        Text("卡片背景", style = MaterialTheme.typography.bodyLarge)
-                        Spacer(Modifier.width(16.dp))
+                TonalCardRow(
+                    icon = Icons.Filled.Palette,
+                    title = "卡片颜色",
+                    showChevron = true,
+                    onClick = { showColorDialog = true },
+                    trailing = {
                         Row(
-                            modifier = Modifier.weight(1f),
-                            horizontalArrangement = Arrangement.End,
-                            verticalAlignment = Alignment.CenterVertically
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            val backgroundLabel = when (cardBackgroundType) {
-                                "IMAGE" -> "自定义图片"
-                                "COLOR" -> cardBackgroundColor.uppercase()
-                                else -> "默认"
+                            val previewColor = if (customHeaderColor.isEmpty()) {
+                                when (reminderType) {
+                                    ReminderType.ANNUAL -> "#1E88E5".toComposeColor()
+                                    ReminderType.COUNT_UP -> "#F28C20".toComposeColor()
+                                    ReminderType.BIRTHDAY -> "#E53935".toComposeColor()
+                                }
+                            } else {
+                                customHeaderColor.toComposeColor()
                             }
-                            if (cardBackgroundType == "COLOR" && cardBackgroundColor.isNotEmpty()) {
-                                Box(
-                                    modifier = Modifier
-                                        .size(16.dp)
-                                        .background(
-                                            color = cardBackgroundColor.toComposeColor(),
-                                            shape = CircleShape
-                                        )
-                                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
-                                )
-                                Spacer(modifier = Modifier.width(8.dp))
-                            }
+                            val labelText = if (customHeaderColor.isEmpty()) "默认" else customHeaderColor.uppercase()
+
+                            // 颜色预览小圆点
+                            Box(
+                                modifier = Modifier
+                                    .size(16.dp)
+                                    .background(
+                                        color = previewColor,
+                                        shape = CircleShape
+                                    )
+                                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
+                            )
                             Text(
-                                text = backgroundLabel,
+                                text = labelText,
                                 style = MaterialTheme.typography.bodyMedium,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
-                        Spacer(Modifier.width(8.dp))
-                        Icon(
-                            imageVector = Icons.Filled.ChevronRight,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
                     }
+                )
+
+                // 数字字体子选项
+                TonalCardRow(
+                    icon = Icons.Filled.TextFields,
+                    title = "数字字体",
+                    value = customFont.toFontLabel(),
+                    showChevron = true,
+                    onClick = { showFontDialog = true }
+                )
+
+                // 卡片背景子选项（分享预览等场景可隐藏，由独立的背景定制入口接管）
+                if (showBackgroundOption) {
+                    TonalCardRow(
+                        icon = Icons.Filled.Wallpaper,
+                        title = "卡片背景",
+                        showChevron = true,
+                        onClick = { showBackgroundDialog = true },
+                        trailing = {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(8.dp)
+                            ) {
+                                val backgroundLabel = when (cardBackgroundType) {
+                                    "IMAGE" -> "自定义图片"
+                                    "COLOR" -> cardBackgroundColor.uppercase()
+                                    else -> "默认"
+                                }
+                                if (cardBackgroundType == "COLOR" && cardBackgroundColor.isNotEmpty()) {
+                                    Box(
+                                        modifier = Modifier
+                                            .size(16.dp)
+                                            .background(
+                                                color = cardBackgroundColor.toComposeColor(),
+                                                shape = CircleShape
+                                            )
+                                            .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
+                                    )
+                                }
+                                Text(
+                                    text = backgroundLabel,
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    )
                 }
             }
         }
