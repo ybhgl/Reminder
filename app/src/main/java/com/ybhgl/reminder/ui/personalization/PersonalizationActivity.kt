@@ -167,6 +167,17 @@ data class PersonalizationConfig(
 /** 重置为默认的个性化配置（含 isCustomized=false） */
 val DefaultPersonalizationConfig = PersonalizationConfig()
 
+/**
+ * 是否等效默认配置：卡片颜色、卡片背景、数字字体与字体效果均为默认。
+ * 全默认时保存应视为关闭个性化（isCustomized=false）。
+ */
+fun PersonalizationConfig.isEffectivelyDefault(): Boolean =
+    customHeaderColor.isEmpty() &&
+        parseCardBackgroundType(cardBackgroundType) == CardBackgroundType.DEFAULT &&
+        (customFont.isEmpty() || customFont == "Default") &&
+        runCatching { NumberFontEffect.valueOf(customFontEffect) }
+            .getOrDefault(NumberFontEffect.AUTO) == NumberFontEffect.AUTO
+
 fun ReminderItem.toPersonalizationConfig(): PersonalizationConfig = PersonalizationConfig(
     isCustomized = isCustomized,
     customHeaderColor = customHeaderColor,
@@ -395,6 +406,7 @@ fun PersonalizationScreen(
     var showFontColorPicker by remember { mutableStateOf(false) }
     var showStrokeColorPicker by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
+    var showUnsavedConfirm by remember { mutableStateOf(false) }
 
     fun cleanupNewImage() {
         newlyImportedPath?.let { path ->
@@ -410,17 +422,35 @@ fun PersonalizationScreen(
         onDismiss()
     }
 
+    // 是否有未保存的更改：配置与进入时不一致，或存在未经保存流程确认的新导入图片
+    val hasUnsavedChanges = config != input.config || newlyImportedPath != null
+
+    fun handleBack() {
+        if (hasUnsavedChanges) {
+            showUnsavedConfirm = true
+        } else {
+            handleDismiss()
+        }
+    }
+
     fun handleSave() {
         // 按背景类型归一化：非图片背景清空图片路径与玻璃开关
         val type = parseCardBackgroundType(config.cardBackgroundType)
         val normalized = config.copy(
-            isCustomized = true,
+            isCustomized = !config.isEffectivelyDefault(),
             cardBackgroundImagePath = if (type == CardBackgroundType.IMAGE) config.cardBackgroundImagePath else "",
             cardBackgroundGlassEnabled = if (type == CardBackgroundType.IMAGE) config.cardBackgroundGlassEnabled else false,
             cardBackgroundGlassFrosted = if (type == CardBackgroundType.IMAGE) config.cardBackgroundGlassFrosted else false,
             cardBackgroundBlurRadius = if (type == CardBackgroundType.IMAGE) config.cardBackgroundBlurRadius else 0f
         )
-        cleanupNewImage()
+        // 仅清理本次导入但最终未被保存结果引用的图片；
+        // 被引用的新图随结果交给上层，被替换的数据库旧图由上层回调删除
+        val finalPath = normalized.cardBackgroundImagePath
+        val imported = newlyImportedPath
+        if (imported != null && imported != finalPath) {
+            scope.launch { CardBackgroundImageManager.deleteImage(context, imported) }
+        }
+        newlyImportedPath = null
         onSave(normalized)
     }
 
@@ -480,7 +510,7 @@ fun PersonalizationScreen(
         config = config.copy(cardBackgroundImagePath = "")
     }
 
-    BackHandler { handleDismiss() }
+    BackHandler { handleBack() }
 
     // 实时预览：合成示例提醒项，套用当前全部个性化配置
     val previewItem = remember(config, reminderType) {
@@ -539,12 +569,12 @@ fun PersonalizationScreen(
                 .padding(horizontal = 4.dp, vertical = 4.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            IconButton(onClick = ::handleDismiss) {
+            IconButton(onClick = { handleBack() }) {
                 Icon(imageVector = Icons.AutoMirrored.Filled.ArrowBack, contentDescription = "返回")
             }
             Text(
                 text = "个性化",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                style = MaterialTheme.typography.titleLarge.copy,
                 modifier = Modifier.weight(1f)
             )
             IconButton(onClick = { showResetConfirm = true }) {
@@ -702,6 +732,21 @@ fun PersonalizationScreen(
             },
             neutralText = "取消",
             onNeutral = { showResetConfirm = false }
+        )
+    }
+
+    // 未保存更改提醒（返回拦截，文案对齐新建提醒页）
+    if (showUnsavedConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showUnsavedConfirm = false },
+            title = "未保存的更改",
+            text = "您有未保存的更改，确定要退出吗？",
+            confirmText = "确定退出",
+            onConfirm = {
+                showUnsavedConfirm = false
+                handleDismiss()
+            },
+            dismissText = "取消"
         )
     }
 
@@ -954,7 +999,7 @@ private fun BackgroundSection(
                 // 光栅玻璃
                 SwitchRow(
                     title = "光栅玻璃",
-                    subtitle = "在背景上叠加垂直光栅玻璃效果",
+                    subtitle = "垂直光栅玻璃效果",
                     checked = config.cardBackgroundGlassEnabled,
                     onCheckedChange = onGlassEnabledChange
                 )
@@ -964,7 +1009,7 @@ private fun BackgroundSection(
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SwitchRow(
                             title = "磨砂处理",
-                            subtitle = "变为磨砂雾透玻璃效果，柔化光栅",
+                            subtitle = "磨砂雾透玻璃效果",
                             checked = config.cardBackgroundGlassFrosted,
                             onCheckedChange = onGlassFrostedChange
                         )
@@ -1051,9 +1096,9 @@ private val FONT_OPTIONS = listOf(
 
 /** 字体效果选项元信息：图标 + 描述 */
 private val FONT_EFFECT_META = listOf(
-    Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "跟随背景亮度自动选择黑/白字体，任何背景均可用"),
-    Triple(NumberFontEffect.SOLID, Icons.Filled.FormatColorFill, "自定义纯色字体及透明度，任何背景均可用"),
-    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "玻璃字：文字区域透出模糊后的背景，边缘保持锐利，描边与投影保证可读")
+    Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "跟随背景自动选择黑/白字体"),
+    Triple(NumberFontEffect.SOLID, Icons.Filled.FormatColorFill, "自定义字体颜色及透明度"),
+    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "文字区域高斯模糊")
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1101,12 +1146,6 @@ private fun FontSection(
                 )
             }
         }
-        SectionGap()
-        Text(
-            "数字字体仅作用于卡片中的数字内容",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
         SectionGap()
 
         // 字体效果 FilterChip 组
@@ -1158,17 +1197,11 @@ private fun FontSection(
                 currentEffect != NumberFontEffect.AUTO &&
                 !isCustomBackground
             Text(
-                text = if (locked) "切换至自定义背景（图片或颜色）后此效果方可生效" else meta.third,
+                text = if (locked) "切换至自定义背景后此效果方可生效" else meta.third,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
-        SectionGap()
-        Text(
-            text = "默认背景时效果仅作用于数字；自定义背景时应用于卡片全部文字",
-            style = MaterialTheme.typography.bodySmall,
-            color = MaterialTheme.colorScheme.onSurfaceVariant
-        )
 
         // 各效果子参数面板
         LinkedPanel(visible = currentEffect == NumberFontEffect.SOLID) {
@@ -1216,7 +1249,7 @@ private fun FontSection(
             // 面板内含联动项（描边颜色行），禁用 spacedBy，间距用 SectionGap 手动管理
             Column {
                 SliderRow(
-                    title = "模糊度",
+                    title = "模糊程度",
                     valueText = "${config.customFontBlur.roundToInt()}",
                     value = config.customFontBlur,
                     valueRange = 0f..24f,
@@ -1226,12 +1259,12 @@ private fun FontSection(
                 SectionGap()
                 // 明暗模板
                 Text(
-                    "玻璃模板",
+                    "模糊颜色",
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 SectionGap()
-                val themeOptions = listOf("DARK" to "暗色玻璃", "LIGHT" to "亮色玻璃")
+                val themeOptions = listOf("DARK" to "暗色", "LIGHT" to "亮色")
                 SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
                     themeOptions.forEachIndexed { index, (value, label) ->
                         SegmentedButton(
@@ -1248,7 +1281,7 @@ private fun FontSection(
                 // 投影：独立的文字投影图层（描边上方）
                 SwitchCardRow(
                     title = "投影",
-                    subtitle = "文字投影增加立体感，提升玻璃字可读性",
+                    subtitle = "文字投影增加立体感",
                     checked = config.customFontShadowEnabled,
                     onCheckedChange = onShadowEnabledChange
                 )
@@ -1256,8 +1289,8 @@ private fun FontSection(
                 SectionGap()
                 // 清晰描边：与描边颜色行同款背景卡片，成组展示
                 SwitchCardRow(
-                    title = "清晰描边",
-                    subtitle = "玻璃字外圈描边，保证任意模糊度下可读",
+                    title = "描边",
+                    subtitle = "字体外圈描边",
                     checked = config.customFontStrokeEnabled,
                     onCheckedChange = onStrokeEnabledChange
                 )
