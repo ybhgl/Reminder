@@ -1085,6 +1085,14 @@ private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
     )
 }
 
+/** 标头自适应文字色（非纯黑白，取与主题色板文字一致的 M3 基线）：暗标头用亮色方案文字白，亮标头用暗色方案文字黑 */
+private val HeaderContentOnDarkBackground = Color(0xFFE6E1E5)
+private val HeaderContentOnLightBackground = Color(0xFF1D1B20)
+
+/** 按标头背景明暗自动切换文字颜色：阈值与卡片自定义背景前景色反色逻辑保持一致 */
+private fun headerContentColorFor(headerColor: Color): Color =
+    if (headerColor.luminance() > 0.55f) HeaderContentOnLightBackground else HeaderContentOnDarkBackground
+
 @Composable
 private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
     val type = reminder.type
@@ -1109,7 +1117,8 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
 
         // 主题色着色层叠加在原始基色之上，使用插值算法 lerp(底色, 染料, 比例) 融合成美妙的混色层
         val headerColor = lerp(rawBaseColor, systemPrimary, 0.22f)
-        val headerContentColor = Color.White
+        // 标头文字随最终标头色明暗自适应切换主题文字黑/白，避免自定义浅色标头时白字不可读
+        val headerContentColor = headerContentColorFor(headerColor)
 
         ReminderCardVisuals(
             headerColor = headerColor,
@@ -1125,7 +1134,7 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
         if (!isDark) {
             ReminderCardVisuals(
                 headerColor = rawBaseColor,
-                headerContentColor = Color.White,
+                headerContentColor = headerContentColorFor(rawBaseColor),
                 cardBackground = Color.White,
                 footerBackground = Color(0xFFF4F4F4),
                 footerDividerColor = Color(0xFFE0E0E0),
@@ -1135,7 +1144,7 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
         } else {
             ReminderCardVisuals(
                 headerColor = rawBaseColor,
-                headerContentColor = Color.White,
+                headerContentColor = headerContentColorFor(rawBaseColor),
                 cardBackground = Color(0xFF1F1F1F),
                 footerBackground = Color(0xFF2B2B2B),
                 footerDividerColor = Color(0xFF353535),

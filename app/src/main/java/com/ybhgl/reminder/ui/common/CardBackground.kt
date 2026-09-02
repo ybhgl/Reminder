@@ -739,8 +739,8 @@ fun GlassTextOverlay(
         GlassTextTheme.DARK -> Color(0xFF06161D)
         GlassTextTheme.LIGHT -> Color(0xFFF2FBFF)
     }
-    // veil 强度随模糊度联动增强并整体调高：σ=0 → 0.25，σ=24 → 0.65（字形更白/更黑，与背景拉开对比）
-    val veilAlpha = (0.25f + blurRadius.coerceIn(0f, 24f) * (0.40f / 24f)).coerceIn(0.25f, 0.65f)
+    // veil 强度随模糊度联动：σ=0 → 0.25（最低值不变），σ=24 → 0.85（亮模板字形更白、暗模板更黑，提高对比度）
+    val veilAlpha = (0.25f + blurRadius.coerceIn(0f, 24f) * (0.60f / 24f)).coerceIn(0.25f, 0.85f)
 
     Box(modifier) {
         // ① 文字 mask 录制层：仅录制内容到 graphicsLayer，不绘制到屏幕

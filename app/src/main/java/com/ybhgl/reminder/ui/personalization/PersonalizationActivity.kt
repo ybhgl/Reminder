@@ -574,7 +574,7 @@ fun PersonalizationScreen(
             }
             Text(
                 text = "个性化",
-                style = MaterialTheme.typography.titleLarge.copy,
+                style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f)
             )
             IconButton(onClick = { showResetConfirm = true }) {
