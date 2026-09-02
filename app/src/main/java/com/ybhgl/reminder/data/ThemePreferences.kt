@@ -50,6 +50,7 @@ private val DYNAMIC_COLOR_KEY = booleanPreferencesKey("dynamic_color_enabled")
 private val COLOR_PALETTE_KEY = stringPreferencesKey("theme_color_palette")
 private val CUSTOM_COLOR_SEED_KEY = androidx.datastore.preferences.core.intPreferencesKey("custom_color_seed")
 private val HOME_CATEGORY_KEY = booleanPreferencesKey("home_category_enabled")
+private val FONT_EFFECT_GLOBAL_KEY = booleanPreferencesKey("font_effect_global_enabled")
 
 private val Context.themeDataStore: DataStore<Preferences> by preferencesDataStore(
     name = THEME_DATA_STORE_NAME
@@ -151,6 +152,26 @@ fun cardColoringFlow(context: Context): Flow<Boolean> =
 suspend fun saveCardColoring(context: Context, enabled: Boolean) {
     context.themeDataStore.edit { preferences ->
         preferences[CARD_COLORING_KEY] = enabled
+    }
+}
+
+/** 字体效果是否在列表卡片全局生效；false（默认）= 仅详情页生效 */
+fun fontEffectGlobalFlow(context: Context): Flow<Boolean> =
+    context.themeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[FONT_EFFECT_GLOBAL_KEY] ?: false
+        }
+
+suspend fun saveFontEffectGlobal(context: Context, enabled: Boolean) {
+    context.themeDataStore.edit { preferences ->
+        preferences[FONT_EFFECT_GLOBAL_KEY] = enabled
     }
 }
 

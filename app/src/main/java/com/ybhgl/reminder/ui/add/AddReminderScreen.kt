@@ -14,6 +14,7 @@ import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import androidx.compose.material.icons.filled.Save
 import androidx.activity.compose.BackHandler
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectTapGestures
@@ -113,6 +114,10 @@ import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.common.TonalCardRow
+import com.ybhgl.reminder.ui.personalization.PersonalizationContract
+import com.ybhgl.reminder.ui.personalization.PersonalizationInput
+import com.ybhgl.reminder.ui.personalization.toPersonalizationConfig
+import com.ybhgl.reminder.ui.personalization.withPersonalizationConfig
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.CalendarUtil
 import com.ybhgl.reminder.util.CardBackgroundImageManager
@@ -134,7 +139,6 @@ fun AddReminderScreen(
     var showDatePicker by remember { mutableStateOf(false) }
     var showNotesSheet by remember { mutableStateOf(false) }
     var showTagSheet by remember { mutableStateOf(false) }
-    var showCustomizationDialog by remember { mutableStateOf(false) }
     val uiState = viewModel.reminderUiState
     val isEditing = uiState.id != 0
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
@@ -143,6 +147,19 @@ fun AddReminderScreen(
     val zoneId = ZoneId.systemDefault()
     val currentLunarLabel = remember(uiState.date) { CalendarUtil.getLunarMonthDayLabel(uiState.date) }
     val context = LocalContext.current
+
+    // 个性化设置页结果回写：旧背景图被替换或恢复默认时清理应用私有目录中的残留图片
+    val personalizationLauncher = rememberLauncherForActivityResult(PersonalizationContract()) { result ->
+        result ?: return@rememberLauncherForActivityResult
+        val oldPath = uiState.cardBackgroundImagePath
+        val newPath = result.cardBackgroundImagePath
+        if (oldPath.isNotEmpty() && oldPath != newPath) {
+            coroutineScope.launch {
+                CardBackgroundImageManager.deleteImage(context, oldPath)
+            }
+        }
+        viewModel.updateUiState(uiState.withPersonalizationConfig(result))
+    }
 
     // Observe result from ReminderSettingScreen
     val navBackStackEntry = navController.currentBackStackEntry
@@ -351,14 +368,21 @@ fun AddReminderScreen(
                     }
                 )
 
-                // 8. 个性化（独立入口，为未来拆分为独立设置页做准备）
+                // 8. 个性化（独立 Activity：卡片实时预览 + 设置面板）
                 TonalCardRow(
                     modifier = Modifier.padding(top = 16.dp),
                     icon = Icons.Default.AutoAwesome,
                     title = "个性化",
                     value = if (uiState.isCustomized) "已定制" else "默认",
                     showChevron = true,
-                    onClick = { showCustomizationDialog = true }
+                    onClick = {
+                        personalizationLauncher.launch(
+                            PersonalizationInput(
+                                config = uiState.toPersonalizationConfig(),
+                                reminderType = uiState.type.name
+                            )
+                        )
+                    }
                 )
 
                 // 9. 备注
@@ -605,97 +629,6 @@ fun AddReminderScreen(
                                 color = MaterialTheme.colorScheme.primary,
                                 fontWeight = FontWeight.SemiBold
                             )
-                        }
-                    }
-                }
-            }
-
-            if (showCustomizationDialog) {
-                Dialog(
-                    onDismissRequest = { showCustomizationDialog = false },
-                    properties = DialogProperties(usePlatformDefaultWidth = false)
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures { showCustomizationDialog = false }
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Surface(
-                            shape = RoundedCornerShape(28.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 6.dp,
-                            modifier = Modifier
-                                .fillMaxWidth(0.92f)
-                                .heightIn(max = 560.dp)
-                                .pointerInput(Unit) {
-                                    // 拦截点击事件，防止点击卡片内部时触发了外层 Box 的 dismiss
-                                    detectTapGestures { }
-                                }
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .verticalScroll(rememberScrollState())
-                                    .padding(24.dp)
-                            ) {
-                                Text(
-                                    text = "个性化",
-                                    style = MaterialTheme.typography.titleLarge,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-                                ReminderCustomizationSection(
-                                    isCustomized = uiState.isCustomized,
-                                    onCustomizedChange = { viewModel.onCustomizedChange(it) },
-                                    customHeaderColor = uiState.customHeaderColor,
-                                    onHeaderColorChange = { viewModel.updateUiState(uiState.copy(customHeaderColor = it)) },
-                                    customFont = uiState.customFont,
-                                    onFontChange = { viewModel.updateUiState(uiState.copy(customFont = it)) },
-                                    reminderType = uiState.type,
-                                    cardBackgroundType = uiState.cardBackgroundType,
-                                    cardBackgroundColor = uiState.cardBackgroundColor,
-                                    cardBackgroundImagePath = uiState.cardBackgroundImagePath,
-                                    cardBackgroundBlurRadius = uiState.cardBackgroundBlurRadius,
-                                    cardBackgroundGlassEnabled = uiState.cardBackgroundGlassEnabled,
-                                    cardBackgroundGlassFrosted = uiState.cardBackgroundGlassFrosted,
-                                    cardBackgroundGlassDensity = uiState.cardBackgroundGlassDensity,
-                                    cardBackgroundTextColor = uiState.cardBackgroundTextColor,
-                                    onBackgroundConfirmed = { result ->
-                                        // 旧背景图被替换或恢复默认时清理应用私有目录中的残留图片
-                                        val oldPath = uiState.cardBackgroundImagePath
-                                        val newPath = result.imagePath
-                                        if (oldPath.isNotEmpty() && oldPath != newPath) {
-                                            coroutineScope.launch {
-                                                CardBackgroundImageManager.deleteImage(context, oldPath)
-                                            }
-                                        }
-                                        viewModel.updateUiState(
-                                            uiState.copy(
-                                                cardBackgroundType = result.type.name,
-                                                cardBackgroundColor = result.colorHex,
-                                                cardBackgroundImagePath = result.imagePath,
-                                                cardBackgroundBlurRadius = result.blurRadius,
-                                                cardBackgroundGlassEnabled = result.glassEnabled,
-                                                cardBackgroundGlassFrosted = result.glassFrosted,
-                                                cardBackgroundGlassDensity = result.glassDensity,
-                                                cardBackgroundTextColor = result.textColor
-                                            )
-                                        )
-                                    }
-                                )
-                                Spacer(modifier = Modifier.height(8.dp))
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End
-                                ) {
-                                    TextButton(onClick = { showCustomizationDialog = false }) {
-                                        Text("完成")
-                                    }
-                                }
-                            }
                         }
                     }
                 }

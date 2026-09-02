@@ -16,7 +16,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderRepository
-import com.ybhgl.reminder.ui.add.CardBackgroundResult
+import com.ybhgl.reminder.ui.personalization.PersonalizationConfig
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -63,7 +63,42 @@ data class ShareOptions(
     val cardBackgroundGlassEnabled: Boolean = false,
     val cardBackgroundGlassFrosted: Boolean = false,
     val cardBackgroundGlassDensity: Float = 0.5f,
-    val cardBackgroundTextColor: String = ""
+    val cardBackgroundGlassRefraction: Float = 0.24f,
+    val cardBackgroundGlassTransparency: Float = 1f,
+    val cardBackgroundGlassBlur: Float = 12f,
+    val cardBackgroundTextColor: String = "",
+    val customFontEffect: String = "AUTO",
+    val customFontColor: String = "",
+    val customFontOpacity: Float = 1f,
+    val customFontBlur: Float = 8f,
+    val customFontGlassRefraction: Float = 0.24f,
+    val customFontGlassTransparency: Float = 0.7f,
+    val customFontGlassBlur: Float = 4f
+)
+
+/** 从分享会话配置提取个性化设置页所需的初始配置 */
+fun ShareOptions.toPersonalizationConfig(): PersonalizationConfig = PersonalizationConfig(
+    isCustomized = isCustomized,
+    customHeaderColor = customHeaderColor,
+    customFont = customFont,
+    cardBackgroundType = cardBackgroundType,
+    cardBackgroundColor = cardBackgroundColor,
+    cardBackgroundImagePath = cardBackgroundImagePath,
+    cardBackgroundBlurRadius = cardBackgroundBlurRadius,
+    cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
+    cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
+    cardBackgroundGlassDensity = cardBackgroundGlassDensity,
+    cardBackgroundGlassRefraction = cardBackgroundGlassRefraction,
+    cardBackgroundGlassTransparency = cardBackgroundGlassTransparency,
+    cardBackgroundGlassBlur = cardBackgroundGlassBlur,
+    cardBackgroundTextColor = cardBackgroundTextColor,
+    customFontEffect = customFontEffect,
+    customFontColor = customFontColor,
+    customFontOpacity = customFontOpacity,
+    customFontBlur = customFontBlur,
+    customFontGlassRefraction = customFontGlassRefraction,
+    customFontGlassTransparency = customFontGlassTransparency,
+    customFontGlassBlur = customFontGlassBlur
 )
 
 class ShareViewModel(
@@ -98,7 +133,17 @@ class ShareViewModel(
                     cardBackgroundGlassEnabled = it.cardBackgroundGlassEnabled,
                     cardBackgroundGlassFrosted = it.cardBackgroundGlassFrosted,
                     cardBackgroundGlassDensity = it.cardBackgroundGlassDensity,
-                    cardBackgroundTextColor = it.cardBackgroundTextColor
+                    cardBackgroundGlassRefraction = it.cardBackgroundGlassRefraction,
+                    cardBackgroundGlassTransparency = it.cardBackgroundGlassTransparency,
+                    cardBackgroundGlassBlur = it.cardBackgroundGlassBlur,
+                    cardBackgroundTextColor = it.cardBackgroundTextColor,
+                    customFontEffect = it.customFontEffect,
+                    customFontColor = it.customFontColor,
+                    customFontOpacity = it.customFontOpacity,
+                    customFontBlur = it.customFontBlur,
+                    customFontGlassRefraction = it.customFontGlassRefraction,
+                    customFontGlassTransparency = it.customFontGlassTransparency,
+                    customFontGlassBlur = it.customFontGlassBlur
                 )
             }
             _reminder.value = item
@@ -120,16 +165,45 @@ class ShareViewModel(
             cardBackgroundGlassEnabled = options.cardBackgroundGlassEnabled,
             cardBackgroundGlassFrosted = options.cardBackgroundGlassFrosted,
             cardBackgroundGlassDensity = options.cardBackgroundGlassDensity,
-            cardBackgroundTextColor = options.cardBackgroundTextColor
+            cardBackgroundGlassRefraction = options.cardBackgroundGlassRefraction,
+            cardBackgroundGlassTransparency = options.cardBackgroundGlassTransparency,
+            cardBackgroundGlassBlur = options.cardBackgroundGlassBlur,
+            cardBackgroundTextColor = options.cardBackgroundTextColor,
+            customFontEffect = options.customFontEffect,
+            customFontColor = options.customFontColor,
+            customFontOpacity = options.customFontOpacity,
+            customFontBlur = options.customFontBlur,
+            customFontGlassRefraction = options.customFontGlassRefraction,
+            customFontGlassTransparency = options.customFontGlassTransparency,
+            customFontGlassBlur = options.customFontGlassBlur
         )
     }
 
-    fun updateCustomization(isCustomized: Boolean, customHeaderColor: String, customFont: String) {
+    /** 套用个性化设置页返回的完整配置（仅本次分享会话内生效，不写入数据库） */
+    fun updatePersonalization(config: PersonalizationConfig) {
         _shareOptions.update {
             it.copy(
-                isCustomized = isCustomized,
-                customHeaderColor = customHeaderColor,
-                customFont = customFont
+                isCustomized = config.isCustomized,
+                customHeaderColor = config.customHeaderColor,
+                customFont = config.customFont,
+                cardBackgroundType = config.cardBackgroundType,
+                cardBackgroundColor = config.cardBackgroundColor,
+                cardBackgroundImagePath = config.cardBackgroundImagePath,
+                cardBackgroundBlurRadius = config.cardBackgroundBlurRadius,
+                cardBackgroundGlassEnabled = config.cardBackgroundGlassEnabled,
+                cardBackgroundGlassFrosted = config.cardBackgroundGlassFrosted,
+                cardBackgroundGlassDensity = config.cardBackgroundGlassDensity,
+                cardBackgroundGlassRefraction = config.cardBackgroundGlassRefraction,
+                cardBackgroundGlassTransparency = config.cardBackgroundGlassTransparency,
+                cardBackgroundGlassBlur = config.cardBackgroundGlassBlur,
+                cardBackgroundTextColor = config.cardBackgroundTextColor,
+                customFontEffect = config.customFontEffect,
+                customFontColor = config.customFontColor,
+                customFontOpacity = config.customFontOpacity,
+                customFontBlur = config.customFontBlur,
+                customFontGlassRefraction = config.customFontGlassRefraction,
+                customFontGlassTransparency = config.customFontGlassTransparency,
+                customFontGlassBlur = config.customFontGlassBlur
             )
         }
     }
@@ -178,22 +252,6 @@ class ShareViewModel(
     /** LOGO 颜色：""=自动，"WHITE"/"BLACK"=手动指定 */
     fun updateLogoColor(color: String) {
         _shareOptions.update { it.copy(logoColor = color) }
-    }
-
-    /** 套用卡片背景设置对话框确认的结果（仅本次分享会话内生效） */
-    fun updateCardBackground(result: CardBackgroundResult) {
-        _shareOptions.update {
-            it.copy(
-                cardBackgroundType = result.type.name,
-                cardBackgroundColor = result.colorHex,
-                cardBackgroundImagePath = result.imagePath,
-                cardBackgroundBlurRadius = result.blurRadius,
-                cardBackgroundGlassEnabled = result.glassEnabled,
-                cardBackgroundGlassFrosted = result.glassFrosted,
-                cardBackgroundGlassDensity = result.glassDensity,
-                cardBackgroundTextColor = result.textColor
-            )
-        }
     }
 
     suspend fun shareReminder(bitmap: Bitmap, context: Context) {

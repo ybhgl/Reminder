@@ -188,6 +188,8 @@ fun SettingsScreen(
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val homeCategoryPreferenceFlow = remember(context) { viewModel.homeCategoryPreferenceFlow(context) }
     val homeCategoryEnabled by homeCategoryPreferenceFlow.collectAsState(initial = null)
+    val fontEffectGlobalFlow = remember(context) { viewModel.fontEffectGlobalPreferenceFlow(context) }
+    val fontEffectGlobalEnabled by fontEffectGlobalFlow.collectAsState(initial = null)
     val scrollBehaviorFlow = remember(context) { viewModel.scrollBehaviorPreferenceFlow(context) }
     val scrollBehaviorStr by scrollBehaviorFlow.collectAsState(initial = ScrollBehaviorMode.HIDE_TOP_BAR.name)
     val currentScrollBehavior = remember(scrollBehaviorStr) {
@@ -375,6 +377,12 @@ fun SettingsScreen(
                     onHomeCategoryChanged = { enabled ->
                         coroutineScope.launch {
                             viewModel.updateHomeCategoryPreference(context, enabled)
+                        }
+                    },
+                    fontEffectGlobalEnabled = fontEffectGlobalEnabled,
+                    onFontEffectGlobalChanged = { enabled ->
+                        coroutineScope.launch {
+                            viewModel.updateFontEffectGlobalPreference(context, enabled)
                         }
                     },
                     selectedPage = selectedDefaultPage,
@@ -994,6 +1002,8 @@ private fun ColorPaletteItem(
 private fun HomePageSettingsCard(
     homeCategoryEnabled: Boolean?,
     onHomeCategoryChanged: (Boolean) -> Unit,
+    fontEffectGlobalEnabled: Boolean?,
+    onFontEffectGlobalChanged: (Boolean) -> Unit,
     selectedPage: AppDefaultPage,
     onPageSelected: (AppDefaultPage) -> Unit,
     currentScrollBehavior: ScrollBehaviorMode,
@@ -1149,6 +1159,40 @@ private fun HomePageSettingsCard(
                     contentDescription = null,
                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(20.dp)
+                )
+            }
+
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = 16.dp)
+                    .clickable(
+                        interactionSource = remember { MutableInteractionSource() },
+                        indication = null,
+                        onClick = { onFontEffectGlobalChanged(!(fontEffectGlobalEnabled ?: false)) }
+                    )
+                    .padding(vertical = 4.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                    verticalArrangement = Arrangement.spacedBy(4.dp)
+                ) {
+                    Text(
+                        text = "字体效果全局生效",
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "开启后卡片数字字体效果同时应用于列表页；关闭仅详情页生效",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Switch(
+                    checked = fontEffectGlobalEnabled ?: false,
+                    onCheckedChange = onFontEffectGlobalChanged
                 )
             }
         }

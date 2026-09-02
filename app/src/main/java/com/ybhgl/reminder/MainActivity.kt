@@ -198,6 +198,7 @@ import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.BackupPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
+import com.ybhgl.reminder.ui.theme.LocalFontEffectGlobal
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.CalendarUtil
 import com.ybhgl.reminder.util.ReminderSectionData
@@ -219,11 +220,17 @@ import com.ybhgl.reminder.ui.share.ShareScreen
 import com.ybhgl.reminder.ui.common.CardBackgroundLayer
 import com.ybhgl.reminder.ui.common.CardBackgroundSpec
 import com.ybhgl.reminder.ui.common.CardBackgroundType
+import com.ybhgl.reminder.ui.common.NumberEffectSpec
+import com.ybhgl.reminder.ui.common.cardBackgroundAverageColor
 import com.ybhgl.reminder.ui.common.cardBackgroundLuminance
 import com.ybhgl.reminder.ui.common.cardBackgroundSpec
+import com.ybhgl.reminder.ui.common.numberEffectSpec
+import com.ybhgl.reminder.ui.common.numberTextEffect
 import com.ybhgl.reminder.ui.common.parseCardBackgroundType
 import com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.resolveCardBackgroundForeground
+import com.ybhgl.reminder.ui.common.resolveEffectiveFontEffect
+import androidx.compose.ui.graphics.luminance
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.Dispatchers
@@ -319,6 +326,7 @@ class MainActivity : FragmentActivity() {
             val themeColorPalette by colorPaletteFlowInstance.collectAsState(initial = AppColorPalette.PURPLE)
             val customColorFlowInstance = remember(context) { com.ybhgl.reminder.data.customColorFlow(context) }
             val customColorSeedInt by customColorFlowInstance.collectAsState(initial = 0xFF6650A4.toInt())
+            val fontEffectGlobal by remember(context) { com.ybhgl.reminder.data.fontEffectGlobalFlow(context) }.collectAsState(initial = false)
 
             LaunchedEffect(themeOption) {
                 com.ybhgl.reminder.ui.common.CustomToast.currentAppTheme = themeOption
@@ -355,7 +363,8 @@ class MainActivity : FragmentActivity() {
                 cardColoringEnabled = cardColoringEnabled,
                 dynamicColor = dynamicColorEnabled,
                 colorPalette = themeColorPalette,
-                customColorSeed = Color(customColorSeedInt)
+                customColorSeed = Color(customColorSeedInt),
+                fontEffectGlobal = fontEffectGlobal
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -1149,10 +1158,11 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
 @Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
 @Composable
 private fun DayCountRow(
-    dayCount: Int, 
-    visuals: ReminderCardVisuals, 
+    dayCount: Int,
+    visuals: ReminderCardVisuals,
     isCountUp: Boolean = false,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    effectSpec: NumberEffectSpec? = null
 ) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
@@ -1175,7 +1185,8 @@ private fun DayCountRow(
             ),
             modifier = Modifier
                 .weight(1f, fill = false)
-                .alignByBaseline(),
+                .alignByBaseline()
+                .numberTextEffect(effectSpec),
             color = visuals.numberColor,
             checkHeight = false
         )
@@ -2221,23 +2232,39 @@ private fun ReminderSummaryCard(
         }
     )
 
-    // 自定义背景：完整覆盖整卡（表头/内容/底栏之下），前景文字按背景亮度实时反色
+    // 自定义背景：完整覆盖整卡（表头/内容/底栏之下），前景文字按背景亮度实时反色；
+    // 数字字体效果仅在"全局生效"开关开启时于列表卡应用（作用范围规则与详情卡一致）
     val backgroundSpec = visuals.backgroundSpec
     val backgroundBitmap = if (backgroundSpec?.type == CardBackgroundType.IMAGE) {
         rememberCardBackgroundBitmap(backgroundSpec.imagePath)
     } else null
     val hasCustomBackground = backgroundSpec != null
+    val effectSpec = if (LocalFontEffectGlobal.current && reminder.isCustomized) {
+        reminder.numberEffectSpec
+    } else null
+    val numberRenderSpec: NumberEffectSpec?
     val effectiveVisuals = if (backgroundSpec != null) {
         val luminance = cardBackgroundLuminance(backgroundSpec, backgroundBitmap)
-        val foreground = resolveCardBackgroundForeground(backgroundSpec, luminance)
+        val bgAverage = cardBackgroundAverageColor(backgroundSpec, backgroundBitmap)
+        val resolved = resolveEffectiveFontEffect(effectSpec, backgroundSpec, luminance, bgAverage)
+        val foreground = resolved.cardTextColor ?: resolveCardBackgroundForeground(backgroundSpec, luminance)
+        numberRenderSpec = resolved.numberRender
         visuals.copy(
             headerContentColor = foreground,
-            numberColor = foreground,
+            numberColor = resolved.numberColor ?: foreground,
             secondaryTextColor = foreground.copy(alpha = 0.92f),
-            footerDividerColor = if (foreground == Color.White) Color.White.copy(alpha = 0.25f)
-            else Color.Black.copy(alpha = 0.15f)
+            footerDividerColor = if (foreground.luminance() > 0.5f) {
+                Color.Black.copy(alpha = 0.15f)
+            } else {
+                Color.White.copy(alpha = 0.25f)
+            }
         )
-    } else visuals
+    } else {
+        val resolved = resolveEffectiveFontEffect(effectSpec, null, 0.5f, Color.Gray)
+        val numberOverride = resolved.numberColor
+        numberRenderSpec = null
+        if (numberOverride != null) visuals.copy(numberColor = numberOverride) else visuals
+    }
 
     Card(
         modifier = modifier
@@ -2324,7 +2351,8 @@ private fun ReminderSummaryCard(
                         DayCountRow(
                             dayCount = displayInfo.dayCount,
                             visuals = effectiveVisuals,
-                            isCountUp = reminder.type == ReminderType.COUNT_UP
+                            isCountUp = reminder.type == ReminderType.COUNT_UP,
+                            effectSpec = numberRenderSpec
                         )
                     }
                     // 自定义卡片背景下隐藏底栏分割线，保持背景视觉完整

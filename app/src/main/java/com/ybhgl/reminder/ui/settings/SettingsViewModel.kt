@@ -108,6 +108,14 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     fun homeCategoryPreferenceFlow(context: Context): Flow<Boolean> = com.ybhgl.reminder.data.homeCategoryFlow(context)
 
+    fun fontEffectGlobalPreferenceFlow(context: Context): Flow<Boolean> = com.ybhgl.reminder.data.fontEffectGlobalFlow(context)
+
+    suspend fun updateFontEffectGlobalPreference(context: Context, enabled: Boolean) {
+        com.ybhgl.reminder.data.saveFontEffectGlobal(context, enabled)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
+    }
+
     suspend fun updateHomeCategoryPreference(context: Context, enabled: Boolean) {
         com.ybhgl.reminder.data.saveHomeCategory(context, enabled)
         BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
@@ -153,6 +161,7 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
             val customColorSeed = customColorPreferenceFlow(context).first()
             val scrollBehavior = scrollBehaviorPreferenceFlow(context).first()
             val homeCategoryEnabled = homeCategoryPreferenceFlow(context).first()
+            val fontEffectGlobalEnabled = fontEffectGlobalPreferenceFlow(context).first()
 
             val backupData = BackupData(
                 reminders = reminders,
@@ -165,7 +174,8 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
                 themeColorPalette = themeColorPalette,
                 customColorSeed = customColorSeed,
                 scrollBehavior = scrollBehavior,
-                homeCategoryEnabled = homeCategoryEnabled
+                homeCategoryEnabled = homeCategoryEnabled,
+                fontEffectGlobalEnabled = fontEffectGlobalEnabled
             )
 
             val json = Json.encodeToString(backupData)

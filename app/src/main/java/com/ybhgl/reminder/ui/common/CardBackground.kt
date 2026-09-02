@@ -21,6 +21,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.composed
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithCache
@@ -55,6 +56,29 @@ import kotlin.random.Random
 /** 卡片背景类型 */
 enum class CardBackgroundType { DEFAULT, IMAGE, COLOR }
 
+/** 数字字体效果类型 */
+enum class NumberFontEffect { AUTO, SOLID, MIXED, BLUR, GLASS }
+
+fun parseNumberFontEffect(effect: String): NumberFontEffect =
+    runCatching { NumberFontEffect.valueOf(effect) }.getOrDefault(NumberFontEffect.AUTO)
+
+/** 数字字体效果的渲染参数（颜色由解析函数单独计算） */
+data class NumberEffectSpec(
+    val effect: NumberFontEffect = NumberFontEffect.AUTO,
+    /** SOLID 效果的字体颜色 */
+    val solidColor: Color = Color.White,
+    /** MIXED 效果的字体透明度（0.2..1） */
+    val opacity: Float = 1f,
+    /** BLUR 效果的模糊半径（dp） */
+    val blurRadius: Float = 8f,
+    /** GLASS 效果折射度（0..0.5，映射 AGSL distort/间距 比例） */
+    val glassRefraction: Float = 0.24f,
+    /** GLASS 效果透明度（0..1） */
+    val glassTransparency: Float = 0.7f,
+    /** GLASS 效果模糊度（dp） */
+    val glassBlur: Float = 4f
+)
+
 /** 卡片背景配置（渲染层使用的聚合参数） */
 data class CardBackgroundSpec(
     val type: CardBackgroundType = CardBackgroundType.DEFAULT,
@@ -64,6 +88,12 @@ data class CardBackgroundSpec(
     val glassEnabled: Boolean = false,
     val glassFrosted: Boolean = false,
     val glassDensity: Float = 0.5f,
+    /** 光栅玻璃折射度（0..0.5，映射 AGSL distort/间距 比例） */
+    val glassRefraction: Float = 0.24f,
+    /** 光栅玻璃透明度（0..1，缩放玻璃叠层存在感，1=默认观感） */
+    val glassTransparency: Float = 1f,
+    /** 光栅玻璃模糊度（0..24dp，磨砂雾面模糊强度） */
+    val glassBlur: Float = 12f,
     /** 字体颜色：""=按背景亮度自动反色，"WHITE"/"BLACK"=用户手动指定 */
     val textColor: String = ""
 )
@@ -94,7 +124,22 @@ val ReminderItem.cardBackgroundSpec: CardBackgroundSpec
         glassEnabled = cardBackgroundGlassEnabled,
         glassFrosted = cardBackgroundGlassFrosted,
         glassDensity = cardBackgroundGlassDensity,
+        glassRefraction = cardBackgroundGlassRefraction,
+        glassTransparency = cardBackgroundGlassTransparency,
+        glassBlur = cardBackgroundGlassBlur,
         textColor = cardBackgroundTextColor
+    )
+
+/** 从 ReminderItem 提取数字字体效果参数 */
+val ReminderItem.numberEffectSpec: NumberEffectSpec
+    get() = NumberEffectSpec(
+        effect = parseNumberFontEffect(customFontEffect),
+        solidColor = parseHexColorSafe(customFontColor.ifEmpty { "#FFFFFF" }),
+        opacity = customFontOpacity,
+        blurRadius = customFontBlur,
+        glassRefraction = customFontGlassRefraction,
+        glassTransparency = customFontGlassTransparency,
+        glassBlur = customFontGlassBlur
     )
 
 /** 异步加载卡片背景位图（带内存缓存：命中缓存时首帧即有图，避免 null→图片 闪烁），路径为空或加载失败返回 null */
@@ -142,10 +187,99 @@ fun cardBackgroundLuminance(spec: CardBackgroundSpec, bitmap: Bitmap?): Float {
     }
 }
 
+/** 采样计算位图平均颜色（用于反色字体效果） */
+private fun bitmapAverageColor(bitmap: Bitmap): Color {
+    val step = max(1, max(bitmap.width, bitmap.height) / 64)
+    var r = 0.0; var g = 0.0; var b = 0.0
+    var count = 0
+    var y = 0
+    while (y < bitmap.height) {
+        var x = 0
+        while (x < bitmap.width) {
+            val pixel = bitmap.getPixel(x, y)
+            r += (pixel shr 16 and 0xFF) / 255.0
+            g += (pixel shr 8 and 0xFF) / 255.0
+            b += (pixel and 0xFF) / 255.0
+            count++
+            x += step
+        }
+        y += step
+    }
+    return if (count == 0) Color(0xFF808080)
+    else Color((r / count).toFloat(), (g / count).toFloat(), (b / count).toFloat())
+}
+
+/** 计算背景配置的平均颜色，用于字体效果的反色基准 */
+@Composable
+fun cardBackgroundAverageColor(spec: CardBackgroundSpec, bitmap: Bitmap?): Color {
+    return when (spec.type) {
+        CardBackgroundType.COLOR -> spec.color
+        CardBackgroundType.IMAGE -> remember(bitmap) { bitmap?.let { bitmapAverageColor(it) } ?: Color(0xFF808080) }
+        else -> Color(0xFF808080)
+    }
+}
+
 /** 解析自定义背景下的前景文字颜色：用户指定优先，否则按背景亮度自动反色 */
 fun resolveCardBackgroundForeground(spec: CardBackgroundSpec, luminance: Float): Color =
     parseCardBackgroundTextColor(spec.textColor)
         ?: if (luminance > 0.55f) Color(0xDE000000) else Color.White
+
+/**
+ * 字体效果解析结果：
+ * @param numberColor 大数字颜色覆盖；null = 沿用默认解析
+ * @param cardTextColor 全卡文字颜色覆盖（仅自定义背景且颜色类效果时非 null）；null = 沿用默认解析
+ * @param numberRender 大数字渲染效果（BLUR/GLASS）；null = 无
+ */
+data class EffectiveFontEffect(
+    val numberColor: Color? = null,
+    val cardTextColor: Color? = null,
+    val numberRender: NumberEffectSpec? = null
+)
+
+/**
+ * 解析数字字体效果的有效配置（含背景联动与作用范围规则）：
+ * - 默认背景：仅 SOLID 生效且只作用于数字，其余效果视为未启用（对应 UI 置灰）
+ * - 自定义背景：AUTO/SOLID/MIXED 作用于全卡文字颜色，BLUR/GLASS 颜色沿用自动反色并附加数字渲染效果
+ *
+ * @param spec 字体效果规格（null 或 AUTO 之外按枚举处理）
+ * @param backgroundSpec 背景配置；null = 默认背景
+ * @param bgLuminance 背景感知亮度
+ * @param bgAverageColor 背景平均颜色（MIXED 反色基准）
+ */
+fun resolveEffectiveFontEffect(
+    spec: NumberEffectSpec?,
+    backgroundSpec: CardBackgroundSpec?,
+    bgLuminance: Float,
+    bgAverageColor: Color
+): EffectiveFontEffect {
+    val autoColor = backgroundSpec?.let { resolveCardBackgroundForeground(it, bgLuminance) }
+    if (spec == null) return EffectiveFontEffect()
+    val isCustomBg = backgroundSpec != null
+    return when (spec.effect) {
+        NumberFontEffect.AUTO -> if (isCustomBg) {
+            EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor)
+        } else EffectiveFontEffect()
+
+        NumberFontEffect.SOLID -> EffectiveFontEffect(
+            numberColor = spec.solidColor,
+            cardTextColor = if (isCustomBg) spec.solidColor else null
+        )
+
+        NumberFontEffect.MIXED -> if (isCustomBg) {
+            val inverted = Color(1f - bgAverageColor.red, 1f - bgAverageColor.green, 1f - bgAverageColor.blue)
+                .copy(alpha = spec.opacity.coerceIn(0.2f, 1f))
+            EffectiveFontEffect(numberColor = inverted, cardTextColor = inverted)
+        } else EffectiveFontEffect()
+
+        NumberFontEffect.BLUR -> if (isCustomBg) {
+            EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor, numberRender = spec)
+        } else EffectiveFontEffect()
+
+        NumberFontEffect.GLASS -> if (isCustomBg) {
+            EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor, numberRender = spec)
+        } else EffectiveFontEffect()
+    }
+}
 
 /**
  * 卡片背景渲染层：完整覆盖卡片区域（表头/内容/底栏之下）。
@@ -182,17 +316,20 @@ fun CardBackgroundLayer(
     val runtimeGlass = glassActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     // AGSL 编译开销大，缓存 shader 仅更新 uniform
     val flutedShader = rememberFlutedShader()
-    val frostBlurPx = with(density) { 12.dp.toPx() }
+    // 模糊度（dp）→ 磨砂雾面模糊像素；折射度（0..0.5）→ distort/间距 比例（默认 0.24）
+    val frostBlurPx = with(density) { spec.glassBlur.coerceIn(0f, 24f).dp.toPx() }
     // RenderEffect 按参数缓存：graphicsLayer 每次重组赋新对象会触发 Skia 重建图层产生一帧空白（闪烁）
     val glassRenderEffect = remember(
-        runtimeGlass, flutedShader, spec.glassFrosted, spec.type, ridgeSpacingPx, frostBlurPx
+        runtimeGlass, flutedShader, spec.glassFrosted, spec.type, ridgeSpacingPx, frostBlurPx, spec.glassRefraction
     ) {
         when {
             runtimeGlass && flutedShader != null -> {
                 flutedShader.setFloatUniform("spacing", ridgeSpacingPx)
                 // 幅度 > 间距/(2π) 时棱纹中部会出现真实柱面透镜的图像翻转，
-                // 取 0.24 让每道棱纹呈现"独立小透镜"的折射观感（幅度克制，保持自然透明）
-                flutedShader.setFloatUniform("distort", ridgeSpacingPx * 0.24f)
+                // 折射度由用户调节（默认 0.24：每道棱纹呈现"独立小透镜"的折射观感，保持自然透明）
+                flutedShader.setFloatUniform(
+                    "distort", ridgeSpacingPx * spec.glassRefraction.coerceIn(0f, 0.5f)
+                )
                 flutedGlassEffect(
                     shader = flutedShader,
                     frosted = spec.glassFrosted,
@@ -206,6 +343,8 @@ fun CardBackgroundLayer(
             else -> null
         }
     }
+    // 透明度：缩放玻璃表面存在感（竖纹明暗、色调、光泽、磨砂颗粒），折射位移本身保留
+    val glassOverlayAlpha = spec.glassTransparency.coerceIn(0f, 1f)
 
     Box(modifier.onSizeChanged { cardWidthPx = it.width.toFloat() }) {
         Box(
@@ -237,38 +376,45 @@ fun CardBackgroundLayer(
 
         when {
             runtimeGlass -> {
-                // 柱面明暗竖纹（高光/阴影/凹槽），周期 = 条纹间距
-                RidgesOverlay(spacingPx = ridgeSpacingPx)
-                // 玻璃色调
+                // 透明度统一作用在玻璃表面层（竖纹 + 色调 + 光泽）上
                 Box(
                     Modifier
                         .fillMaxSize()
-                        .background(
-                            Brush.linearGradient(
-                                colors = listOf(
-                                    Color(0xFFAACDFF).copy(alpha = 0.14f),
-                                    Color.White.copy(alpha = 0.02f),
-                                    Color(0xFF96BEFF).copy(alpha = 0.10f),
-                                    Color(0xFFC8E1FF).copy(alpha = 0.16f)
-                                ),
-                                start = Offset.Zero,
-                                end = Offset.Infinite
+                        .graphicsLayer { alpha = glassOverlayAlpha }
+                ) {
+                    // 柱面明暗竖纹（高光/阴影/凹槽），周期 = 条纹间距
+                    RidgesOverlay(spacingPx = ridgeSpacingPx)
+                    // 玻璃色调
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.linearGradient(
+                                    colors = listOf(
+                                        Color(0xFFAACDFF).copy(alpha = 0.14f),
+                                        Color.White.copy(alpha = 0.02f),
+                                        Color(0xFF96BEFF).copy(alpha = 0.10f),
+                                        Color(0xFFC8E1FF).copy(alpha = 0.16f)
+                                    ),
+                                    start = Offset.Zero,
+                                    end = Offset.Infinite
+                                )
                             )
-                        )
-                )
-                // 表面光泽：上下边缘高光
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .background(
-                            Brush.verticalGradient(
-                                0f to Color.White.copy(alpha = 0.20f),
-                                0.16f to Color.Transparent,
-                                0.84f to Color.Transparent,
-                                1f to Color.White.copy(alpha = 0.10f)
+                    )
+                    // 表面光泽：上下边缘高光
+                    Box(
+                        Modifier
+                            .fillMaxSize()
+                            .background(
+                                Brush.verticalGradient(
+                                    0f to Color.White.copy(alpha = 0.20f),
+                                    0.16f to Color.Transparent,
+                                    0.84f to Color.Transparent,
+                                    1f to Color.White.copy(alpha = 0.10f)
+                                )
                             )
-                        )
-                )
+                    )
+                }
             }
             glassActive -> {
                 // API < 33 回退：静态竖纹线条
@@ -286,14 +432,20 @@ fun CardBackgroundLayer(
 
         // 磨砂颗粒：图片背景开启光栅玻璃 + 磨砂时叠加（配合 graphicsLayer 的雾面模糊形成真实磨砂质感）
         if (spec.type == CardBackgroundType.IMAGE && spec.glassEnabled && spec.glassFrosted && loadedBitmap != null) {
-            FrostNoiseOverlay()
+            Box(
+                Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { alpha = glassOverlayAlpha }
+            ) {
+                FrostNoiseOverlay()
+            }
         }
     }
 }
 
 /** 缓存 AGSL shader 实例（编译一次），uniform 在每帧 graphicsLayer 中更新；编译失败输出日志便于排查 */
 @Composable
-private fun rememberFlutedShader(): RuntimeShader? {
+internal fun rememberFlutedShader(): RuntimeShader? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
     return remember {
         runCatching { RuntimeShader(FLUTED_ADSL) }
@@ -471,3 +623,70 @@ suspend fun decodeCardBackgroundBitmap(context: Context, uri: android.net.Uri): 
 /** 在 IO 线程导入用户裁剪好的位图（压缩+转存），供对话框调用 */
 suspend fun importCardBackgroundBitmap(context: Context, bitmap: Bitmap): String? =
     withContext(Dispatchers.IO) { CardBackgroundImageManager.importBitmap(context, bitmap) }
+
+/**
+ * 大数字字体渲染效果 Modifier：承载字体效果中的 BLUR / GLASS 渲染。
+ * - BLUR：高斯模糊（API 31+）
+ * - GLASS：复用光栅玻璃柱面折射模型 + 模糊 + 透明度（API 33+；不满足时降级为 BLUR，再降为无效果）
+ * - 其余效果（AUTO/SOLID/MIXED 仅改颜色）或 API 不足时原样渲染
+ * RenderEffect 按参数缓存，避免 graphicsLayer 重复赋新对象导致的一帧空白闪烁。
+ */
+fun Modifier.numberTextEffect(spec: NumberEffectSpec?): Modifier = composed {
+    val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
+    val supportsGlass = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
+    val activeEffect = when (spec?.effect) {
+        NumberFontEffect.BLUR -> if (supportsBlur) NumberFontEffect.BLUR else null
+        NumberFontEffect.GLASS -> when {
+            supportsGlass -> NumberFontEffect.GLASS
+            supportsBlur -> NumberFontEffect.BLUR // API 31..32：降级为纯模糊
+            else -> null
+        }
+        else -> null
+    }
+
+    if (spec == null || activeEffect == null) {
+        Modifier
+    } else {
+        val density = LocalDensity.current
+        val renderEffect: androidx.compose.ui.graphics.RenderEffect? = if (activeEffect == NumberFontEffect.BLUR) {
+            val blurPx = with(density) { spec.blurRadius.coerceIn(0f, 24f).dp.toPx() }
+            remember(blurPx) {
+                if (blurPx > 0f) {
+                    RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
+                } else null
+            }
+        } else {
+            // GLASS：柱面折射 + 模糊 + 透明度（文本层采用固定棱纹间距 28dp）
+            val flutedShader = rememberFlutedShader()
+            val spacingPx = with(density) { 28.dp.toPx() }
+            val glassBlurPx = with(density) { spec.glassBlur.coerceIn(0f, 24f).dp.toPx() }
+            remember(flutedShader, spacingPx, spec.glassRefraction, glassBlurPx) {
+                if (flutedShader == null) {
+                    null
+                } else {
+                    flutedShader.setFloatUniform("spacing", spacingPx)
+                    flutedShader.setFloatUniform("distort", spacingPx * spec.glassRefraction.coerceIn(0f, 0.5f))
+                    val distortEffect = RenderEffect.createRuntimeShaderEffect(flutedShader, "content")
+                    if (glassBlurPx > 0f) {
+                        // 与背景玻璃渲染链一致：先模糊，再折射位移
+                        val blurEffect = RenderEffect.createBlurEffect(glassBlurPx, glassBlurPx, Shader.TileMode.CLAMP)
+                        RenderEffect.createChainEffect(distortEffect, blurEffect)
+                    } else {
+                        distortEffect
+                    }
+                }
+            }?.asComposeRenderEffect()
+        }
+
+        if (renderEffect != null) {
+            Modifier.graphicsLayer {
+                if (activeEffect == NumberFontEffect.GLASS) {
+                    alpha = spec.glassTransparency.coerceIn(0.1f, 1f)
+                }
+                this.renderEffect = renderEffect
+            }
+        } else {
+            Modifier
+        }
+    }
+}

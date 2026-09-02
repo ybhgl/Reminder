@@ -240,7 +240,17 @@ data class ReminderUiState(
     val cardBackgroundGlassEnabled: Boolean = false,
     val cardBackgroundGlassFrosted: Boolean = false,
     val cardBackgroundGlassDensity: Float = 0.5f,
-    val cardBackgroundTextColor: String = ""
+    val cardBackgroundGlassRefraction: Float = 0.24f,
+    val cardBackgroundGlassTransparency: Float = 1f,
+    val cardBackgroundGlassBlur: Float = 12f,
+    val cardBackgroundTextColor: String = "",
+    val customFontEffect: String = "AUTO",
+    val customFontColor: String = "",
+    val customFontOpacity: Float = 1f,
+    val customFontBlur: Float = 8f,
+    val customFontGlassRefraction: Float = 0.24f,
+    val customFontGlassTransparency: Float = 0.7f,
+    val customFontGlassBlur: Float = 4f
 )
 
 fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
@@ -264,7 +274,17 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
     cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
     cardBackgroundGlassDensity = cardBackgroundGlassDensity,
-    cardBackgroundTextColor = cardBackgroundTextColor
+    cardBackgroundGlassRefraction = cardBackgroundGlassRefraction,
+    cardBackgroundGlassTransparency = cardBackgroundGlassTransparency,
+    cardBackgroundGlassBlur = cardBackgroundGlassBlur,
+    cardBackgroundTextColor = cardBackgroundTextColor,
+    customFontEffect = customFontEffect,
+    customFontColor = customFontColor,
+    customFontOpacity = customFontOpacity,
+    customFontBlur = customFontBlur,
+    customFontGlassRefraction = customFontGlassRefraction,
+    customFontGlassTransparency = customFontGlassTransparency,
+    customFontGlassBlur = customFontGlassBlur
 )
 
 fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
@@ -288,5 +308,15 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
     cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
     cardBackgroundGlassDensity = cardBackgroundGlassDensity,
-    cardBackgroundTextColor = cardBackgroundTextColor
+    cardBackgroundGlassRefraction = cardBackgroundGlassRefraction,
+    cardBackgroundGlassTransparency = cardBackgroundGlassTransparency,
+    cardBackgroundGlassBlur = cardBackgroundGlassBlur,
+    cardBackgroundTextColor = cardBackgroundTextColor,
+    customFontEffect = customFontEffect,
+    customFontColor = customFontColor,
+    customFontOpacity = customFontOpacity,
+    customFontBlur = customFontBlur,
+    customFontGlassRefraction = customFontGlassRefraction,
+    customFontGlassTransparency = customFontGlassTransparency,
+    customFontGlassBlur = customFontGlassBlur
 )

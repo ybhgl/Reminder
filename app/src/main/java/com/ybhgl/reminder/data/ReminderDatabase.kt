@@ -11,7 +11,7 @@ import kotlinx.serialization.ExperimentalSerializationApi
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 
-@Database(entities = [ReminderItem::class, TagItem::class], version = 9, exportSchema = false)
+@Database(entities = [ReminderItem::class, TagItem::class], version = 10, exportSchema = false)
 @TypeConverters(com.ybhgl.reminder.data.TypeConverters::class)
 abstract class ReminderDatabase : RoomDatabase() {
 
@@ -96,6 +96,21 @@ abstract class ReminderDatabase : RoomDatabase() {
             }
         }
 
+        private val MIGRATION_9_10 = object : Migration(9, 10) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL("ALTER TABLE reminders ADD COLUMN cardBackgroundGlassRefraction REAL NOT NULL DEFAULT 0.24")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN cardBackgroundGlassTransparency REAL NOT NULL DEFAULT 1.0")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN cardBackgroundGlassBlur REAL NOT NULL DEFAULT 12.0")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customFontEffect TEXT NOT NULL DEFAULT 'AUTO'")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customFontColor TEXT NOT NULL DEFAULT ''")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customFontOpacity REAL NOT NULL DEFAULT 1.0")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customFontBlur REAL NOT NULL DEFAULT 8.0")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customFontGlassRefraction REAL NOT NULL DEFAULT 0.24")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customFontGlassTransparency REAL NOT NULL DEFAULT 0.7")
+                db.execSQL("ALTER TABLE reminders ADD COLUMN customFontGlassBlur REAL NOT NULL DEFAULT 4.0")
+            }
+        }
+
         fun getDatabase(context: Context): ReminderDatabase {
             return INSTANCE ?: synchronized(this) {
                 val instance = Room.databaseBuilder(
@@ -103,7 +118,7 @@ abstract class ReminderDatabase : RoomDatabase() {
                     ReminderDatabase::class.java,
                     "reminder_database"
                 )
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5, MIGRATION_5_6, MIGRATION_6_7, MIGRATION_7_8, MIGRATION_8_9, MIGRATION_9_10)
                 .fallbackToDestructiveMigration()
                 .build()
                 INSTANCE = instance

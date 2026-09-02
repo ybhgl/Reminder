@@ -99,6 +99,7 @@ import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.ReminderCustomizationSection
+import com.ybhgl.reminder.ui.personalization.toPersonalizationConfig
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.CardBackgroundLayer
 import com.ybhgl.reminder.ui.common.CardBackgroundSpec
@@ -462,35 +463,16 @@ fun ShareScreen(
                             fontWeight = FontWeight.Bold
                         )
                         Spacer(modifier = Modifier.height(4.dp))
+                        // 分享会话隐藏背景设置（分享页有独立的图片背景定制入口），仅保留卡片颜色与数字字体
                         ReminderCustomizationSection(
-                            isCustomized = options.isCustomized,
-                            loaded = reminder != null,
-                            onCustomizedChange = { checked ->
-                                val newColor = if (checked) options.customHeaderColor else ""
-                                val newFont = if (checked) options.customFont.ifEmpty { "Default" } else ""
-                                viewModel.updateCustomization(checked, newColor, newFont)
-                            },
-                            customHeaderColor = options.customHeaderColor,
-                            onHeaderColorChange = { colorHex ->
-                                viewModel.updateCustomization(options.isCustomized, colorHex, options.customFont)
-                            },
-                            customFont = options.customFont,
-                            onFontChange = { font ->
-                                viewModel.updateCustomization(options.isCustomized, options.customHeaderColor, font)
-                            },
+                            config = options.toPersonalizationConfig(),
                             reminderType = previewItem.type,
-                            cardBackgroundType = options.cardBackgroundType,
-                            cardBackgroundColor = options.cardBackgroundColor,
-                            cardBackgroundImagePath = options.cardBackgroundImagePath,
-                            cardBackgroundBlurRadius = options.cardBackgroundBlurRadius,
-                            cardBackgroundGlassEnabled = options.cardBackgroundGlassEnabled,
-                            cardBackgroundGlassFrosted = options.cardBackgroundGlassFrosted,
-                            cardBackgroundGlassDensity = options.cardBackgroundGlassDensity,
-                            cardBackgroundTextColor = options.cardBackgroundTextColor,
-                            onBackgroundConfirmed = { result ->
+                            showBackgroundOption = false,
+                            loaded = reminder != null,
+                            onPersonalizationResult = { result ->
                                 // 分享会话不写库：旧图仍被数据库引用，不删除；
                                 // 新导入的图片若最终未使用，由 pruneOrphans 统一清理
-                                viewModel.updateCardBackground(result)
+                                viewModel.updatePersonalization(result)
                             }
                         )
                     }

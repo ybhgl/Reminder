@@ -43,6 +43,15 @@ import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
+import com.ybhgl.reminder.ui.common.cardBackgroundAverageColor
+import com.ybhgl.reminder.ui.common.cardBackgroundSpec
+import com.ybhgl.reminder.ui.common.numberEffectSpec
+import com.ybhgl.reminder.ui.common.numberTextEffect
+import com.ybhgl.reminder.ui.common.resolveEffectiveFontEffect
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.ybhgl.reminder.ui.personalization.PersonalizationContract
+import com.ybhgl.reminder.ui.personalization.PersonalizationInput
+import com.ybhgl.reminder.ui.personalization.toPersonalizationConfig
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayInfo
@@ -105,34 +114,24 @@ fun DetailScreen(
         val latestReminderItems by rememberUpdatedState(reminderItems)
         var currentId by remember { mutableIntStateOf(viewModel.reminderId) }
         var editingReminderForTag by remember { mutableStateOf<ReminderItem?>(null) }
-        var reminderItemToCustomize by remember { mutableStateOf<ReminderItem?>(null) }
-        var tempIsCustomized by remember { mutableStateOf(false) }
-        var tempHeaderColor by remember { mutableStateOf("") }
-        var tempFont by remember { mutableStateOf("") }
-        var tempBgType by remember { mutableStateOf("DEFAULT") }
-        var tempBgColor by remember { mutableStateOf("") }
-        var tempBgImagePath by remember { mutableStateOf("") }
-        var tempBgBlur by remember { mutableStateOf(0f) }
-        var tempBgGlass by remember { mutableStateOf(false) }
-        var tempBgFrosted by remember { mutableStateOf(false) }
-        var tempBgDensity by remember { mutableStateOf(0.5f) }
-        var tempBgTextColor by remember { mutableStateOf("") }
+        // 正在个性化编辑的提醒（打开 Activity 前记录，结果返回时应用）
+        var customizingItem by remember { mutableStateOf<ReminderItem?>(null) }
 
-        // 打开个性化对话框时同步初始化 temp 状态。
-        // 若用 LaunchedEffect 同步会晚一帧：首帧 temp 为默认值导致背景卡片整帧消失（闪烁）。
-        fun openCustomizeDialog(item: ReminderItem) {
-            tempIsCustomized = item.isCustomized
-            tempHeaderColor = item.customHeaderColor
-            tempFont = item.customFont
-            tempBgType = item.cardBackgroundType
-            tempBgColor = item.cardBackgroundColor
-            tempBgImagePath = item.cardBackgroundImagePath
-            tempBgBlur = item.cardBackgroundBlurRadius
-            tempBgGlass = item.cardBackgroundGlassEnabled
-            tempBgFrosted = item.cardBackgroundGlassFrosted
-            tempBgDensity = item.cardBackgroundGlassDensity
-            tempBgTextColor = item.cardBackgroundTextColor
-            reminderItemToCustomize = item
+        // 个性化设置页结果回写：旧背景图被替换或恢复默认时清理残留图片并入库
+        val personalizationLauncher = rememberLauncherForActivityResult(PersonalizationContract()) { result ->
+            result ?: return@rememberLauncherForActivityResult
+            val item = customizingItem
+            customizingItem = null
+            if (item != null) {
+                val oldPath = item.cardBackgroundImagePath
+                val newPath = result.cardBackgroundImagePath
+                if (oldPath.isNotEmpty() && oldPath != newPath) {
+                    customizeScope.launch {
+                        CardBackgroundImageManager.deleteImage(context, oldPath)
+                    }
+                }
+                viewModel.updateReminderCustomization(context, item, result)
+            }
         }
 
         // Sync currentId/viewModel active reminder item when page changes (via user swipe)
@@ -188,144 +187,6 @@ fun DetailScreen(
                 )
             }
 
-            if (reminderItemToCustomize != null) {
-                val item = reminderItemToCustomize!!
-
-                fun handleCustomizedChange(checked: Boolean) {
-                    tempIsCustomized = checked
-                    if (checked) {
-                        if (tempFont.isEmpty()) {
-                            tempFont = "Default"
-                        }
-                    } else {
-                        tempHeaderColor = ""
-                        tempFont = ""
-                        tempBgType = "DEFAULT"
-                        tempBgColor = ""
-                        tempBgImagePath = ""
-                        tempBgBlur = 0f
-                        tempBgGlass = false
-                        tempBgFrosted = false
-                        tempBgDensity = 0.5f
-                        tempBgTextColor = ""
-                    }
-                }
-
-                Dialog(
-                    onDismissRequest = { reminderItemToCustomize = null },
-                    properties = DialogProperties(
-                        usePlatformDefaultWidth = false,
-                        decorFitsSystemWindows = false
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures(onTap = { reminderItemToCustomize = null })
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth(0.9f)
-                                .widthIn(max = 440.dp)
-                                .wrapContentHeight()
-                                .pointerInput(Unit) {
-                                    detectTapGestures { }
-                                },
-                            shape = RoundedCornerShape(24.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 6.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .padding(24.dp)
-                                    .fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "个性化设置",
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                ReminderCustomizationSection(
-                                    isCustomized = tempIsCustomized,
-                                    onCustomizedChange = { handleCustomizedChange(it) },
-                                    customHeaderColor = tempHeaderColor,
-                                    onHeaderColorChange = { tempHeaderColor = it },
-                                    customFont = tempFont,
-                                    onFontChange = { tempFont = it },
-                                    reminderType = item.type,
-                                    cardBackgroundType = tempBgType,
-                                    cardBackgroundColor = tempBgColor,
-                                    cardBackgroundImagePath = tempBgImagePath,
-                                    cardBackgroundBlurRadius = tempBgBlur,
-                                    cardBackgroundGlassEnabled = tempBgGlass,
-                                    cardBackgroundGlassFrosted = tempBgFrosted,
-                                    cardBackgroundGlassDensity = tempBgDensity,
-                                    cardBackgroundTextColor = tempBgTextColor,
-                                    onBackgroundConfirmed = { result ->
-                                        // 旧背景图被替换或恢复默认时清理残留图片
-                                        val oldPath = tempBgImagePath
-                                        val newPath = result.imagePath
-                                        if (oldPath.isNotEmpty() && oldPath != newPath) {
-                                            customizeScope.launch {
-                                                CardBackgroundImageManager.deleteImage(context, oldPath)
-                                            }
-                                        }
-                                        tempBgType = result.type.name
-                                        tempBgColor = result.colorHex
-                                        tempBgImagePath = result.imagePath
-                                        tempBgBlur = result.blurRadius
-                                        tempBgGlass = result.glassEnabled
-                                        tempBgFrosted = result.glassFrosted
-                                        tempBgDensity = result.glassDensity
-                                        tempBgTextColor = result.textColor
-                                    }
-                                )
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    TextButton(onClick = { reminderItemToCustomize = null }) {
-                                        Text("取消")
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    TextButton(
-                                        onClick = {
-                                            viewModel.updateReminderCustomization(
-                                                context = context,
-                                                reminder = item,
-                                                isCustomized = tempIsCustomized,
-                                                customHeaderColor = tempHeaderColor,
-                                                customFont = tempFont,
-                                                cardBackgroundType = tempBgType,
-                                                cardBackgroundColor = tempBgColor,
-                                                cardBackgroundImagePath = tempBgImagePath,
-                                                cardBackgroundBlurRadius = tempBgBlur,
-                                                cardBackgroundGlassEnabled = tempBgGlass,
-                                                cardBackgroundGlassFrosted = tempBgFrosted,
-                                                cardBackgroundGlassDensity = tempBgDensity,
-                                                cardBackgroundTextColor = tempBgTextColor
-                                            )
-                                            reminderItemToCustomize = null
-                                        }
-                                    ) {
-                                        Text("保存", fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             val configuration = LocalConfiguration.current
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -352,27 +213,8 @@ fun DetailScreen(
                 ) { pageIndex ->
                     val pageItem = reminderItems.getOrNull(pageIndex)
                     if (pageItem != null) {
-                        val isCustomizingThisItem = reminderItemToCustomize?.id == pageItem.id
-                        val displayReminderItem = if (isCustomizingThisItem) {
-                            pageItem.copy(
-                                isCustomized = tempIsCustomized,
-                                customHeaderColor = tempHeaderColor,
-                                customFont = tempFont,
-                                cardBackgroundType = tempBgType,
-                                cardBackgroundColor = tempBgColor,
-                                cardBackgroundImagePath = tempBgImagePath,
-                                cardBackgroundBlurRadius = tempBgBlur,
-                                cardBackgroundGlassEnabled = tempBgGlass,
-                                cardBackgroundGlassFrosted = tempBgFrosted,
-                                cardBackgroundGlassDensity = tempBgDensity,
-                                cardBackgroundTextColor = tempBgTextColor
-                            )
-                        } else {
-                            pageItem
-                        }
-
                         ReminderDetailPagerContent(
-                            displayReminderItem = displayReminderItem,
+                            displayReminderItem = pageItem,
                             originalPageItem = pageItem,
                             isLandscape = isLandscape,
                             uiState = uiState,
@@ -380,7 +222,15 @@ fun DetailScreen(
                             showNotesMap = showNotesMap,
                             viewModel = viewModel,
                             onEditTag = { editingReminderForTag = it },
-                            onCustomize = { openCustomizeDialog(it) },
+                            onCustomize = { item ->
+                                customizingItem = item
+                                personalizationLauncher.launch(
+                                    PersonalizationInput(
+                                        config = item.toPersonalizationConfig(),
+                                        reminderType = item.type.name
+                                    )
+                                )
+                            },
                             onShareClick = {
                                 currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
                             },
@@ -769,7 +619,12 @@ fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
 }
 
 @Composable
-private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: Boolean = false) {
+private fun DayCountRow(
+    dayCount: Int,
+    visuals: ReminderCardVisuals,
+    isCountUp: Boolean = false,
+    effectSpec: com.ybhgl.reminder.ui.common.NumberEffectSpec? = null
+) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
     Row(
@@ -791,7 +646,8 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: 
             ),
             modifier = Modifier
                 .weight(1f, fill = false)
-                .alignByBaseline(),
+                .alignByBaseline()
+                .numberTextEffect(effectSpec),
             checkHeight = true
         )
         Spacer(modifier = Modifier.width(6.dp))
@@ -821,21 +677,33 @@ fun ReminderDetailCard(
     val visuals = displayInfo.visuals
     val density = androidx.compose.ui.platform.LocalDensity.current.density
 
-    // 自定义卡片背景：完整覆盖整卡，前景文字按背景亮度实时反色
+    // 自定义卡片背景：完整覆盖整卡，前景文字按背景亮度实时反色；
+    // 数字字体效果按范围规则覆盖（自定义背景→全卡文字；默认背景→仅数字且仅 SOLID）
     val backgroundSpec = visuals.backgroundSpec
     val backgroundBitmap = if (backgroundSpec?.type == com.ybhgl.reminder.ui.common.CardBackgroundType.IMAGE) {
         com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap(backgroundSpec.imagePath)
     } else null
     val hasCustomBackground = backgroundSpec != null
+    val effectSpec = if (reminderItem.isCustomized) reminderItem.numberEffectSpec else null
+    val numberRenderSpec: com.ybhgl.reminder.ui.common.NumberEffectSpec?
     val effectiveVisuals = if (backgroundSpec != null) {
         val bgLuminance = com.ybhgl.reminder.ui.common.cardBackgroundLuminance(backgroundSpec, backgroundBitmap)
-        val foreground = com.ybhgl.reminder.ui.common.resolveCardBackgroundForeground(backgroundSpec, bgLuminance)
+        val bgAverage = cardBackgroundAverageColor(backgroundSpec, backgroundBitmap)
+        val resolved = resolveEffectiveFontEffect(effectSpec, backgroundSpec, bgLuminance, bgAverage)
+        val foreground = resolved.cardTextColor
+            ?: com.ybhgl.reminder.ui.common.resolveCardBackgroundForeground(backgroundSpec, bgLuminance)
+        numberRenderSpec = resolved.numberRender
         visuals.copy(
             headerContentColor = foreground,
-            numberColor = foreground,
+            numberColor = resolved.numberColor ?: foreground,
             secondaryTextColor = foreground.copy(alpha = 0.92f)
         )
-    } else visuals
+    } else {
+        val resolved = resolveEffectiveFontEffect(effectSpec, null, 0.5f, Color.Gray)
+        val numberOverride = resolved.numberColor
+        numberRenderSpec = null
+        if (numberOverride != null) visuals.copy(numberColor = numberOverride) else visuals
+    }
 
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -918,7 +786,8 @@ fun ReminderDetailCard(
                             DayCountRow(
                                 dayCount = displayInfo.dayCount,
                                 visuals = effectiveVisuals,
-                                isCountUp = reminderItem.type == ReminderType.COUNT_UP
+                                isCountUp = reminderItem.type == ReminderType.COUNT_UP,
+                                effectSpec = numberRenderSpec
                             )
                         }
 

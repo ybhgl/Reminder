@@ -117,7 +117,8 @@ class BackupAndRestoreViewModel(
             val customColorSeed = customColorFlow(context).first()
             val scrollBehavior = scrollBehaviorFlow(context).first()
             val homeCategoryEnabled = homeCategoryFlow(context).first()
-    
+            val fontEffectGlobalEnabled = com.ybhgl.reminder.data.fontEffectGlobalFlow(context).first()
+
             val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
             val webDavServer = BackupPreferences.webDavServerFlow(context).first()
             val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()
@@ -144,6 +145,7 @@ class BackupAndRestoreViewModel(
                 customColorSeed = customColorSeed,
                 scrollBehavior = scrollBehavior,
                 homeCategoryEnabled = homeCategoryEnabled,
+                fontEffectGlobalEnabled = fontEffectGlobalEnabled,
                 cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
                     .collectForBackup(context, reminders)
             )
@@ -227,6 +229,7 @@ class BackupAndRestoreViewModel(
         val customColorSeed = customColorFlow(context).first()
         val scrollBehavior = scrollBehaviorFlow(context).first()
         val homeCategoryEnabled = homeCategoryFlow(context).first()
+        val fontEffectGlobalEnabled = com.ybhgl.reminder.data.fontEffectGlobalFlow(context).first()
 
         val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
         val webDavServer = BackupPreferences.webDavServerFlow(context).first()
@@ -254,6 +257,7 @@ class BackupAndRestoreViewModel(
             customColorSeed = customColorSeed,
             scrollBehavior = scrollBehavior,
             homeCategoryEnabled = homeCategoryEnabled,
+            fontEffectGlobalEnabled = fontEffectGlobalEnabled,
             cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
                 .collectForBackup(context, reminders)
         )
@@ -523,6 +527,7 @@ class BackupAndRestoreViewModel(
             backupData.customColorSeed?.let { saveCustomColor(context, it) }
             backupData.scrollBehavior?.let { saveScrollBehavior(context, it) }
             backupData.homeCategoryEnabled?.let { saveHomeCategory(context, it) }
+            backupData.fontEffectGlobalEnabled?.let { com.ybhgl.reminder.data.saveFontEffectGlobal(context, it) }
 
             // Update last backup to clear warning
             BackupPreferences.saveLastBackupTimestamp(context, System.currentTimeMillis())

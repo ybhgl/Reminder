@@ -9,6 +9,8 @@ import com.ybhgl.reminder.data.ReminderRepository
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.TagRepository
+import com.ybhgl.reminder.ui.personalization.PersonalizationConfig
+import com.ybhgl.reminder.ui.personalization.withPersonalizationConfig
 import com.ybhgl.reminder.util.BirthdayListItem
 import com.ybhgl.reminder.util.CalendarManager
 import com.ybhgl.reminder.util.CalendarUtil
@@ -100,32 +102,10 @@ class DetailViewModel(
     fun updateReminderCustomization(
         context: Context,
         reminder: ReminderItem,
-        isCustomized: Boolean,
-        customHeaderColor: String,
-        customFont: String,
-        cardBackgroundType: String = "DEFAULT",
-        cardBackgroundColor: String = "",
-        cardBackgroundImagePath: String = "",
-        cardBackgroundBlurRadius: Float = 0f,
-        cardBackgroundGlassEnabled: Boolean = false,
-        cardBackgroundGlassFrosted: Boolean = false,
-        cardBackgroundGlassDensity: Float = 0.5f,
-        cardBackgroundTextColor: String = ""
+        config: PersonalizationConfig
     ) {
         viewModelScope.launch {
-            val updatedReminder = reminder.copy(
-                isCustomized = isCustomized,
-                customHeaderColor = customHeaderColor,
-                customFont = customFont,
-                cardBackgroundType = cardBackgroundType,
-                cardBackgroundColor = cardBackgroundColor,
-                cardBackgroundImagePath = cardBackgroundImagePath,
-                cardBackgroundBlurRadius = cardBackgroundBlurRadius,
-                cardBackgroundGlassEnabled = cardBackgroundGlassEnabled,
-                cardBackgroundGlassFrosted = cardBackgroundGlassFrosted,
-                cardBackgroundGlassDensity = cardBackgroundGlassDensity,
-                cardBackgroundTextColor = cardBackgroundTextColor
-            )
+            val updatedReminder = reminder.withPersonalizationConfig(config)
             reminderRepository.updateReminder(updatedReminder)
         }
     }
