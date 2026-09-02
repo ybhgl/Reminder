@@ -17,6 +17,7 @@ import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderRepository
 import com.ybhgl.reminder.ui.personalization.PersonalizationConfig
+import com.ybhgl.reminder.ui.personalization.isEffectivelyDefault
 import java.io.File
 import java.io.FileOutputStream
 import java.io.IOException
@@ -53,6 +54,10 @@ data class ShareOptions(
     val backgroundGlassFrosted: Boolean = false,
     /** 图片背景：光栅密度（0..1，越高条纹越密） */
     val backgroundGlassDensity: Float = 0.5f,
+    /** 图片背景：光栅玻璃折射度（0..0.5） */
+    val backgroundGlassRefraction: Float = 0.24f,
+    /** 图片背景：光栅玻璃透明度（0..1） */
+    val backgroundGlassTransparency: Float = 1f,
     val showLogo: Boolean = true,
     /** LOGO 颜色：""=按背景亮度自动反色，"WHITE"/"BLACK"=用户手动指定 */
     val logoColor: String = "",
@@ -195,11 +200,15 @@ class ShareViewModel(
         )
     }
 
-    /** 套用个性化设置页返回的完整配置（仅本次分享会话内生效，不写入数据库） */
+    /**
+     * 套用内嵌个性化面板回传的配置（仅本次分享会话内生效，不写入数据库）。
+     * isCustomized 按"是否等效默认"即时推导；其余字段原样保留，
+     * 不做按背景类型的清空归一化——分享会话内切换背景类型不丢失已导入的图片。
+     */
     fun updatePersonalization(config: PersonalizationConfig) {
         _shareOptions.update {
             it.copy(
-                isCustomized = config.isCustomized,
+                isCustomized = !config.isEffectivelyDefault(),
                 customHeaderColor = config.customHeaderColor,
                 customFont = config.customFont,
                 cardBackgroundType = config.cardBackgroundType,
@@ -263,6 +272,21 @@ class ShareViewModel(
     /** 图片背景：光栅密度（0..1） */
     fun updateBackgroundGlassDensity(density: Float) {
         _shareOptions.update { it.copy(backgroundGlassDensity = density) }
+    }
+
+    /** 图片背景：光栅玻璃折射度（0..0.5） */
+    fun updateBackgroundGlassRefraction(refraction: Float) {
+        _shareOptions.update { it.copy(backgroundGlassRefraction = refraction) }
+    }
+
+    /** 图片背景：光栅玻璃透明度（0..1） */
+    fun updateBackgroundGlassTransparency(transparency: Float) {
+        _shareOptions.update { it.copy(backgroundGlassTransparency = transparency) }
+    }
+
+    /** 一键重置全部分享设置（底图背景 / LOGO / 个性化）为默认值，仅影响本次会话 */
+    fun resetAll() {
+        _shareOptions.value = ShareOptions()
     }
 
     fun updateShowLogo(show: Boolean) {
