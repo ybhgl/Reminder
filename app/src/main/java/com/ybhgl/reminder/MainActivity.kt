@@ -184,6 +184,7 @@ import com.ybhgl.reminder.ui.add.ReminderSettingScreen
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
 import com.ybhgl.reminder.ui.add.FlexibleDateFilterDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.StatusBarScrim
@@ -370,26 +371,19 @@ class MainActivity : FragmentActivity() {
                         }
 
                         if (showPermissionDialog && (!isAppLockEnabled || com.ybhgl.reminder.data.AppLockState.isUnlocked.value)) {
-                            AlertDialog(
+                            AppAlertDialog(
                                 onDismissRequest = { showPermissionDialog = false },
-                                title = { Text("权限提醒") },
-                                text = { Text(permissionDialogText) },
-                                confirmButton = {
-                                    TextButton(onClick = {
-                                        showPermissionDialog = false
-                                        val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                                            data = Uri.fromParts("package", context.packageName, null)
-                                        }
-                                        context.startActivity(intent)
-                                    }) {
-                                        Text("前往设置")
+                                title = "权限提醒",
+                                text = permissionDialogText,
+                                confirmText = "前往设置",
+                                onConfirm = {
+                                    showPermissionDialog = false
+                                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                                        data = Uri.fromParts("package", context.packageName, null)
                                     }
+                                    context.startActivity(intent)
                                 },
-                                dismissButton = {
-                                    TextButton(onClick = { showPermissionDialog = false }) {
-                                        Text("取消")
-                                    }
-                                }
+                                dismissText = "取消"
                             )
                         }
                     }
@@ -1850,52 +1844,22 @@ fun ReminderListScreen(
             }
 
             if (showDeleteDialog) {
-                AlertDialog(
+                AppAlertDialog(
                     onDismissRequest = { showDeleteDialog = false },
-                    title = { Text("删除提醒") },
-                    text = { Text("确定要删除选中的 ${selectedIds.size} 条提醒吗？此操作不可恢复。") },
-                    confirmButton = {
-                        Row(
-                            modifier = Modifier.fillMaxWidth(),
-                            horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
-                        ) {
-                            Button(
-                                onClick = {
-                                    showDeleteDialog = false
-                                    val itemsToDelete = reminderListUiState.itemList.filter { it.id in reminderListUiState.selectedIds }
-                                    itemsToDelete.forEach { itemToDelete ->
-                                        com.ybhgl.reminder.util.ReminderScheduler.cancelReminder(context, itemToDelete)
-                                        com.ybhgl.reminder.util.CalendarManager.deleteEvent(context, itemToDelete)
-                                    }
-                                    viewModel.deleteSelected()
-                                },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.error,
-                                    contentColor = MaterialTheme.colorScheme.onError
-                                ),
-                                modifier = Modifier
-                                    .defaultMinSize(minWidth = 1.dp)
-                                    .requiredWidth(88.dp)
-                            ) {
-                                Text("删除")
-                            }
-                            Button(
-                                onClick = { showDeleteDialog = false },
-                                shape = RoundedCornerShape(12.dp),
-                                colors = ButtonDefaults.buttonColors(
-                                    containerColor = MaterialTheme.colorScheme.primary,
-                                    contentColor = MaterialTheme.colorScheme.onPrimary
-                                ),
-                                modifier = Modifier
-                                    .defaultMinSize(minWidth = 1.dp)
-                                    .requiredWidth(88.dp)
-                            ) {
-                                Text("取消")
-                            }
+                    title = "删除提醒",
+                    text = "确定要删除选中的 ${selectedIds.size} 条提醒吗？此操作不可恢复。",
+                    confirmText = "删除",
+                    onConfirm = {
+                        showDeleteDialog = false
+                        val itemsToDelete = reminderListUiState.itemList.filter { it.id in reminderListUiState.selectedIds }
+                        itemsToDelete.forEach { itemToDelete ->
+                            com.ybhgl.reminder.util.ReminderScheduler.cancelReminder(context, itemToDelete)
+                            com.ybhgl.reminder.util.CalendarManager.deleteEvent(context, itemToDelete)
                         }
+                        viewModel.deleteSelected()
                     },
-                    dismissButton = {}
+                    dismissText = "取消",
+                    destructive = true
                 )
             }
 

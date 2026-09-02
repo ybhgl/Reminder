@@ -35,6 +35,7 @@ import com.tyme.lunar.LunarDay
 import com.tyme.lunar.LunarMonth
 import com.tyme.lunar.LunarYear
 import com.tyme.solar.SolarDay
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.util.CalendarUtil
 import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.toPersistentList
@@ -832,16 +833,10 @@ fun UnifiedDatePickerDialog(
             }
         }
 
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showQuickInputDialog = false },
-            title = {
-                Text(
-                    text = "输入日期",
-                    style = MaterialTheme.typography.titleMedium,
-                    fontWeight = FontWeight.Bold
-                )
-            },
-            text = {
+            title = "输入日期",
+            content = {
                 Column(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalAlignment = Alignment.CenterHorizontally
@@ -1069,72 +1064,63 @@ fun UnifiedDatePickerDialog(
                     }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        val yr = yearInput.toIntOrNull()
-                        val m = monthInput.toIntOrNull()
-                        val d = dayInput.toIntOrNull()
-                        if (yr != null && m != null && d != null && validationResult == null) {
-                            coroutineScope.launch {
-                                isUpdating = true
-                                if (isLunarSelected) {
-                                    // Sync back to Lunar states
-                                    try {
-                                        val solar = SolarDay.fromYmd(yr, m, d)
-                                        val lunar = solar.getLunarDay()
-                                        val targetYear = lunar.year
-                                        val targetMonthName = lunar.getLunarMonth()!!.getName()
-                                        val targetDay = lunar.day
+            confirmText = "确认",
+            onConfirm = {
+                val yr = yearInput.toIntOrNull()
+                val m = monthInput.toIntOrNull()
+                val d = dayInput.toIntOrNull()
+                if (yr != null && m != null && d != null && validationResult == null) {
+                    coroutineScope.launch {
+                        isUpdating = true
+                        if (isLunarSelected) {
+                            // Sync back to Lunar states
+                            try {
+                                val solar = SolarDay.fromYmd(yr, m, d)
+                                val lunar = solar.getLunarDay()
+                                val targetYear = lunar.year
+                                val targetMonthName = lunar.getLunarMonth()!!.getName()
+                                val targetDay = lunar.day
 
-                                        selectedYear = targetYear
-                                        activeMonthName = targetMonthName
-                                        activeDay = targetDay
+                                selectedYear = targetYear
+                                activeMonthName = targetMonthName
+                                activeDay = targetDay
 
-                                        val yIdx = yearOptions.indexOfFirst { it.value == targetYear }.coerceAtLeast(0)
-                                        yearPickerState.scrollToIndex(yIdx)
+                                val yIdx = yearOptions.indexOfFirst { it.value == targetYear }.coerceAtLeast(0)
+                                yearPickerState.scrollToIndex(yIdx)
 
-                                        val mOpts = LunarYear.fromYear(targetYear).getMonths()
-                                        val mIdx = mOpts.indexOfFirst { it.getName() == targetMonthName }.coerceAtLeast(0)
-                                        monthPickerState.scrollToIndex(mIdx)
+                                val mOpts = LunarYear.fromYear(targetYear).getMonths()
+                                val mIdx = mOpts.indexOfFirst { it.getName() == targetMonthName }.coerceAtLeast(0)
+                                monthPickerState.scrollToIndex(mIdx)
 
-                                        val dIdx = (targetDay - 1).coerceIn(0, (mOpts.getOrNull(mIdx)?.getDayCount() ?: 30) - 1)
-                                        dayPickerState.scrollToIndex(dIdx)
-                                    } catch (e: Exception) {
-                                        e.printStackTrace()
-                                    }
-                                } else {
-                                    // Sync back to Solar states
-                                    selectedSolarYear = yr
-                                    selectedSolarMonth = m
-                                    selectedSolarDay = d
-
-                                    val yIdx = solarYearOptions.indexOfFirst { it.value == yr }.coerceAtLeast(0)
-                                    solarYearPickerState.scrollToIndex(yIdx)
-
-                                    val mIdx = solarMonthOptions.indexOfFirst { it.value == m }.coerceAtLeast(0)
-                                    solarMonthPickerState.scrollToIndex(mIdx)
-
-                                    val maxD = java.time.YearMonth.of(yr, m).lengthOfMonth()
-                                    val dIdx = (d - 1).coerceIn(0, maxD - 1)
-                                    solarDayPickerState.scrollToIndex(dIdx)
-                                }
-                                kotlinx.coroutines.delay(100)
-                                isUpdating = false
+                                val dIdx = (targetDay - 1).coerceIn(0, (mOpts.getOrNull(mIdx)?.getDayCount() ?: 30) - 1)
+                                dayPickerState.scrollToIndex(dIdx)
+                            } catch (e: Exception) {
+                                e.printStackTrace()
                             }
-                            showQuickInputDialog = false
+                        } else {
+                            // Sync back to Solar states
+                            selectedSolarYear = yr
+                            selectedSolarMonth = m
+                            selectedSolarDay = d
+
+                            val yIdx = solarYearOptions.indexOfFirst { it.value == yr }.coerceAtLeast(0)
+                            solarYearPickerState.scrollToIndex(yIdx)
+
+                            val mIdx = solarMonthOptions.indexOfFirst { it.value == m }.coerceAtLeast(0)
+                            solarMonthPickerState.scrollToIndex(mIdx)
+
+                            val maxD = java.time.YearMonth.of(yr, m).lengthOfMonth()
+                            val dIdx = (d - 1).coerceIn(0, maxD - 1)
+                            solarDayPickerState.scrollToIndex(dIdx)
                         }
-                    },
-                    enabled = validationResult == null
-                ) {
-                    Text("确认")
+                        kotlinx.coroutines.delay(100)
+                        isUpdating = false
+                    }
+                    showQuickInputDialog = false
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showQuickInputDialog = false }) {
-                    Text("取消")
-                }
-            }
+            confirmEnabled = validationResult == null,
+            dismissText = "取消"
         )
     }
 }

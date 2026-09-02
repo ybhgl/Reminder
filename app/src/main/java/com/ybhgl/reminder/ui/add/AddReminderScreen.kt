@@ -109,6 +109,7 @@ import androidx.compose.foundation.layout.requiredWidth
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.RepeatInfo
 import com.ybhgl.reminder.data.RepeatUnit
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.common.TonalCardRow
@@ -385,52 +386,21 @@ fun AddReminderScreen(
                     }
 
                     if (showDeleteConfirmDialog) {
-                        AlertDialog(
+                        AppAlertDialog(
                             onDismissRequest = { showDeleteConfirmDialog = false },
-                            title = { Text("确认删除") },
-                            text = { Text("确定要删除此提醒吗？") },
-                            confirmButton = {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterHorizontally)
-                                ) {
-                                    Button(
-                                        onClick = {
-                                            showDeleteConfirmDialog = false
-                                            coroutineScope.launch {
-                                                if (viewModel.deleteReminder(context)) {
-                                                    onDeleted()
-                                                }
-                                            }
-                                        },
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.error,
-                                            contentColor = MaterialTheme.colorScheme.onError
-                                        ),
-                                        modifier = modifier
-                                            .defaultMinSize(minWidth = 1.dp)
-                                            .requiredWidth(88.dp)
-                                    ) {
-                                        Text("删除")
-                                    }
-                                    Button(
-                                        onClick = { showDeleteConfirmDialog = false },
-                                        shape = RoundedCornerShape(12.dp),
-                                        colors = ButtonDefaults.buttonColors(
-                                            containerColor = MaterialTheme.colorScheme.primary,
-                                            contentColor = MaterialTheme.colorScheme.onPrimary
-                                        ),
-                                        modifier = Modifier
-                                            .defaultMinSize(minWidth = 1.dp)
-                                            .requiredWidth(88.dp)
-                                    ) {
-                                        Text("取消")
+                            title = "确认删除",
+                            text = "确定要删除此提醒吗？",
+                            confirmText = "删除",
+                            onConfirm = {
+                                showDeleteConfirmDialog = false
+                                coroutineScope.launch {
+                                    if (viewModel.deleteReminder(context)) {
+                                        onDeleted()
                                     }
                                 }
                             },
-                            dismissButton = {}
+                            dismissText = "取消",
+                            destructive = true
                         )
                     }
                 }
@@ -500,25 +470,16 @@ fun AddReminderScreen(
             }
 
             if (showUnsavedChangesDialog) {
-                AlertDialog(
+                AppAlertDialog(
                     onDismissRequest = { showUnsavedChangesDialog = false },
-                    title = { Text("未保存的更改") },
-                    text = { Text("您有未保存的更改，确定要退出吗？") },
-                    confirmButton = {
-                        TextButton(
-                            onClick = {
-                                showUnsavedChangesDialog = false
-                                onNavigateUp()
-                            }
-                        ) {
-                            Text("确定退出")
-                        }
+                    title = "未保存的更改",
+                    text = "您有未保存的更改，确定要退出吗？",
+                    confirmText = "确定退出",
+                    onConfirm = {
+                        showUnsavedChangesDialog = false
+                        onNavigateUp()
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showUnsavedChangesDialog = false }) {
-                            Text("取消")
-                        }
-                    }
+                    dismissText = "取消"
                 )
             }
 
@@ -869,25 +830,17 @@ fun NotesEditDialog(
     }
 
     if (showConfirmCancelDialog) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showConfirmCancelDialog = false },
-            title = { Text("确认取消？") },
-            text = { Text("您有未保存的内容，确定要退出吗？") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showConfirmCancelDialog = false
-                        onDismiss()
-                    }
-                ) {
-                    Text("确定", color = MaterialTheme.colorScheme.error)
-                }
+            title = "确认取消？",
+            text = "您有未保存的内容，确定要退出吗？",
+            confirmText = "确定",
+            onConfirm = {
+                showConfirmCancelDialog = false
+                onDismiss()
             },
-            dismissButton = {
-                TextButton(onClick = { showConfirmCancelDialog = false }) {
-                    Text("取消")
-                }
-            }
+            dismissText = "取消",
+            destructive = true
         )
     }
 }

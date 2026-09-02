@@ -39,6 +39,7 @@ import com.ybhgl.reminder.Routes
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.reminderDisplayInfo
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
@@ -1169,15 +1170,10 @@ fun ModifyTagDialog(
     onSelectTag: (String) -> Unit,
     onNavigateToTagManagement: () -> Unit
 ) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "修改标签",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
-        },
-        text = {
+        title = "修改标签",
+        content = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1200,7 +1196,7 @@ fun ModifyTagDialog(
                             selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     )
-                    
+
                     tagsList.forEach { tagItem ->
                         val isSelected = tagItem.name.trim() == currentTag.trim()
                         val baseColor = remember(tagItem.color) { tagItem.color.toComposeColor() }
@@ -1237,26 +1233,12 @@ fun ModifyTagDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onDismiss()
-                    onNavigateToTagManagement()
-                }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("管理标签")
-            }
+        confirmText = "管理标签",
+        onConfirm = {
+            onDismiss()
+            onNavigateToTagManagement()
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
+        dismissText = "取消",
+        onDismiss = onDismiss
     )
 }

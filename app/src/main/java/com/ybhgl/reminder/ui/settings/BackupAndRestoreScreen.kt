@@ -102,6 +102,7 @@ import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
@@ -1424,76 +1425,58 @@ fun BackupAndRestoreScreen(
 
                 if (showLocalDeleteConfirm && pendingDeleteLocalFile != null) {
                     val file = pendingDeleteLocalFile!!
-                    AlertDialog(
+                    AppAlertDialog(
                         onDismissRequest = { showLocalDeleteConfirm = false },
-                        title = { Text("确认删除备份") },
-                        text = { Text("确定要永久删除 ${formatBackupTime(file.name ?: "")} 的本地自动备份吗？") },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    showLocalDeleteConfirm = false
-                                    coroutineScope.launch {
-                                        val success = viewModel.deleteLocalAutoBackupFile(context, file)
-                                        if (success) {
-                                            CustomToast.showSuccess(context, "已删除本地备份文件")
-                                            loadLocalAuto()
-                                        } else {
-                                            CustomToast.showError(context, "删除失败")
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                            ) {
-                                Text("确认删除")
+                        title = "确认删除备份",
+                        text = "确定要永久删除 ${formatBackupTime(file.name ?: "")} 的本地自动备份吗？",
+                        confirmText = "确认删除",
+                        onConfirm = {
+                            showLocalDeleteConfirm = false
+                            coroutineScope.launch {
+                                val success = viewModel.deleteLocalAutoBackupFile(context, file)
+                                if (success) {
+                                    CustomToast.showSuccess(context, "已删除本地备份文件")
+                                    loadLocalAuto()
+                                } else {
+                                    CustomToast.showError(context, "删除失败")
+                                }
                             }
                         },
-                        dismissButton = {
-                            TextButton(onClick = { showLocalDeleteConfirm = false }) {
-                                Text("取消")
-                            }
-                        }
+                        dismissText = "取消",
+                        destructive = true
                     )
                 }
 
                 if (showWebDavDeleteConfirm && pendingDeleteWebDavFile != null) {
                     val fileName = pendingDeleteWebDavFile!!
-                    AlertDialog(
+                    AppAlertDialog(
                         onDismissRequest = { showWebDavDeleteConfirm = false },
-                        title = { Text("确认删除备份") },
-                        text = { Text("确定要永久删除 ${formatBackupTime(fileName)} 的云端自动备份吗？") },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    showWebDavDeleteConfirm = false
-                                    coroutineScope.launch {
-                                        val (success, msg) = viewModel.deleteWebDavAutoBackup(context, fileName)
-                                        if (success) {
-                                            CustomToast.showSuccess(context, msg)
-                                            loadWebDavAuto()
-                                        } else {
-                                            CustomToast.showError(context, msg)
-                                        }
-                                    }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                            ) {
-                                Text("确认删除")
+                        title = "确认删除备份",
+                        text = "确定要永久删除 ${formatBackupTime(fileName)} 的云端自动备份吗？",
+                        confirmText = "确认删除",
+                        onConfirm = {
+                            showWebDavDeleteConfirm = false
+                            coroutineScope.launch {
+                                val (success, msg) = viewModel.deleteWebDavAutoBackup(context, fileName)
+                                if (success) {
+                                    CustomToast.showSuccess(context, msg)
+                                    loadWebDavAuto()
+                                } else {
+                                    CustomToast.showError(context, msg)
+                                }
                             }
                         },
-                        dismissButton = {
-                            TextButton(onClick = { showWebDavDeleteConfirm = false }) {
-                                Text("取消")
-                            }
-                        }
+                        dismissText = "取消",
+                        destructive = true
                     )
                 }
 
                 if (showLocalRestoreConfirm && pendingRestoreLocalFile != null) {
                     val file = pendingRestoreLocalFile!!
-                    AlertDialog(
+                    AppAlertDialog(
                         onDismissRequest = { showLocalRestoreConfirm = false },
-                        title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
-                        text = {
+                        title = "恢复备份",
+                        content = {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("确定要恢复 ${formatBackupTime(file.name ?: "")} 的自动本地备份吗？请选择导入方式：")
                                 Card(
@@ -1547,21 +1530,16 @@ fun BackupAndRestoreScreen(
                                 }
                             }
                         },
-                        confirmButton = {},
-                        dismissButton = {
-                            TextButton(onClick = { showLocalRestoreConfirm = false }) {
-                                Text("取消")
-                            }
-                        }
+                        dismissText = "取消"
                     )
                 }
 
                 if (showWebDavRestoreConfirm && pendingRestoreWebDavFile != null) {
                     val fileName = pendingRestoreWebDavFile!!
-                    AlertDialog(
+                    AppAlertDialog(
                         onDismissRequest = { showWebDavRestoreConfirm = false },
-                        title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
-                        text = {
+                        title = "恢复备份",
+                        content = {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("确定要恢复 ${formatBackupTime(fileName)} 的自动云备份吗？请选择导入方式：")
                                 Card(
@@ -1615,41 +1593,23 @@ fun BackupAndRestoreScreen(
                                 }
                             }
                         },
-                        confirmButton = {},
-                        dismissButton = {
-                            TextButton(onClick = { showWebDavRestoreConfirm = false }) {
-                                Text("取消")
-                            }
-                        }
+                        dismissText = "取消"
                     )
                 }
             }
             
             // Auto Folder Existing Confirmation Dialog
             if (showAutoFolderConfirmDialog) {
-                AlertDialog(
+                AppAlertDialog(
                     onDismissRequest = { showAutoFolderConfirmDialog = false },
-                    title = { Text(autoFolderConfirmTitle, fontWeight = FontWeight.SemiBold) },
-                    text = { Text(autoFolderConfirmMessage) },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                showAutoFolderConfirmDialog = false
-                                onAutoFolderConfirm?.invoke()
-                            }
-                        ) {
-                            Text("确认")
-                        }
+                    title = autoFolderConfirmTitle,
+                    text = autoFolderConfirmMessage,
+                    confirmText = "确认",
+                    onConfirm = {
+                        showAutoFolderConfirmDialog = false
+                        onAutoFolderConfirm?.invoke()
                     },
-                    dismissButton = {
-                        TextButton(
-                            onClick = {
-                                showAutoFolderConfirmDialog = false
-                            }
-                        ) {
-                            Text("取消")
-                        }
-                    }
+                    dismissText = "取消"
                 )
             }
 
@@ -1661,10 +1621,10 @@ fun BackupAndRestoreScreen(
                 var pathInput by remember { mutableStateOf(webDavPath) }
                 var passwordVisible by remember { mutableStateOf(false) }
 
-                AlertDialog(
+                AppAlertDialog(
                     onDismissRequest = { showServerConfigDialog = false },
-                    title = { Text("WebDAV 服务器设置", fontWeight = FontWeight.SemiBold) },
-                    text = {
+                    title = "WebDAV 服务器设置",
+                    content = {
                         Column(
                             verticalArrangement = Arrangement.spacedBy(12.dp),
                             modifier = Modifier.fillMaxWidth()
@@ -1707,65 +1667,56 @@ fun BackupAndRestoreScreen(
                             )
                         }
                     },
-                    confirmButton = {
-                        Button(
-                            onClick = {
-                                coroutineScope.launch {
-                                    val server = serverInput.trim()
-                                    val username = usernameInput.trim()
-                                    val password = passwordInput.trim()
-                                    val path = pathInput.trim().ifBlank { "reminder_backups" }
+                    confirmText = "保存",
+                    onConfirm = {
+                        coroutineScope.launch {
+                            val server = serverInput.trim()
+                            val username = usernameInput.trim()
+                            val password = passwordInput.trim()
+                            val path = pathInput.trim().ifBlank { "reminder_backups" }
 
-                                    viewModel.saveWebDavSettings(
-                                        context,
-                                        server,
-                                        username,
-                                        password,
-                                        path
-                                    )
-                                    showServerConfigDialog = false
-                                    CustomToast.showSuccess(context, "设置已保存")
+                            viewModel.saveWebDavSettings(
+                                context,
+                                server,
+                                username,
+                                password,
+                                path
+                            )
+                            showServerConfigDialog = false
+                            CustomToast.showSuccess(context, "设置已保存")
 
-                                    if (webDavBackupEnabled) {
-                                        isProcessing = true
-                                        val (success, msg) = viewModel.checkAndCreateWebDavAutoFolder(
-                                            context,
-                                            server,
-                                            username,
-                                            password,
-                                            path
-                                        )
-                                        isProcessing = false
-                                        if (success) {
-                                            
-                                        } else {
-                                            CustomToast.showError(context, msg)
-                                        }
-                                    }
+                            if (webDavBackupEnabled) {
+                                isProcessing = true
+                                val (success, msg) = viewModel.checkAndCreateWebDavAutoFolder(
+                                    context,
+                                    server,
+                                    username,
+                                    password,
+                                    path
+                                )
+                                isProcessing = false
+                                if (success) {
+
+                                } else {
+                                    CustomToast.showError(context, msg)
                                 }
                             }
-                        ) {
-                            Text("保存")
                         }
                     },
-                    dismissButton = {
-                        TextButton(onClick = { showServerConfigDialog = false }) {
-                            Text("取消")
-                        }
-                    }
+                    dismissText = "取消"
                 )
             }
 
             // Local JSON Restore Import Type Selection Dialog (Merge vs Overwrite)
             if (showLocalRestoreConfirmDialog && pendingLocalRestoreUri != null) {
                 val uri = pendingLocalRestoreUri!!
-                AlertDialog(
+                AppAlertDialog(
                     onDismissRequest = { showLocalRestoreConfirmDialog = false },
-                    title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
-                    text = {
+                    title = "恢复备份",
+                    content = {
                         Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                             Text("请选择数据导入方式：")
-                            
+
                             Card(
                                 onClick = {
                                     showLocalRestoreConfirmDialog = false
@@ -1815,12 +1766,7 @@ fun BackupAndRestoreScreen(
                             }
                         }
                     },
-                    confirmButton = {},
-                    dismissButton = {
-                        TextButton(onClick = { showLocalRestoreConfirmDialog = false }) {
-                            Text("取消")
-                        }
-                    }
+                    dismissText = "取消"
                 )
             }
 
@@ -2055,65 +2001,56 @@ fun BackupAndRestoreScreen(
                 // WebDAV Cloud File Delete Confirm Dialog
                 if (showDeleteConfirmDialog && pendingDeleteFile != null) {
                     val fileName = pendingDeleteFile!!
-                    AlertDialog(
+                    AppAlertDialog(
                         onDismissRequest = { showDeleteConfirmDialog = false },
-                        title = { Text("确认删除备份") },
-                        text = { Text("确定要永久删除 ${formatBackupTime(fileName)} 的${if (pendingDeleteIsAuto) "自动" else "手动"}云备份吗？此操作不可恢复。") },
-                        confirmButton = {
-                            Button(
-                                onClick = {
-                                    showDeleteConfirmDialog = false
-                                    coroutineScope.launch {
-                                        isLoadingCloudFiles = true
-                                        val (success, msg) = if (pendingDeleteIsAuto) {
-                                            viewModel.deleteWebDavAutoBackup(context, fileName)
-                                        } else {
-                                            viewModel.deleteWebDavBackup(context, fileName)
-                                        }
-                                        if (success) {
-                                            // Refresh combined list
-                                            val manualResult = viewModel.listWebDavBackups(context)
-                                            val autoResult = viewModel.listWebDavAutoBackups(context)
-                                            val combined = mutableListOf<CloudRecoveryFile>()
-                                            manualResult.first?.forEach { combined.add(CloudRecoveryFile(it, isAuto = false)) }
-                                            autoResult.first?.forEach { combined.add(CloudRecoveryFile(it, isAuto = true)) }
-                                            cloudFiles = combined.sortedByDescending {
-                                                it.file.name
-                                                    .replace("reminder-backup-", "", ignoreCase = true)
-                                                    .replace("reminder-autobackup-", "", ignoreCase = true)
-                                            }
-                                        }
-                                        isLoadingCloudFiles = false
-                                        if (success) {
-                                            CustomToast.showSuccess(context, msg)
-                                        } else {
-                                            CustomToast.showError(context, msg)
-                                        }
+                        title = "确认删除备份",
+                        text = "确定要永久删除 ${formatBackupTime(fileName)} 的${if (pendingDeleteIsAuto) "自动" else "手动"}云备份吗？此操作不可恢复。",
+                        confirmText = "确认删除",
+                        onConfirm = {
+                            showDeleteConfirmDialog = false
+                            coroutineScope.launch {
+                                isLoadingCloudFiles = true
+                                val (success, msg) = if (pendingDeleteIsAuto) {
+                                    viewModel.deleteWebDavAutoBackup(context, fileName)
+                                } else {
+                                    viewModel.deleteWebDavBackup(context, fileName)
+                                }
+                                if (success) {
+                                    // Refresh combined list
+                                    val manualResult = viewModel.listWebDavBackups(context)
+                                    val autoResult = viewModel.listWebDavAutoBackups(context)
+                                    val combined = mutableListOf<CloudRecoveryFile>()
+                                    manualResult.first?.forEach { combined.add(CloudRecoveryFile(it, isAuto = false)) }
+                                    autoResult.first?.forEach { combined.add(CloudRecoveryFile(it, isAuto = true)) }
+                                    cloudFiles = combined.sortedByDescending {
+                                        it.file.name
+                                            .replace("reminder-backup-", "", ignoreCase = true)
+                                            .replace("reminder-autobackup-", "", ignoreCase = true)
                                     }
-                                },
-                                colors = ButtonDefaults.buttonColors(containerColor = MaterialTheme.colorScheme.error)
-                            ) {
-                                Text("确认删除")
+                                }
+                                isLoadingCloudFiles = false
+                                if (success) {
+                                    CustomToast.showSuccess(context, msg)
+                                } else {
+                                    CustomToast.showError(context, msg)
+                                }
                             }
                         },
-                        dismissButton = {
-                            TextButton(onClick = { showDeleteConfirmDialog = false }) {
-                                Text("取消")
-                            }
-                        }
+                        dismissText = "取消",
+                        destructive = true
                     )
                 }
 
                 // WebDAV Cloud File Restore Mode Selection Dialog (Merge vs Overwrite)
                 if (showImportConfirmDialog && pendingImportFile != null) {
                     val fileName = pendingImportFile!!
-                    AlertDialog(
+                    AppAlertDialog(
                         onDismissRequest = { showImportConfirmDialog = false },
-                        title = { Text("恢复备份", fontWeight = FontWeight.SemiBold) },
-                        text = {
+                        title = "恢复备份",
+                        content = {
                             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                                 Text("确定要恢复 ${formatBackupTime(fileName)} 的${if (pendingImportIsAuto) "自动" else "手动"}云备份吗？请选择导入方式：")
-                                
+
                                 Card(
                                     onClick = {
                                         showImportConfirmDialog = false
@@ -2173,12 +2110,7 @@ fun BackupAndRestoreScreen(
                                 }
                             }
                         },
-                        confirmButton = {},
-                        dismissButton = {
-                            TextButton(onClick = { showImportConfirmDialog = false }) {
-                                Text("取消")
-                            }
-                        }
+                        dismissText = "取消"
                     )
                 }
             }

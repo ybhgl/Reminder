@@ -26,12 +26,14 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -463,5 +465,82 @@ fun SettingsLinkedVisibility(
             ExitTransition.None
         },
         content = { content() }
+    )
+}
+
+/**
+ * 全应用统一的 Material 3 标准 AlertDialog。
+ *
+ * - 标题/正文使用 M3 默认排版，不额外覆盖字体样式
+ * - 按钮统一为 M3 规范的右下角 TextButton（确认在前、取消在后）
+ * - [destructive] 为 true 时确认按钮使用 error 色（删除等不可恢复操作）
+ * - [confirmEnabled] 控制确认按钮可用状态（如需先选择条目才能确认的场景）
+ * - 简单场景直接传 [text]；复杂内容（输入框、选择器等）用 [content] 槽，二者至多传其一
+ * - [confirmText] 传 null 表示无确认按钮（如仅靠内容区交互完成操作的弹窗）；
+ *   [neutralText] 用于"忽略"等中性第三操作，渲染在 [dismissText] 左侧；
+ *   [dismissText] 的点击行为默认回落到 [onDismissRequest]
+ */
+@Composable
+fun AppAlertDialog(
+    onDismissRequest: () -> Unit,
+    title: String,
+    modifier: Modifier = Modifier,
+    text: String? = null,
+    content: (@Composable () -> Unit)? = null,
+    confirmText: String? = null,
+    onConfirm: (() -> Unit)? = null,
+    dismissText: String? = null,
+    onDismiss: (() -> Unit)? = null,
+    neutralText: String? = null,
+    onNeutral: (() -> Unit)? = null,
+    destructive: Boolean = false,
+    confirmEnabled: Boolean = true
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        title = { Text(title) },
+        text = when {
+            text != null -> {
+                { Text(text) }
+            }
+            content != null -> {
+                { content() }
+            }
+            else -> null
+        },
+        confirmButton = {
+            if (confirmText != null) {
+                TextButton(
+                    onClick = { onConfirm?.invoke() },
+                    enabled = confirmEnabled
+                ) {
+                    Text(
+                        confirmText,
+                        color = if (destructive) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
+                    )
+                }
+            }
+        },
+        dismissButton = if (neutralText != null || dismissText != null) {
+            {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (neutralText != null) {
+                        TextButton(onClick = { onNeutral?.invoke() }) {
+                            Text(neutralText)
+                        }
+                    }
+                    if (dismissText != null) {
+                        TextButton(onClick = { onDismiss?.invoke() ?: onDismissRequest() }) {
+                            Text(dismissText)
+                        }
+                    }
+                }
+            }
+        } else null
     )
 }

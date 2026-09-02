@@ -36,6 +36,7 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.google.accompanist.permissions.*
 import com.ybhgl.reminder.data.ReminderType
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
@@ -423,47 +424,33 @@ fun ReminderSettingScreen(
 }
 
     if (showPermissionDialog) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showPermissionDialog = false },
-            title = { Text("权限提醒") },
-            text = { Text(permissionDialogText) },
-            confirmButton = {
-                TextButton(onClick = {
-                    showPermissionDialog = false
-                    val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
-                        data = Uri.fromParts("package", context.packageName, null)
-                    }
-                    context.startActivity(intent)
-                }) {
-                    Text("前往设置")
+            title = "权限提醒",
+            text = permissionDialogText,
+            confirmText = "前往设置",
+            onConfirm = {
+                showPermissionDialog = false
+                val intent = Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS).apply {
+                    data = Uri.fromParts("package", context.packageName, null)
                 }
+                context.startActivity(intent)
             },
-            dismissButton = {
-                TextButton(onClick = { showPermissionDialog = false }) {
-                    Text("取消")
-                }
-            }
+            dismissText = "取消"
         )
     }
 
     if (showExitDialog) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showExitDialog = false },
-            title = { Text("未保存修改") },
-            text = { Text("您有未保存的修改，确定要退出吗？") },
-            confirmButton = {
-                TextButton(onClick = {
-                    showExitDialog = false
-                    onNavigateBack()
-                }) {
-                    Text("退出")
-                }
+            title = "未保存修改",
+            text = "您有未保存的修改，确定要退出吗？",
+            confirmText = "退出",
+            onConfirm = {
+                showExitDialog = false
+                onNavigateBack()
             },
-            dismissButton = {
-                TextButton(onClick = { showExitDialog = false }) {
-                    Text("取消")
-                }
-            }
+            dismissText = "取消"
         )
     }
 
@@ -483,14 +470,14 @@ fun ReminderSettingScreen(
         var showM3TimePicker by remember { mutableStateOf(false) }
         var isDuplicateError by remember { mutableStateOf(false) }
         
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showTimeConfigDialog = false },
-            title = { Text(if (editingTimeIndex >= 0) "修改提醒" else "新增提醒") },
-            text = {
+            title = if (editingTimeIndex >= 0) "修改提醒" else "新增提醒",
+            content = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
                         value = daysBefore,
-                        onValueChange = { 
+                        onValueChange = {
                             val isValid = if (editingTimeIndex >= 0) {
                                 it.all { char -> char.isDigit() }
                             } else {
@@ -501,14 +488,14 @@ fun ReminderSettingScreen(
                                 isDuplicateError = false
                             }
                         },
-                        label = { 
+                        label = {
                             Text(
                                 if (editingTimeIndex >= 0) {
                                     if (daysBefore == "0") "当天" else "$dayLabel (天数)"
                                 } else {
                                     "$dayLabel (天数)"
                                 }
-                            ) 
+                            )
                         },
                         supportingText = if (editingTimeIndex < 0) {
                             { Text("支持输入多个天数，使用逗号、空格或分号分隔，例如：0, 1, 3") }
@@ -516,7 +503,7 @@ fun ReminderSettingScreen(
                         modifier = Modifier.fillMaxWidth(),
                         isError = isDuplicateError
                     )
-                    
+
                     Row(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -537,7 +524,7 @@ fun ReminderSettingScreen(
                         )
                     }
                 }
-                
+
                 if (showM3TimePicker) {
                     TimePickerDialogM3(
                         initialTime = selectedTime,
@@ -551,68 +538,61 @@ fun ReminderSettingScreen(
                 }
 
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    if (editingTimeIndex >= 0) {
-                        val days = daysBefore.toIntOrNull() ?: 0
-                        val isDuplicate = uiState.config.notificationTimes.indices.any { index ->
-                            val item = uiState.config.notificationTimes[index]
-                            val isSame = item.daysBefore == days && item.time == selectedTime
-                            isSame && index != editingTimeIndex
+            confirmText = "确定",
+            onConfirm = {
+                if (editingTimeIndex >= 0) {
+                    val days = daysBefore.toIntOrNull() ?: 0
+                    val isDuplicate = uiState.config.notificationTimes.indices.any { index ->
+                        val item = uiState.config.notificationTimes[index]
+                        val isSame = item.daysBefore == days && item.time == selectedTime
+                        isSame && index != editingTimeIndex
+                    }
+
+                    if (isDuplicate) {
+                        isDuplicateError = true
+                        CustomToast.showError(context, "该时间点已存在提醒")
+                    } else {
+                        viewModel.updateNotificationTime(editingTimeIndex, days, selectedTime)
+                        showTimeConfigDialog = false
+                    }
+                } else {
+                    val daysList = daysBefore.split(Regex("[,，\\s;；]+"))
+                        .map { it.trim() }
+                        .filter { it.isNotEmpty() }
+                        .mapNotNull { it.toIntOrNull() }
+                        .distinct()
+
+                    if (daysList.isEmpty()) {
+                        isDuplicateError = true
+                        CustomToast.showError(context, "请输入有效的天数数值")
+                    } else {
+                        val existingTimes = uiState.config.notificationTimes
+                        val toAdd = daysList.filter { days ->
+                            existingTimes.none { item -> item.daysBefore == days && item.time == selectedTime }
                         }
-                        
-                        if (isDuplicate) {
+                        if (toAdd.isEmpty()) {
                             isDuplicateError = true
-                            CustomToast.showError(context, "该时间点已存在提醒")
+                            CustomToast.showError(context, "输入的提醒时间点已全部存在")
                         } else {
-                            viewModel.updateNotificationTime(editingTimeIndex, days, selectedTime)
+                            toAdd.forEach { days ->
+                                viewModel.addNotificationTime(days, selectedTime)
+                            }
                             showTimeConfigDialog = false
                         }
-                    } else {
-                        val daysList = daysBefore.split(Regex("[,，\\s;；]+"))
-                            .map { it.trim() }
-                            .filter { it.isNotEmpty() }
-                            .mapNotNull { it.toIntOrNull() }
-                            .distinct()
-
-                        if (daysList.isEmpty()) {
-                            isDuplicateError = true
-                            CustomToast.showError(context, "请输入有效的天数数值")
-                        } else {
-                            val existingTimes = uiState.config.notificationTimes
-                            val toAdd = daysList.filter { days ->
-                                existingTimes.none { item -> item.daysBefore == days && item.time == selectedTime }
-                            }
-                            if (toAdd.isEmpty()) {
-                                isDuplicateError = true
-                                CustomToast.showError(context, "输入的提醒时间点已全部存在")
-                            } else {
-                                toAdd.forEach { days ->
-                                    viewModel.addNotificationTime(days, selectedTime)
-                                }
-                                showTimeConfigDialog = false
-                            }
-                        }
                     }
-                }) {
-                    Text("确定")
                 }
             },
-            dismissButton = {
-                TextButton(onClick = { showTimeConfigDialog = false }) {
-                    Text("取消")
-                }
-            }
+            dismissText = "取消"
         )
     }
 
     if (showImportDialog) {
         var selectedReminder by remember { mutableStateOf<com.ybhgl.reminder.data.ReminderItem?>(null) }
 
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showImportDialog = false },
-            title = { Text("导入提醒设置") },
-            text = {
+            title = "导入提醒设置",
+            content = {
                 if (importableReminders.isEmpty()) {
                     Box(
                         modifier = Modifier
@@ -693,24 +673,15 @@ fun ReminderSettingScreen(
                     }
                 }
             },
-            confirmButton = {
-                TextButton(
-                    enabled = selectedReminder != null,
-                    onClick = {
-                        selectedReminder?.let {
-                            viewModel.importNotificationConfig(it.notificationConfig)
-                        }
-                        showImportDialog = false
-                    }
-                ) {
-                    Text("导入")
+            confirmText = "导入",
+            onConfirm = {
+                selectedReminder?.let {
+                    viewModel.importNotificationConfig(it.notificationConfig)
                 }
+                showImportDialog = false
             },
-            dismissButton = {
-                TextButton(onClick = { showImportDialog = false }) {
-                    Text("取消")
-                }
-            }
+            confirmEnabled = selectedReminder != null,
+            dismissText = "取消"
         )
     }
 }

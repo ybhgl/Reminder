@@ -76,6 +76,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.data.NotificationStyleOption
 import com.ybhgl.reminder.data.ReminderItem
@@ -352,44 +353,35 @@ fun ReminderManageScreen(
     }
 
     if (showShizukuWarningDialog) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showShizukuWarningDialog = false },
-            title = { Text("绕过小米超级岛限制") },
-            text = {
-                Text(
-                    "Shizuku 为高危系统级权限。本应用获取该权限仅用于绕过小米超级岛（焦点通知）的白名单限制：" +
-                            "发送提醒时临时屏蔽小米云服务（xmsf）的网络，通知发出后立即恢复。\n\n" +
-                            "该权限具备系统级控制能力，请在确认信任本应用后再继续。" +
-                            "开启后需保持 Shizuku 服务运行，提醒触发时绕过才会生效。"
-                )
-            },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        showShizukuWarningDialog = false
-                        if (!XiaomiBypassHelper.isShizukuAvailable()) {
-                            CustomToast.show(
-                                context, "请先安装并启动 Shizuku 服务", CustomToast.Type.ERROR
-                            )
-                        } else if (XiaomiBypassHelper.isAuthorized()) {
-                            coroutineScope.launch { saveMiIslandBypass(context, true) }
-                            CustomToast.show(context, "已开启绕过小米超级岛限制", CustomToast.Type.SUCCESS)
-                        } else {
-                            runCatching {
-                                Shizuku.requestPermission(XiaomiBypassHelper.SHIZUKU_REQUEST_CODE)
-                            }.onFailure {
-                                CustomToast.show(
-                                    context, "无法发起 Shizuku 授权，请确认 Shizuku 正在运行",
-                                    CustomToast.Type.ERROR
-                                )
-                            }
-                        }
+            title = "绕过小米超级岛限制",
+            text = "Shizuku 为高危系统级权限。本应用获取该权限仅用于绕过小米超级岛（焦点通知）的白名单限制：" +
+                    "发送提醒时临时屏蔽小米云服务（xmsf）的网络，通知发出后立即恢复。\n\n" +
+                    "该权限具备系统级控制能力，请在确认信任本应用后再继续。" +
+                    "开启后需保持 Shizuku 服务运行，提醒触发时绕过才会生效。",
+            confirmText = "确认开启",
+            onConfirm = {
+                showShizukuWarningDialog = false
+                if (!XiaomiBypassHelper.isShizukuAvailable()) {
+                    CustomToast.show(
+                        context, "请先安装并启动 Shizuku 服务", CustomToast.Type.ERROR
+                    )
+                } else if (XiaomiBypassHelper.isAuthorized()) {
+                    coroutineScope.launch { saveMiIslandBypass(context, true) }
+                    CustomToast.show(context, "已开启绕过小米超级岛限制", CustomToast.Type.SUCCESS)
+                } else {
+                    runCatching {
+                        Shizuku.requestPermission(XiaomiBypassHelper.SHIZUKU_REQUEST_CODE)
+                    }.onFailure {
+                        CustomToast.show(
+                            context, "无法发起 Shizuku 授权，请确认 Shizuku 正在运行",
+                            CustomToast.Type.ERROR
+                        )
                     }
-                ) { Text("确认开启") }
+                }
             },
-            dismissButton = {
-                TextButton(onClick = { showShizukuWarningDialog = false }) { Text("取消") }
-            }
+            dismissText = "取消"
         )
     }
 }

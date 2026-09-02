@@ -103,6 +103,7 @@ import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.data.AppColorPalette
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.rememberScrollState
@@ -654,10 +655,10 @@ private fun UpdateDialog(
     onIgnore: () -> Unit,
     onDownload: () -> Unit
 ) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = { Text("检测到新版本 v${release.version}") },
-        text = {
+        title = "检测到新版本 v${release.version}",
+        content = {
             Column(
                 verticalArrangement = Arrangement.spacedBy(8.dp),
                 modifier = Modifier.verticalScroll(rememberScrollState())
@@ -674,21 +675,12 @@ private fun UpdateDialog(
                 )
             }
         },
-        confirmButton = {
-            Button(onClick = onDownload) {
-                Text("下载")
-            }
-        },
-        dismissButton = {
-            Row(horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                TextButton(onClick = onIgnore) {
-                    Text("忽略")
-                }
-                TextButton(onClick = onDismiss) {
-                    Text("取消")
-                }
-            }
-        }
+        confirmText = "下载",
+        onConfirm = onDownload,
+        dismissText = "取消",
+        onDismiss = onDismiss,
+        neutralText = "忽略",
+        onNeutral = onIgnore
     )
 }
 
@@ -1010,10 +1002,10 @@ private fun HomePageSettingsCard(
     var showScrollBehaviorDialog by rememberSaveable { mutableStateOf(false) }
 
     if (showScrollBehaviorDialog) {
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { showScrollBehaviorDialog = false },
-            title = { Text("首页滑动模式") },
-            text = {
+            title = "首页滑动模式",
+            content = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     val options = listOf(
                         ScrollBehaviorMode.NONE to "不隐藏",
@@ -1046,11 +1038,8 @@ private fun HomePageSettingsCard(
                     }
                 }
             },
-            confirmButton = {
-                TextButton(onClick = { showScrollBehaviorDialog = false }) {
-                    Text("关闭")
-                }
-            }
+            confirmText = "关闭",
+            onConfirm = { showScrollBehaviorDialog = false }
         )
     }
 
