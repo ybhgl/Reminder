@@ -388,8 +388,6 @@ private val MonochromeDarkColorScheme = darkColorScheme(
 
 val LocalAppDarkTheme = staticCompositionLocalOf { false }
 val LocalCardColoringEnabled = staticCompositionLocalOf { true }
-/** 数字字体效果是否在列表卡片全局生效；false（默认）= 仅详情页生效 */
-val LocalFontEffectGlobal = staticCompositionLocalOf { false }
 
 @Composable
 fun ReminderTheme(
@@ -400,7 +398,6 @@ fun ReminderTheme(
     dynamicColor: Boolean = true,
     colorPalette: AppColorPalette = AppColorPalette.PURPLE,
     customColorSeed: Color = Color(0xFF6750A4),
-    fontEffectGlobal: Boolean = false,
     content: @Composable () -> Unit
 ) {
     val darkTheme = when (themeOption) {
@@ -467,8 +464,7 @@ fun ReminderTheme(
 
     CompositionLocalProvider(
         LocalAppDarkTheme provides darkTheme,
-        LocalCardColoringEnabled provides cardColoringEnabled,
-        LocalFontEffectGlobal provides fontEffectGlobal
+        LocalCardColoringEnabled provides cardColoringEnabled
     ) {
         MaterialTheme(
             colorScheme = colorScheme,

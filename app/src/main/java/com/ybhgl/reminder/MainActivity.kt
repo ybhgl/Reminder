@@ -198,7 +198,6 @@ import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.BackupPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
-import com.ybhgl.reminder.ui.theme.LocalFontEffectGlobal
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.CalendarUtil
 import com.ybhgl.reminder.util.ReminderSectionData
@@ -221,15 +220,16 @@ import com.ybhgl.reminder.ui.common.CardBackgroundLayer
 import com.ybhgl.reminder.ui.common.CardBackgroundSpec
 import com.ybhgl.reminder.ui.common.CardBackgroundType
 import com.ybhgl.reminder.ui.common.NumberEffectSpec
+import com.ybhgl.reminder.ui.common.NumberFontEffect
 import com.ybhgl.reminder.ui.common.cardBackgroundAverageColor
 import com.ybhgl.reminder.ui.common.cardBackgroundLuminance
 import com.ybhgl.reminder.ui.common.cardBackgroundSpec
 import com.ybhgl.reminder.ui.common.numberEffectSpec
-import com.ybhgl.reminder.ui.common.numberTextEffect
 import com.ybhgl.reminder.ui.common.parseCardBackgroundType
 import com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.resolveCardBackgroundForeground
 import com.ybhgl.reminder.ui.common.resolveEffectiveFontEffect
+import com.ybhgl.reminder.ui.common.textBlurEffect
 import androidx.compose.ui.graphics.luminance
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.flow.first
@@ -326,7 +326,6 @@ class MainActivity : FragmentActivity() {
             val themeColorPalette by colorPaletteFlowInstance.collectAsState(initial = AppColorPalette.PURPLE)
             val customColorFlowInstance = remember(context) { com.ybhgl.reminder.data.customColorFlow(context) }
             val customColorSeedInt by customColorFlowInstance.collectAsState(initial = 0xFF6650A4.toInt())
-            val fontEffectGlobal by remember(context) { com.ybhgl.reminder.data.fontEffectGlobalFlow(context) }.collectAsState(initial = false)
 
             LaunchedEffect(themeOption) {
                 com.ybhgl.reminder.ui.common.CustomToast.currentAppTheme = themeOption
@@ -363,8 +362,7 @@ class MainActivity : FragmentActivity() {
                 cardColoringEnabled = cardColoringEnabled,
                 dynamicColor = dynamicColorEnabled,
                 colorPalette = themeColorPalette,
-                customColorSeed = Color(customColorSeedInt),
-                fontEffectGlobal = fontEffectGlobal
+                customColorSeed = Color(customColorSeedInt)
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -1161,8 +1159,7 @@ private fun DayCountRow(
     dayCount: Int,
     visuals: ReminderCardVisuals,
     isCountUp: Boolean = false,
-    modifier: Modifier = Modifier,
-    effectSpec: NumberEffectSpec? = null
+    modifier: Modifier = Modifier
 ) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
@@ -1185,8 +1182,7 @@ private fun DayCountRow(
             ),
             modifier = Modifier
                 .weight(1f, fill = false)
-                .alignByBaseline()
-                .numberTextEffect(effectSpec),
+                .alignByBaseline(),
             color = visuals.numberColor,
             checkHeight = false
         )
@@ -2233,15 +2229,13 @@ private fun ReminderSummaryCard(
     )
 
     // 自定义背景：完整覆盖整卡（表头/内容/底栏之下），前景文字按背景亮度实时反色；
-    // 数字字体效果仅在"全局生效"开关开启时于列表卡应用（作用范围规则与详情卡一致）
+    // 数字字体效果全局生效（作用范围：自定义背景→全卡文字；默认背景→仅数字且仅纯色）
     val backgroundSpec = visuals.backgroundSpec
     val backgroundBitmap = if (backgroundSpec?.type == CardBackgroundType.IMAGE) {
         rememberCardBackgroundBitmap(backgroundSpec.imagePath)
     } else null
     val hasCustomBackground = backgroundSpec != null
-    val effectSpec = if (LocalFontEffectGlobal.current && reminder.isCustomized) {
-        reminder.numberEffectSpec
-    } else null
+    val effectSpec = if (reminder.isCustomized) reminder.numberEffectSpec else null
     val numberRenderSpec: NumberEffectSpec?
     val effectiveVisuals = if (backgroundSpec != null) {
         val luminance = cardBackgroundLuminance(backgroundSpec, backgroundBitmap)
@@ -2265,6 +2259,10 @@ private fun ReminderSummaryCard(
         numberRenderSpec = null
         if (numberOverride != null) visuals.copy(numberColor = numberOverride) else visuals
     }
+    // 模糊渲染效果作用于全卡文字内容层
+    val textBlurRadius = numberRenderSpec
+        ?.takeIf { it.effect == NumberFontEffect.BLUR }
+        ?.blurRadius
 
     Card(
         modifier = modifier
@@ -2316,7 +2314,11 @@ private fun ReminderSummaryCard(
                         modifier = Modifier.matchParentSize()
                     )
                 }
-                Column(modifier = Modifier.fillMaxSize()) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .textBlurEffect(textBlurRadius)
+                ) {
                     Box(
                         modifier = Modifier
                             .fillMaxWidth()
@@ -2351,8 +2353,7 @@ private fun ReminderSummaryCard(
                         DayCountRow(
                             dayCount = displayInfo.dayCount,
                             visuals = effectiveVisuals,
-                            isCountUp = reminder.type == ReminderType.COUNT_UP,
-                            effectSpec = numberRenderSpec
+                            isCountUp = reminder.type == ReminderType.COUNT_UP
                         )
                     }
                     // 自定义卡片背景下隐藏底栏分割线，保持背景视觉完整

@@ -14,16 +14,13 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.PickVisualMediaRequest
 import androidx.activity.result.contract.ActivityResultContracts
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.expandVertically
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -38,6 +35,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.layout.wrapContentSize
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -48,11 +46,8 @@ import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.FormatColorFill
-import androidx.compose.material.icons.filled.GridOn
-import androidx.compose.material.icons.filled.InvertColors
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.Refresh
-import androidx.compose.material.icons.filled.TextFields
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -72,6 +67,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
@@ -84,9 +80,11 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -98,17 +96,14 @@ import com.ybhgl.reminder.data.customColorFlow
 import com.ybhgl.reminder.data.colorPaletteFlow
 import com.ybhgl.reminder.data.cardColoringFlow
 import com.ybhgl.reminder.data.dynamicColorFlow
-import com.ybhgl.reminder.data.fontEffectGlobalFlow
 import com.ybhgl.reminder.data.pureBlackFlow
 import com.ybhgl.reminder.data.themeOptionFlow
 import com.ybhgl.reminder.ui.add.toFontFamily
-import com.ybhgl.reminder.ui.add.toFontLabel
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.CardBackgroundType
 import com.ybhgl.reminder.ui.common.ImageCropDialog
 import com.ybhgl.reminder.ui.common.NumberFontEffect
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
-import com.ybhgl.reminder.ui.common.TonalCardRow
 import com.ybhgl.reminder.ui.common.decodeCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.importCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.parseCardBackgroundType
@@ -319,7 +314,6 @@ class PersonalizationActivity : ComponentActivity() {
             val dynamicColorEnabled by remember(context) { dynamicColorFlow(context) }.collectAsState(initial = true)
             val themeColorPalette by remember(context) { colorPaletteFlow(context) }.collectAsState(initial = AppColorPalette.PURPLE)
             val customColorSeedInt by remember(context) { customColorFlow(context) }.collectAsState(initial = 0xFF6650A4.toInt())
-            val fontEffectGlobal by remember(context) { fontEffectGlobalFlow(context) }.collectAsState(initial = false)
 
             ReminderTheme(
                 themeOption = themeOption,
@@ -327,8 +321,7 @@ class PersonalizationActivity : ComponentActivity() {
                 cardColoringEnabled = cardColoringEnabled,
                 dynamicColor = dynamicColorEnabled,
                 colorPalette = themeColorPalette,
-                customColorSeed = Color(customColorSeedInt),
-                fontEffectGlobal = fontEffectGlobal
+                customColorSeed = Color(customColorSeedInt)
             ) {
                 Surface(
                     modifier = Modifier.fillMaxSize(),
@@ -376,7 +369,6 @@ fun PersonalizationScreen(
 
     var showBgColorPicker by remember { mutableStateOf(false) }
     var showFontColorPicker by remember { mutableStateOf(false) }
-    var showFontDialog by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
 
     fun cleanupNewImage() {
@@ -394,15 +386,14 @@ fun PersonalizationScreen(
     }
 
     fun handleSave() {
-        // 按背景类型归一化：非图片背景清空图片路径与玻璃开关，默认背景清空字体颜色
+        // 按背景类型归一化：非图片背景清空图片路径与玻璃开关
         val type = parseCardBackgroundType(config.cardBackgroundType)
         val normalized = config.copy(
             isCustomized = true,
             cardBackgroundImagePath = if (type == CardBackgroundType.IMAGE) config.cardBackgroundImagePath else "",
             cardBackgroundGlassEnabled = if (type == CardBackgroundType.IMAGE) config.cardBackgroundGlassEnabled else false,
             cardBackgroundGlassFrosted = if (type == CardBackgroundType.IMAGE) config.cardBackgroundGlassFrosted else false,
-            cardBackgroundBlurRadius = if (type == CardBackgroundType.IMAGE) config.cardBackgroundBlurRadius else 0f,
-            cardBackgroundTextColor = if (type == CardBackgroundType.DEFAULT) "" else config.cardBackgroundTextColor
+            cardBackgroundBlurRadius = if (type == CardBackgroundType.IMAGE) config.cardBackgroundBlurRadius else 0f
         )
         cleanupNewImage()
         onSave(normalized)
@@ -533,18 +524,38 @@ fun PersonalizationScreen(
         }
 
         // 上方区域：卡片实时预览窗口
-        Box(
+        // 固定设计宽度渲染 + graphicsLayer 等比缩放（与分享预览同模式），
+        // 卡片与文字同步缩放，比例与详情页渲染保持一致
+        BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
-            ReminderDetailCard(
-                reminderItem = previewItem,
+            val designWidth = 340.dp
+            val outerDensity = LocalDensity.current
+            val scale = with(outerDensity) { maxWidth.toPx() / designWidth.toPx() }.coerceAtMost(1f)
+
+            Box(
                 modifier = Modifier
-                    .fillMaxWidth(0.62f)
-                    .widthIn(max = 300.dp)
-            )
+                    .fillMaxWidth()
+                    .height(designWidth * scale),
+                contentAlignment = Alignment.Center
+            ) {
+                Box(
+                    modifier = Modifier
+                        .wrapContentSize(unbounded = true)
+                        .graphicsLayer {
+                            scaleX = scale
+                            scaleY = scale
+                        }
+                ) {
+                    ReminderDetailCard(
+                        reminderItem = previewItem,
+                        modifier = Modifier.width(designWidth)
+                    )
+                }
+            }
         }
 
         // 下方区域：设置面板
@@ -591,7 +602,6 @@ fun PersonalizationScreen(
                     onGlassTransparencyChange = { config = config.copy(cardBackgroundGlassTransparency = it) },
                     onGlassBlurChange = { config = config.copy(cardBackgroundGlassBlur = it) },
                     onBackgroundColorChange = { config = config.copy(cardBackgroundColor = it) },
-                    onTextColorChange = { config = config.copy(cardBackgroundTextColor = it) },
                     onShowColorPicker = { showBgColorPicker = true }
                 )
             }
@@ -604,10 +614,6 @@ fun PersonalizationScreen(
                 onFontColorChange = { config = config.copy(customFontColor = it) },
                 onOpacityChange = { config = config.copy(customFontOpacity = it) },
                 onBlurChange = { config = config.copy(customFontBlur = it) },
-                onGlassRefractionChange = { config = config.copy(customFontGlassRefraction = it) },
-                onGlassTransparencyChange = { config = config.copy(customFontGlassTransparency = it) },
-                onGlassBlurChange = { config = config.copy(customFontGlassBlur = it) },
-                onShowFontDialog = { showFontDialog = true },
                 onShowFontColorPicker = { showFontColorPicker = true }
             )
 
@@ -682,18 +688,6 @@ fun PersonalizationScreen(
         )
     }
 
-    // 字体选择
-    if (showFontDialog) {
-        FontSelectDialog(
-            initialFont = config.customFont,
-            onDismiss = { showFontDialog = false },
-            onConfirm = { fontName ->
-                config = config.copy(customFont = fontName)
-                showFontDialog = false
-            }
-        )
-    }
-
     // 图片裁剪
     cropBitmap?.let { pending ->
         ImageCropDialog(
@@ -739,31 +733,6 @@ private fun ColorSection(
     val isDefault = config.customHeaderColor.isEmpty()
 
     SectionCard(title = "卡片颜色") {
-        // 当前颜色状态行
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
-            Box(
-                modifier = Modifier
-                    .size(36.dp)
-                    .clip(CircleShape)
-                    .background(parseHexSafe(if (isDefault) defaultColorHex else config.customHeaderColor, Color.Gray))
-                    .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
-            )
-            Column(modifier = Modifier.weight(1f)) {
-                Text("标头颜色", style = MaterialTheme.typography.bodyLarge)
-                Text(
-                    if (isDefault) "默认（跟随提醒类型）" else config.customHeaderColor.uppercase(),
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-            }
-        }
-
-        Spacer(modifier = Modifier.height(12.dp))
-
         // 预设色网格：默认 + 8 色 + 自定义
         val gridItems: List<Pair<String, Color>> = remember {
             listOf("DEFAULT" to Color.Transparent) +
@@ -851,7 +820,6 @@ private fun BackgroundSection(
     onGlassTransparencyChange: (Float) -> Unit,
     onGlassBlurChange: (Float) -> Unit,
     onBackgroundColorChange: (String) -> Unit,
-    onTextColorChange: (String) -> Unit,
     onShowColorPicker: () -> Unit
 ) {
     val type = parseCardBackgroundType(config.cardBackgroundType)
@@ -875,38 +843,9 @@ private fun BackgroundSection(
             }
         }
 
-        // 字体颜色子选项（自定义背景下可用）
-        SettingsLinkedVisibility(visible = type != CardBackgroundType.DEFAULT) {
-            Column(
-                modifier = Modifier.padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
-            ) {
-                Text(
-                    "字体颜色",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                val textColorOptions = listOf("" to "自动", "WHITE" to "白色", "BLACK" to "黑色")
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    textColorOptions.forEachIndexed { index, (value, label) ->
-                        SegmentedButton(
-                            selected = config.cardBackgroundTextColor == value,
-                            onClick = { onTextColorChange(value) },
-                            shape = SegmentedButtonDefaults.itemShape(index, textColorOptions.size),
-                            icon = {},
-                            label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelLarge) }
-                        )
-                    }
-                }
-            }
-        }
-
         // 图片模式子面板
         SettingsLinkedVisibility(visible = type == CardBackgroundType.IMAGE) {
-            Column(
-                modifier = Modifier.padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -954,10 +893,7 @@ private fun BackgroundSection(
                 )
 
                 SettingsLinkedVisibility(visible = config.cardBackgroundGlassEnabled) {
-                    Column(
-                        verticalArrangement = Arrangement.spacedBy(12.dp),
-                        modifier = Modifier.padding(top = 4.dp)
-                    ) {
+                    Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SwitchRow(
                             title = "磨砂处理",
                             subtitle = "变为磨砂雾透玻璃效果，柔化光栅",
@@ -999,10 +935,7 @@ private fun BackgroundSection(
 
         // 颜色模式子面板
         SettingsLinkedVisibility(visible = type == CardBackgroundType.COLOR) {
-            Column(
-                modifier = Modifier.padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1022,7 +955,8 @@ private fun BackgroundSection(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("当前背景色", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            config.cardBackgroundColor.uppercase(),
+                            // 未选择时展示默认背景色（主题蓝）的 hex 值
+                            config.cardBackgroundColor.ifEmpty { "#1E88E5" }.uppercase(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1046,15 +980,19 @@ private fun BackgroundSection(
     }
 }
 
-// ==================== 区块：数字字体 ====================
+// ==================== 区块：字体 ====================
 
-/** 字体效果选项描述 */
+/** 内置字体选项（与数字渲染层共用同一套 FontFamily 映射） */
+private val FONT_OPTIONS = listOf(
+    "Default", "Serif", "SansSerif", "Monospace", "Cursive",
+    "SansSerif-Condensed", "SansSerif-Black", "SansSerif-Light"
+)
+
+/** 字体效果选项元信息：图标 + 描述 */
 private val FONT_EFFECT_META = listOf(
-    Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "根据背景色自动选择黑色或白色字体"),
-    Triple(NumberFontEffect.SOLID, Icons.Filled.FormatColorFill, "自定义纯色字体（任意背景可用）"),
-    Triple(NumberFontEffect.MIXED, Icons.Filled.InvertColors, "基于背景色生成反色字体，可调节透明度"),
-    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "对字体应用高斯模糊，可调节模糊度"),
-    Triple(NumberFontEffect.GLASS, Icons.Filled.GridOn, "复用光栅玻璃折射模型，可调折射度、透明度与模糊度")
+    Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "跟随背景亮度自动选择黑/白字体，任何背景均可用"),
+    Triple(NumberFontEffect.SOLID, Icons.Filled.FormatColorFill, "自定义纯色字体及透明度，任何背景均可用"),
+    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "对文字应用官方高斯模糊，可调节模糊度")
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1067,27 +1005,38 @@ private fun FontSection(
     onFontColorChange: (String) -> Unit,
     onOpacityChange: (Float) -> Unit,
     onBlurChange: (Float) -> Unit,
-    onGlassRefractionChange: (Float) -> Unit,
-    onGlassTransparencyChange: (Float) -> Unit,
-    onGlassBlurChange: (Float) -> Unit,
-    onShowFontDialog: () -> Unit,
     onShowFontColorPicker: () -> Unit
 ) {
     val currentEffect = runCatching {
         NumberFontEffect.valueOf(config.customFontEffect)
     }.getOrDefault(NumberFontEffect.AUTO)
 
-    SectionCard(title = "数字字体") {
-        // 字体选择入口
-        TonalCardRow(
-            icon = Icons.Filled.TextFields,
-            title = "字体选择",
-            value = config.customFont.toFontLabel(),
-            showChevron = true,
-            onClick = onShowFontDialog
+    SectionCard(title = "字体") {
+        // 数字字体：横排单选预览卡（仅对数字内容生效）
+        Text(
+            "数字字体",
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-
-        Spacer(modifier = Modifier.height(12.dp))
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(8.dp)
+        ) {
+            FONT_OPTIONS.forEach { font ->
+                FontOptionCard(
+                    font = font,
+                    isSelected = config.customFont == font,
+                    onClick = { onFontChange(font) }
+                )
+            }
+        }
+        Text(
+            "数字字体仅作用于卡片中的数字内容",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         // 字体效果 FilterChip 组
         Text(
@@ -1095,14 +1044,15 @@ private fun FontSection(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
-        Spacer(modifier = Modifier.height(8.dp))
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             FONT_EFFECT_META.forEach { (effect, icon, _) ->
-                // 依赖逻辑：除纯色外，其余效果仅在自定义背景下可启用
-                val enabled = effect == NumberFontEffect.SOLID || isCustomBackground
+                // 依赖逻辑："默认/纯色"恒可用；模糊仅自定义背景下可启用
+                val enabled = effect == NumberFontEffect.AUTO ||
+                    effect == NumberFontEffect.SOLID ||
+                    isCustomBackground
                 FilterChip(
                     selected = currentEffect == effect,
                     onClick = { onEffectChange(effect) },
@@ -1110,11 +1060,9 @@ private fun FontSection(
                     label = {
                         Text(
                             when (effect) {
-                                NumberFontEffect.AUTO -> "自动"
+                                NumberFontEffect.AUTO -> "默认"
                                 NumberFontEffect.SOLID -> "纯色"
-                                NumberFontEffect.MIXED -> "混色"
-                                NumberFontEffect.BLUR -> "模糊"
-                                NumberFontEffect.GLASS -> "玻璃"
+                                else -> "模糊"
                             },
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -1134,25 +1082,24 @@ private fun FontSection(
         // 效果说明与联动提示
         val meta = FONT_EFFECT_META.firstOrNull { it.first == currentEffect }
         if (meta != null) {
-            Spacer(modifier = Modifier.height(8.dp))
-            val locked = currentEffect != NumberFontEffect.SOLID && !isCustomBackground
+            val locked = currentEffect != NumberFontEffect.SOLID &&
+                currentEffect != NumberFontEffect.AUTO &&
+                !isCustomBackground
             Text(
                 text = if (locked) "切换至自定义背景（图片或颜色）后此效果方可生效" else meta.third,
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        Text(
+            text = "默认背景时效果仅作用于数字；自定义背景时应用于卡片全部文字",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
 
         // 各效果子参数面板
-        AnimatedVisibility(
-            visible = currentEffect == NumberFontEffect.SOLID,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Column(
-                modifier = Modifier.padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
-            ) {
+        SettingsLinkedVisibility(visible = currentEffect == NumberFontEffect.SOLID) {
+            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -1172,7 +1119,8 @@ private fun FontSection(
                     Column(modifier = Modifier.weight(1f)) {
                         Text("字体颜色", style = MaterialTheme.typography.bodyMedium)
                         Text(
-                            config.customFontColor.uppercase(),
+                            // 未选择时展示默认纯色（白色）的 hex 值
+                            config.customFontColor.ifEmpty { "#FFFFFF" }.uppercase(),
                             style = MaterialTheme.typography.bodySmall,
                             color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
@@ -1181,15 +1129,6 @@ private fun FontSection(
                         Text("选择颜色")
                     }
                 }
-            }
-        }
-
-        AnimatedVisibility(
-            visible = currentEffect == NumberFontEffect.MIXED && isCustomBackground,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Column(modifier = Modifier.padding(top = 12.dp)) {
                 SliderRow(
                     title = "字体透明度",
                     valueText = "${(config.customFontOpacity * 100).roundToInt()}%",
@@ -1200,153 +1139,80 @@ private fun FontSection(
             }
         }
 
-        AnimatedVisibility(
-            visible = currentEffect == NumberFontEffect.BLUR && isCustomBackground,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Column(modifier = Modifier.padding(top = 12.dp)) {
-                SliderRow(
-                    title = "模糊度",
-                    valueText = "${config.customFontBlur.roundToInt()}",
-                    value = config.customFontBlur,
-                    valueRange = 0f..24f,
-                    onValueChange = onBlurChange
-                )
-            }
+        SettingsLinkedVisibility(visible = currentEffect == NumberFontEffect.BLUR && isCustomBackground) {
+            SliderRow(
+                title = "模糊度",
+                valueText = "${config.customFontBlur.roundToInt()}",
+                value = config.customFontBlur,
+                valueRange = 0f..24f,
+                onValueChange = onBlurChange
+            )
         }
+    }
+}
 
-        AnimatedVisibility(
-            visible = currentEffect == NumberFontEffect.GLASS && isCustomBackground,
-            enter = fadeIn() + expandVertically(),
-            exit = fadeOut() + shrinkVertically()
-        ) {
-            Column(
-                modifier = Modifier.padding(top = 12.dp),
-                verticalArrangement = Arrangement.spacedBy(12.dp)
+/** 数字字体横排单选预览卡：以对应字体直接渲染 "17"，无文字标签 */
+@Composable
+private fun FontOptionCard(
+    font: String,
+    isSelected: Boolean,
+    onClick: () -> Unit
+) {
+    Box(
+        modifier = Modifier
+            .size(width = 76.dp, height = 64.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(
+                if (isSelected) {
+                    MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.5f)
+                } else {
+                    MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                }
+            )
+            .border(
+                width = if (isSelected) 2.dp else 1.dp,
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.primary
+                } else {
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                },
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Text(
+            text = "17",
+            style = MaterialTheme.typography.headlineMedium.copy(
+                fontFamily = font.toFontFamily(),
+                fontWeight = FontWeight.Bold
+            ),
+            color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
+        )
+        if (isSelected) {
+            Box(
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(4.dp)
+                    .size(16.dp)
+                    .clip(CircleShape)
+                    .background(MaterialTheme.colorScheme.primary),
+                contentAlignment = Alignment.Center
             ) {
-                SliderRow(
-                    title = "折射度",
-                    valueText = "%.2f".format(config.customFontGlassRefraction),
-                    value = config.customFontGlassRefraction,
-                    valueRange = 0f..0.5f,
-                    onValueChange = onGlassRefractionChange
-                )
-                SliderRow(
-                    title = "透明度",
-                    valueText = "${(config.customFontGlassTransparency * 100).roundToInt()}%",
-                    value = config.customFontGlassTransparency,
-                    valueRange = 0f..1f,
-                    onValueChange = onGlassTransparencyChange
-                )
-                SliderRow(
-                    title = "模糊度",
-                    valueText = "${config.customFontGlassBlur.roundToInt()}",
-                    value = config.customFontGlassBlur,
-                    valueRange = 0f..24f,
-                    onValueChange = onGlassBlurChange
+                Icon(
+                    imageVector = Icons.Filled.Check,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onPrimary,
+                    modifier = Modifier.size(10.dp)
                 )
             }
         }
     }
 }
 
-// ==================== 字体选择对话框 ====================
-
-@Composable
-private fun FontSelectDialog(
-    initialFont: String,
-    onDismiss: () -> Unit,
-    onConfirm: (String) -> Unit
-) {
-    val fonts = listOf(
-        "Default", "Serif", "SansSerif", "Monospace", "Cursive",
-        "SansSerif-Condensed", "SansSerif-Black", "SansSerif-Light"
-    )
-    var tempSelectedFont by remember { mutableStateOf(initialFont) }
-
-    AppAlertDialog(
-        onDismissRequest = onDismiss,
-        title = "选择数字字体",
-        content = {
-            Column {
-                // 动态即时渲染预览框
-                Card(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(100.dp),
-                    colors = CardDefaults.cardColors(
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                    ),
-                    shape = RoundedCornerShape(16.dp)
-                ) {
-                    Box(modifier = Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-                        Row(verticalAlignment = Alignment.Bottom) {
-                            Text(
-                                text = "365",
-                                style = androidx.compose.ui.text.TextStyle(
-                                    fontSize = 64.sp,
-                                    fontWeight = FontWeight.Bold,
-                                    fontFamily = tempSelectedFont.toFontFamily(),
-                                    color = MaterialTheme.colorScheme.primary,
-                                    letterSpacing = (-1).sp
-                                )
-                            )
-                            Spacer(modifier = Modifier.width(4.dp))
-                            Text(
-                                text = "天",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                modifier = Modifier.padding(bottom = 10.dp)
-                            )
-                        }
-                    }
-                }
-                Spacer(modifier = Modifier.height(12.dp))
-                Column(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .height(280.dp)
-                        .verticalScroll(rememberScrollState())
-                ) {
-                    fonts.forEach { font ->
-                        Row(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .clickable { tempSelectedFont = font }
-                                .padding(vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically
-                        ) {
-                            RadioButtonSimple(selected = tempSelectedFont == font)
-                            Spacer(modifier = Modifier.width(8.dp))
-                            Text(
-                                text = font.toFontLabel(),
-                                style = MaterialTheme.typography.bodyLarge,
-                                fontFamily = font.toFontFamily()
-                            )
-                        }
-                    }
-                }
-            }
-        },
-        confirmText = "保存",
-        onConfirm = { onConfirm(tempSelectedFont) },
-        neutralText = "取消",
-        onNeutral = onDismiss
-    )
-}
-
-@Composable
-private fun RadioButtonSimple(selected: Boolean) {
-    androidx.compose.material3.RadioButton(
-        selected = selected,
-        onClick = null
-    )
-}
-
 // ==================== 通用小组件 ====================
 
-/** 区块卡片容器 */
+/** 区块卡片容器：标题与内容、内容项之间统一 12dp 节奏 */
 @Composable
 private fun SectionCard(
     title: String,
@@ -1361,13 +1227,12 @@ private fun SectionCard(
     ) {
         Column(
             modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(4.dp)
+            verticalArrangement = Arrangement.spacedBy(12.dp)
         ) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
             )
-            Spacer(modifier = Modifier.height(8.dp))
             content()
         }
     }

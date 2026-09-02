@@ -145,6 +145,5 @@ data class BackupData(
     val customColorSeed: Int? = null,
     val scrollBehavior: String? = null,
     val homeCategoryEnabled: Boolean? = null,
-    val fontEffectGlobalEnabled: Boolean? = null,
     val cardBackgroundImages: Map<String, String>? = null
 )

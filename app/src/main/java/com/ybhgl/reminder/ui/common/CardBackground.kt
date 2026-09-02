@@ -260,10 +260,11 @@ fun resolveEffectiveFontEffect(
             EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor)
         } else EffectiveFontEffect()
 
-        NumberFontEffect.SOLID -> EffectiveFontEffect(
-            numberColor = spec.solidColor,
-            cardTextColor = if (isCustomBg) spec.solidColor else null
-        )
+        NumberFontEffect.SOLID -> {
+            // 纯色字体颜色 × 用户可调透明度
+            val color = spec.solidColor.copy(alpha = spec.opacity.coerceIn(0.2f, 1f))
+            EffectiveFontEffect(numberColor = color, cardTextColor = if (isCustomBg) color else null)
+        }
 
         NumberFontEffect.MIXED -> if (isCustomBg) {
             val inverted = Color(1f - bgAverageColor.red, 1f - bgAverageColor.green, 1f - bgAverageColor.blue)
@@ -276,7 +277,8 @@ fun resolveEffectiveFontEffect(
         } else EffectiveFontEffect()
 
         NumberFontEffect.GLASS -> if (isCustomBg) {
-            EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor, numberRender = spec)
+            // 玻璃渲染效果已移除（设置面板不再提供），存量数据按自动反色显示
+            EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor)
         } else EffectiveFontEffect()
     }
 }
@@ -625,68 +627,19 @@ suspend fun importCardBackgroundBitmap(context: Context, bitmap: Bitmap): String
     withContext(Dispatchers.IO) { CardBackgroundImageManager.importBitmap(context, bitmap) }
 
 /**
- * 大数字字体渲染效果 Modifier：承载字体效果中的 BLUR / GLASS 渲染。
- * - BLUR：高斯模糊（API 31+）
- * - GLASS：复用光栅玻璃柱面折射模型 + 模糊 + 透明度（API 33+；不满足时降级为 BLUR，再降为无效果）
- * - 其余效果（AUTO/SOLID/MIXED 仅改颜色）或 API 不足时原样渲染
+ * 文字高斯模糊 Modifier：基于官方 RenderEffect（API 31+），
+ * 对应用处的整个前景内容层（标题/数字/日期等文字）施加高斯模糊。
+ * 效果层位于卡片背景层之上，背景不受影响；API 不足或半径为 0 时不生效。
  * RenderEffect 按参数缓存，避免 graphicsLayer 重复赋新对象导致的一帧空白闪烁。
  */
-fun Modifier.numberTextEffect(spec: NumberEffectSpec?): Modifier = composed {
-    val supportsBlur = Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
-    val supportsGlass = Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
-    val activeEffect = when (spec?.effect) {
-        NumberFontEffect.BLUR -> if (supportsBlur) NumberFontEffect.BLUR else null
-        NumberFontEffect.GLASS -> when {
-            supportsGlass -> NumberFontEffect.GLASS
-            supportsBlur -> NumberFontEffect.BLUR // API 31..32：降级为纯模糊
-            else -> null
-        }
-        else -> null
-    }
-
-    if (spec == null || activeEffect == null) {
+fun Modifier.textBlurEffect(blurRadius: Float?): Modifier = composed {
+    if (blurRadius == null || blurRadius <= 0f || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
         Modifier
     } else {
-        val density = LocalDensity.current
-        val renderEffect: androidx.compose.ui.graphics.RenderEffect? = if (activeEffect == NumberFontEffect.BLUR) {
-            val blurPx = with(density) { spec.blurRadius.coerceIn(0f, 24f).dp.toPx() }
-            remember(blurPx) {
-                if (blurPx > 0f) {
-                    RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
-                } else null
-            }
-        } else {
-            // GLASS：柱面折射 + 模糊 + 透明度（文本层采用固定棱纹间距 28dp）
-            val flutedShader = rememberFlutedShader()
-            val spacingPx = with(density) { 28.dp.toPx() }
-            val glassBlurPx = with(density) { spec.glassBlur.coerceIn(0f, 24f).dp.toPx() }
-            remember(flutedShader, spacingPx, spec.glassRefraction, glassBlurPx) {
-                if (flutedShader == null) {
-                    null
-                } else {
-                    flutedShader.setFloatUniform("spacing", spacingPx)
-                    flutedShader.setFloatUniform("distort", spacingPx * spec.glassRefraction.coerceIn(0f, 0.5f))
-                    val distortEffect = RenderEffect.createRuntimeShaderEffect(flutedShader, "content")
-                    if (glassBlurPx > 0f) {
-                        // 与背景玻璃渲染链一致：先模糊，再折射位移
-                        val blurEffect = RenderEffect.createBlurEffect(glassBlurPx, glassBlurPx, Shader.TileMode.CLAMP)
-                        RenderEffect.createChainEffect(distortEffect, blurEffect)
-                    } else {
-                        distortEffect
-                    }
-                }
-            }?.asComposeRenderEffect()
+        val blurPx = with(LocalDensity.current) { blurRadius.coerceIn(0f, 24f).dp.toPx() }
+        val blurEffect = remember(blurPx) {
+            RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
         }
-
-        if (renderEffect != null) {
-            Modifier.graphicsLayer {
-                if (activeEffect == NumberFontEffect.GLASS) {
-                    alpha = spec.glassTransparency.coerceIn(0.1f, 1f)
-                }
-                this.renderEffect = renderEffect
-            }
-        } else {
-            Modifier
-        }
+        Modifier.graphicsLayer { renderEffect = blurEffect }
     }
 }

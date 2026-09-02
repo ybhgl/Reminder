@@ -46,7 +46,7 @@ import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.cardBackgroundAverageColor
 import com.ybhgl.reminder.ui.common.cardBackgroundSpec
 import com.ybhgl.reminder.ui.common.numberEffectSpec
-import com.ybhgl.reminder.ui.common.numberTextEffect
+import com.ybhgl.reminder.ui.common.textBlurEffect
 import com.ybhgl.reminder.ui.common.resolveEffectiveFontEffect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import com.ybhgl.reminder.ui.personalization.PersonalizationContract
@@ -622,8 +622,7 @@ fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
 private fun DayCountRow(
     dayCount: Int,
     visuals: ReminderCardVisuals,
-    isCountUp: Boolean = false,
-    effectSpec: com.ybhgl.reminder.ui.common.NumberEffectSpec? = null
+    isCountUp: Boolean = false
 ) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
@@ -646,8 +645,7 @@ private fun DayCountRow(
             ),
             modifier = Modifier
                 .weight(1f, fill = false)
-                .alignByBaseline()
-                .numberTextEffect(effectSpec),
+                .alignByBaseline(),
             checkHeight = true
         )
         Spacer(modifier = Modifier.width(6.dp))
@@ -704,6 +702,10 @@ fun ReminderDetailCard(
         numberRenderSpec = null
         if (numberOverride != null) visuals.copy(numberColor = numberOverride) else visuals
     }
+    // 模糊渲染效果作用于全卡文字内容层（颜色类效果经由 effectiveVisuals 生效）
+    val textBlurRadius = numberRenderSpec
+        ?.takeIf { it.effect == com.ybhgl.reminder.ui.common.NumberFontEffect.BLUR }
+        ?.blurRadius
 
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -739,6 +741,7 @@ fun ReminderDetailCard(
                         )
                     }
                     Column(
+                        modifier = Modifier.textBlurEffect(textBlurRadius),
                         horizontalAlignment = Alignment.CenterHorizontally
                     ) {
                         // Top section
@@ -786,8 +789,7 @@ fun ReminderDetailCard(
                             DayCountRow(
                                 dayCount = displayInfo.dayCount,
                                 visuals = effectiveVisuals,
-                                isCountUp = reminderItem.type == ReminderType.COUNT_UP,
-                                effectSpec = numberRenderSpec
+                                isCountUp = reminderItem.type == ReminderType.COUNT_UP
                             )
                         }
 
