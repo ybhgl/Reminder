@@ -219,7 +219,7 @@ fun CustomColorPickerDialog(
                         Slider(
                             value = value,
                             onValueChange = { value = it },
-                            valueRange = 0.15f..1f, // 限制最低亮度，防止调配出无法辨识的死黑
+                            valueRange = 0f..1f, // 限制最低亮度，防止调配出无法辨识的死黑
                             colors = SliderDefaults.colors(
                                 activeTrackColor = Color.Transparent,
                                 inactiveTrackColor = Color.Transparent,
