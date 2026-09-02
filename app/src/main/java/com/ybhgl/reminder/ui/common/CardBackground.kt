@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
 import android.graphics.LinearGradient
+import android.graphics.Matrix
 import android.graphics.Paint
 import android.graphics.RenderEffect
 import android.graphics.RuntimeShader
@@ -25,18 +26,26 @@ import androidx.compose.ui.composed
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithCache
+import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.StrokeJoin
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.nativeCanvas
+import androidx.compose.ui.graphics.rememberGraphicsLayer
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.util.CardBackgroundImageManager
@@ -76,7 +85,15 @@ data class NumberEffectSpec(
     /** GLASS 效果透明度（0..1） */
     val glassTransparency: Float = 0.7f,
     /** GLASS 效果模糊度（dp） */
-    val glassBlur: Float = 4f
+    val glassBlur: Float = 4f,
+    /** BLUR 玻璃字明暗模板：DARK / LIGHT */
+    val glassTheme: String = "DARK",
+    /** BLUR 玻璃字阴影开关 */
+    val shadowEnabled: Boolean = false,
+    /** BLUR 玻璃字描边开关 */
+    val strokeEnabled: Boolean = true,
+    /** BLUR 玻璃字描边颜色（hex），空 = 模板默认 */
+    val strokeColor: String = ""
 )
 
 /** 卡片背景配置（渲染层使用的聚合参数） */
@@ -139,7 +156,11 @@ val ReminderItem.numberEffectSpec: NumberEffectSpec
         blurRadius = customFontBlur,
         glassRefraction = customFontGlassRefraction,
         glassTransparency = customFontGlassTransparency,
-        glassBlur = customFontGlassBlur
+        glassBlur = customFontGlassBlur,
+        glassTheme = customFontGlassTheme,
+        shadowEnabled = customFontShadowEnabled,
+        strokeEnabled = customFontStrokeEnabled,
+        strokeColor = customFontStrokeColor
     )
 
 /** 异步加载卡片背景位图（带内存缓存：命中缓存时首帧即有图，避免 null→图片 闪烁），路径为空或加载失败返回 null */
@@ -233,6 +254,8 @@ fun resolveCardBackgroundForeground(spec: CardBackgroundSpec, luminance: Float):
 data class EffectiveFontEffect(
     val numberColor: Color? = null,
     val cardTextColor: Color? = null,
+    /** 副文字（日期/"天"）颜色覆盖；null = 沿用默认的 0.92 透明度处理 */
+    val secondaryTextColor: Color? = null,
     val numberRender: NumberEffectSpec? = null
 )
 
@@ -257,28 +280,49 @@ fun resolveEffectiveFontEffect(
     val isCustomBg = backgroundSpec != null
     return when (spec.effect) {
         NumberFontEffect.AUTO -> if (isCustomBg) {
-            EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor)
+            EffectiveFontEffect(
+                numberColor = autoColor,
+                cardTextColor = autoColor,
+                secondaryTextColor = autoColor?.copy(alpha = 0.92f)
+            )
         } else EffectiveFontEffect()
 
         NumberFontEffect.SOLID -> {
-            // 纯色字体颜色 × 用户可调透明度
+            // 纯色字体颜色 × 用户可调透明度（透明度同步作用于全卡文字）
             val color = spec.solidColor.copy(alpha = spec.opacity.coerceIn(0.2f, 1f))
-            EffectiveFontEffect(numberColor = color, cardTextColor = if (isCustomBg) color else null)
+            EffectiveFontEffect(
+                numberColor = color,
+                cardTextColor = if (isCustomBg) color else null,
+                secondaryTextColor = if (isCustomBg) color else null
+            )
         }
 
         NumberFontEffect.MIXED -> if (isCustomBg) {
             val inverted = Color(1f - bgAverageColor.red, 1f - bgAverageColor.green, 1f - bgAverageColor.blue)
                 .copy(alpha = spec.opacity.coerceIn(0.2f, 1f))
-            EffectiveFontEffect(numberColor = inverted, cardTextColor = inverted)
+            EffectiveFontEffect(
+                numberColor = inverted,
+                cardTextColor = inverted,
+                secondaryTextColor = inverted
+            )
         } else EffectiveFontEffect()
 
         NumberFontEffect.BLUR -> if (isCustomBg) {
-            EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor, numberRender = spec)
+            EffectiveFontEffect(
+                numberColor = autoColor,
+                cardTextColor = autoColor,
+                secondaryTextColor = autoColor?.copy(alpha = 0.92f),
+                numberRender = spec
+            )
         } else EffectiveFontEffect()
 
         NumberFontEffect.GLASS -> if (isCustomBg) {
             // 玻璃渲染效果已移除（设置面板不再提供），存量数据按自动反色显示
-            EffectiveFontEffect(numberColor = autoColor, cardTextColor = autoColor)
+            EffectiveFontEffect(
+                numberColor = autoColor,
+                cardTextColor = autoColor,
+                secondaryTextColor = autoColor?.copy(alpha = 0.92f)
+            )
         } else EffectiveFontEffect()
     }
 }
@@ -626,20 +670,138 @@ suspend fun decodeCardBackgroundBitmap(context: Context, uri: android.net.Uri): 
 suspend fun importCardBackgroundBitmap(context: Context, bitmap: Bitmap): String? =
     withContext(Dispatchers.IO) { CardBackgroundImageManager.importBitmap(context, bitmap) }
 
+/** 玻璃字（BLUR 效果）明暗模板 */
+enum class GlassTextTheme { DARK, LIGHT }
+
+fun parseGlassTextTheme(theme: String): GlassTextTheme =
+    runCatching { GlassTextTheme.valueOf(theme) }.getOrDefault(GlassTextTheme.DARK)
+
+/** 解析玻璃字描边颜色（hex），空返回 null 表示按模板默认 */
+fun parseGlassStrokeColor(hex: String): Color? =
+    hex.takeIf { it.isNotEmpty() }?.let { parseHexColorSafe(it) }
+
+/** 玻璃字文字内容渲染模式：MASK=正常填充（仅作 mask alpha）、STROKE=外轮廓描边、SHADOW=深色投影 */
+enum class GlassTextMode { MASK, STROKE, SHADOW }
+
+/** 玻璃字描边模式的文字样式：描边色 + Stroke 外轮廓（阴影独立为单独图层，不在此叠加） */
+fun glassStrokeTextStyle(base: TextStyle, strokeColor: Color, strokeWidthPx: Float): TextStyle =
+    base.copy(
+        color = strokeColor,
+        drawStyle = Stroke(width = strokeWidthPx, join = StrokeJoin.Round)
+    )
+
+/** 玻璃字阴影模式的文字样式：半透明填充（由独立图层做下移 + 高斯模糊形成投影）；
+ * 暗色玻璃用黑影、亮色玻璃用亮影（黑影在白雾字下观感极差） */
+fun glassShadowTextStyle(base: TextStyle, shadowColor: Color): TextStyle =
+    base.copy(color = shadowColor.copy(alpha = 0.45f))
+
+/** 按玻璃字明暗模板解析投影颜色：DARK=黑色、LIGHT=亮白 */
+fun glassShadowColor(theme: GlassTextTheme): Color = when (theme) {
+    GlassTextTheme.LIGHT -> Color(0xFFF2FBFF)
+    GlassTextTheme.DARK -> Color.Black
+}
+
+/** 玻璃字描边宽度（外露的轮廓线，线宽内半被玻璃层覆盖、只露外半 → 等效外描边） */
+val GlassStrokeWidth = 2.0.dp
+
 /**
- * 文字高斯模糊 Modifier：基于官方 RenderEffect（API 31+），
- * 对应用处的整个前景内容层（标题/数字/日期等文字）施加高斯模糊。
- * 效果层位于卡片背景层之上，背景不受影响；API 不足或半径为 0 时不生效。
- * RenderEffect 按参数缓存，避免 graphicsLayer 重复赋新对象导致的一帧空白闪烁。
+ * 玻璃字效果层（复刻 SVG 玻璃字的渲染顺序）：
+ * ① 文字层录制为 mask（不上屏）
+ * ② 描边文字层（可选）：Stroke 轮廓，位于玻璃层之下——
+ *    描边线的内半被玻璃 mask 覆盖、只露出字形外半，等效"只描外轮廓"
+ * ③ 玻璃层：模糊背景 + veil 整层 → 按文字 alpha（BlendMode.DstIn）裁切
+ *    —— 内部模糊、字形边缘锐利；veil 随模糊度增强并整体加强（字形更白/更黑）
+ * ④ 阴影文字层（可选）：深色填充文字整体下移 + 高斯模糊，叠在玻璃层之上（对应 HTML uShadow）
+ *
+ * @param blurRadius 玻璃模糊半径（dp，0..24）
+ * @param theme DARK=暗色玻璃（深 veil） LIGHT=亮色玻璃（亮 veil）
+ * @param strokeEnabled 是否绘制描边（默认关闭）
+ * @param shadowEnabled 是否绘制阴影（默认关闭）
+ * @param backdrop 背景内容（玻璃层内绘制一份并整体模糊；底层清晰背景由调用方绘制）
+ * @param textContent 文字内容；[GlassTextMode.MASK] 正常填充（仅作 mask alpha）、
+ *   [GlassTextMode.STROKE] 描边模式、[GlassTextMode.SHADOW] 阴影模式
  */
-fun Modifier.textBlurEffect(blurRadius: Float?): Modifier = composed {
-    if (blurRadius == null || blurRadius <= 0f || Build.VERSION.SDK_INT < Build.VERSION_CODES.S) {
-        Modifier
-    } else {
-        val blurPx = with(LocalDensity.current) { blurRadius.coerceIn(0f, 24f).dp.toPx() }
-        val blurEffect = remember(blurPx) {
-            RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP).asComposeRenderEffect()
+@Composable
+fun GlassTextOverlay(
+    blurRadius: Float,
+    theme: GlassTextTheme,
+    strokeEnabled: Boolean,
+    shadowEnabled: Boolean,
+    modifier: Modifier = Modifier,
+    backdrop: @Composable () -> Unit,
+    textContent: @Composable (mode: GlassTextMode) -> Unit
+) {
+    val density = LocalDensity.current
+    val sigma = with(density) { blurRadius.coerceIn(0f, 24f).dp }
+    val textLayer = rememberGraphicsLayer()
+
+    val veilColor = when (theme) {
+        GlassTextTheme.DARK -> Color(0xFF06161D)
+        GlassTextTheme.LIGHT -> Color(0xFFF2FBFF)
+    }
+    // veil 强度随模糊度联动增强并整体调高：σ=0 → 0.25，σ=24 → 0.65（字形更白/更黑，与背景拉开对比）
+    val veilAlpha = (0.25f + blurRadius.coerceIn(0f, 24f) * (0.40f / 24f)).coerceIn(0.25f, 0.65f)
+
+    Box(modifier) {
+        // ① 文字 mask 录制层：仅录制内容到 graphicsLayer，不绘制到屏幕
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .drawWithContent {
+                    textLayer.record { this@drawWithContent.drawContent() }
+                }
+        ) {
+            textContent(GlassTextMode.MASK)
         }
-        Modifier.graphicsLayer { renderEffect = blurEffect }
+
+        // ② 描边文字层（可读性兜底）：画在玻璃层之下，描边线内半被玻璃覆盖 → 只露外轮廓
+        if (strokeEnabled) {
+            Box(modifier = Modifier.matchParentSize()) {
+                textContent(GlassTextMode.STROKE)
+            }
+        }
+
+        // ③ 玻璃层：先模糊（子层）再被文字 alpha 裁切 —— 内部模糊、边缘锐利
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    textLayer.blendMode = BlendMode.DstIn
+                    drawLayer(textLayer)
+                }
+        ) {
+            // 模糊背景：整体放大避免模糊边缘的透明收缩露馅
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        scaleX = 1.12f
+                        scaleY = 1.12f
+                    }
+                    .then(if (sigma > 0.dp) Modifier.blur(sigma) else Modifier)
+            ) {
+                backdrop()
+            }
+            // veil：整层叠加，mask 裁切后仅在字形内可见
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .background(veilColor.copy(alpha = veilAlpha))
+            )
+        }
+
+        // ④ 阴影文字层（对应 HTML uShadow）：深色填充文字整体下移 + 高斯模糊，叠在玻璃层之上
+        if (shadowEnabled) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { translationY = with(density) { 3.dp.toPx() } }
+                    .blur(6.dp)
+            ) {
+                textContent(GlassTextMode.SHADOW)
+            }
+        }
     }
 }

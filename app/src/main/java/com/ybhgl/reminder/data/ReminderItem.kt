@@ -101,7 +101,15 @@ data class ReminderItem(
     /** 玻璃字体效果透明度（0..1） */
     val customFontGlassTransparency: Float = 0.7f,
     /** 玻璃字体效果模糊度（0..24dp） */
-    val customFontGlassBlur: Float = 4f
+    val customFontGlassBlur: Float = 4f,
+    /** 玻璃字（BLUR 效果）明暗模板：DARK=暗色玻璃字、LIGHT=亮色玻璃字 */
+    val customFontGlassTheme: String = "DARK",
+    /** 玻璃字阴影开关（文字投影，默认关闭） */
+    val customFontShadowEnabled: Boolean = false,
+    /** 玻璃字是否描边（外轮廓描边，默认关闭） */
+    val customFontStrokeEnabled: Boolean = false,
+    /** 玻璃字描边颜色（hex），空 = 按模板默认（暗模板亮描边 / 亮模板暗描边） */
+    val customFontStrokeColor: String = ""
 )
 
 @Serializer(forClass = LocalDate::class)

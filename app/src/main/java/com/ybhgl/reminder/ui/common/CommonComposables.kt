@@ -226,18 +226,18 @@ fun AutoResizeText(
     color: Color = Color.Unspecified,
     checkHeight: Boolean = false
 ) {
-    // 以 style 为 key：字体/颜色等样式变化时重置并重新测量，避免自定义配置不生效
-    var resizedTextStyle by remember(style) {
-        mutableStateOf(style)
-    }
     val textMeasurer = rememberTextMeasurer()
+    // 测量键剥离颜色：颜色（如纯色效果透明度）连续变化时不重置字号、不重启测量协程，
+    // 避免数字按初始字号渲染一帧再校正造成"来回闪烁"（基线对齐的相邻文字会跟着跳动）
+    val measureStyle = style.copy(color = Color.Unspecified)
+    // 字号状态跨样式变化保留：字体切换时先沿用上次收敛字号渲染，测量完成后平滑校正
+    var resizedTextStyle by remember { mutableStateOf(measureStyle) }
 
     BoxWithConstraints(modifier = modifier) {
-        val readyToDraw = remember { mutableStateOf(false) }
-        val rememberedStyle = remember(resizedTextStyle) { resizedTextStyle }
+        var readyToDraw by remember { mutableStateOf(false) }
 
-        LaunchedEffect(text, rememberedStyle, constraints) {
-            val styleWithoutLineHeight = rememberedStyle.copy(lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified)
+        LaunchedEffect(text, measureStyle, constraints) {
+            val styleWithoutLineHeight = measureStyle.copy(lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified)
             var currentFontSize = styleWithoutLineHeight.fontSize
             val minFontSize = 1.sp
 
@@ -259,13 +259,13 @@ fun AutoResizeText(
             }
 
             resizedTextStyle = styleWithoutLineHeight.copy(fontSize = currentFontSize)
-            readyToDraw.value = true
+            readyToDraw = true
         }
 
-        if (readyToDraw.value) {
+        if (readyToDraw) {
             Text(
                 text = text,
-                color = color,
+                color = if (color != Color.Unspecified) color else style.color,
                 textAlign = TextAlign.Center,
                 style = resizedTextStyle,
                 softWrap = false

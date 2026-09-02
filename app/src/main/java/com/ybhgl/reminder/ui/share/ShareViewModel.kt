@@ -73,7 +73,11 @@ data class ShareOptions(
     val customFontBlur: Float = 8f,
     val customFontGlassRefraction: Float = 0.24f,
     val customFontGlassTransparency: Float = 0.7f,
-    val customFontGlassBlur: Float = 4f
+    val customFontGlassBlur: Float = 4f,
+    val customFontGlassTheme: String = "DARK",
+    val customFontShadowEnabled: Boolean = false,
+    val customFontStrokeEnabled: Boolean = false,
+    val customFontStrokeColor: String = ""
 )
 
 /** 从分享会话配置提取个性化设置页所需的初始配置 */
@@ -98,7 +102,11 @@ fun ShareOptions.toPersonalizationConfig(): PersonalizationConfig = Personalizat
     customFontBlur = customFontBlur,
     customFontGlassRefraction = customFontGlassRefraction,
     customFontGlassTransparency = customFontGlassTransparency,
-    customFontGlassBlur = customFontGlassBlur
+    customFontGlassBlur = customFontGlassBlur,
+    customFontGlassTheme = customFontGlassTheme,
+    customFontShadowEnabled = customFontShadowEnabled,
+    customFontStrokeEnabled = customFontStrokeEnabled,
+    customFontStrokeColor = customFontStrokeColor
 )
 
 class ShareViewModel(
@@ -143,7 +151,11 @@ class ShareViewModel(
                     customFontBlur = it.customFontBlur,
                     customFontGlassRefraction = it.customFontGlassRefraction,
                     customFontGlassTransparency = it.customFontGlassTransparency,
-                    customFontGlassBlur = it.customFontGlassBlur
+                    customFontGlassBlur = it.customFontGlassBlur,
+                    customFontGlassTheme = it.customFontGlassTheme,
+                    customFontShadowEnabled = it.customFontShadowEnabled,
+                    customFontStrokeEnabled = it.customFontStrokeEnabled,
+                    customFontStrokeColor = it.customFontStrokeColor
                 )
             }
             _reminder.value = item
@@ -175,7 +187,11 @@ class ShareViewModel(
             customFontBlur = options.customFontBlur,
             customFontGlassRefraction = options.customFontGlassRefraction,
             customFontGlassTransparency = options.customFontGlassTransparency,
-            customFontGlassBlur = options.customFontGlassBlur
+            customFontGlassBlur = options.customFontGlassBlur,
+            customFontGlassTheme = options.customFontGlassTheme,
+            customFontShadowEnabled = options.customFontShadowEnabled,
+            customFontStrokeEnabled = options.customFontStrokeEnabled,
+            customFontStrokeColor = options.customFontStrokeColor
         )
     }
 
@@ -203,7 +219,11 @@ class ShareViewModel(
                 customFontBlur = config.customFontBlur,
                 customFontGlassRefraction = config.customFontGlassRefraction,
                 customFontGlassTransparency = config.customFontGlassTransparency,
-                customFontGlassBlur = config.customFontGlassBlur
+                customFontGlassBlur = config.customFontGlassBlur,
+                customFontGlassTheme = config.customFontGlassTheme,
+                customFontShadowEnabled = config.customFontShadowEnabled,
+                customFontStrokeEnabled = config.customFontStrokeEnabled,
+                customFontStrokeColor = config.customFontStrokeColor
             )
         }
     }

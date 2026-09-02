@@ -16,6 +16,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -46,7 +47,15 @@ import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.cardBackgroundAverageColor
 import com.ybhgl.reminder.ui.common.cardBackgroundSpec
 import com.ybhgl.reminder.ui.common.numberEffectSpec
-import com.ybhgl.reminder.ui.common.textBlurEffect
+import com.ybhgl.reminder.ui.common.GlassTextOverlay
+import com.ybhgl.reminder.ui.common.GlassTextMode
+import com.ybhgl.reminder.ui.common.GlassTextTheme
+import com.ybhgl.reminder.ui.common.GlassStrokeWidth
+import com.ybhgl.reminder.ui.common.glassShadowColor
+import com.ybhgl.reminder.ui.common.glassShadowTextStyle
+import com.ybhgl.reminder.ui.common.glassStrokeTextStyle
+import com.ybhgl.reminder.ui.common.parseGlassStrokeColor
+import com.ybhgl.reminder.ui.common.parseGlassTextTheme
 import com.ybhgl.reminder.ui.common.resolveEffectiveFontEffect
 import androidx.activity.compose.rememberLauncherForActivityResult
 import com.ybhgl.reminder.ui.personalization.PersonalizationContract
@@ -622,10 +631,17 @@ fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
 private fun DayCountRow(
     dayCount: Int,
     visuals: ReminderCardVisuals,
-    isCountUp: Boolean = false
+    isCountUp: Boolean = false,
+    glassMode: GlassTextMode? = null,
+    glassStrokeColor: Color = Color.White,
+    glassShadowColor: Color = Color.Black
 ) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
+    val strokePx = with(androidx.compose.ui.platform.LocalDensity.current) { GlassStrokeWidth.toPx() }
+    // 仅 STROKE/SHADOW 属于玻璃覆盖层模式；MASK（正常渲染）必须走常规颜色，
+    // 否则无颜色的样式会回落主题默认色导致"天"字锁死白色
+    val isGlassOverlay = glassMode == GlassTextMode.STROKE || glassMode == GlassTextMode.SHADOW
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -633,28 +649,40 @@ private fun DayCountRow(
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom,
     ) {
+        val numberStyle = MaterialTheme.typography.displayLarge.copy(
+            fontSize = 140.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-1).sp,
+            color = visuals.numberColor,
+            fontFamily = visuals.fontFamily,
+            lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
+        )
+        val styledNumberStyle = when (glassMode) {
+            GlassTextMode.STROKE -> glassStrokeTextStyle(numberStyle, glassStrokeColor, strokePx)
+            GlassTextMode.SHADOW -> glassShadowTextStyle(numberStyle, glassShadowColor)
+            else -> numberStyle
+        }
         AutoResizeText(
             text = textToShow,
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = 140.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-1).sp,
-                color = visuals.numberColor,
-                fontFamily = visuals.fontFamily,
-                lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
-            ),
+            style = styledNumberStyle,
             modifier = Modifier
                 .weight(1f, fill = false)
                 .alignByBaseline(),
             checkHeight = true
         )
         Spacer(modifier = Modifier.width(6.dp))
+        val unitStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontSize = 30.sp
+        )
+        val styledUnitStyle = when (glassMode) {
+            GlassTextMode.STROKE -> glassStrokeTextStyle(unitStyle, glassStrokeColor, strokePx)
+            GlassTextMode.SHADOW -> glassShadowTextStyle(unitStyle, glassShadowColor)
+            else -> unitStyle
+        }
         Text(
             text = "天",
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 30.sp
-            ),
-            color = visuals.secondaryTextColor,
+            style = styledUnitStyle,
+            color = if (isGlassOverlay) Color.Unspecified else visuals.secondaryTextColor,
             modifier = Modifier.alignByBaseline()
         )
     }
@@ -694,7 +722,8 @@ fun ReminderDetailCard(
         visuals.copy(
             headerContentColor = foreground,
             numberColor = resolved.numberColor ?: foreground,
-            secondaryTextColor = foreground.copy(alpha = 0.92f)
+            // 纯色/混色效果携带用户透明度时直接沿用；否则保持 0.92 的默认副文字弱化
+            secondaryTextColor = resolved.secondaryTextColor ?: foreground.copy(alpha = 0.92f)
         )
     } else {
         val resolved = resolveEffectiveFontEffect(effectSpec, null, 0.5f, Color.Gray)
@@ -702,10 +731,19 @@ fun ReminderDetailCard(
         numberRenderSpec = null
         if (numberOverride != null) visuals.copy(numberColor = numberOverride) else visuals
     }
-    // 模糊渲染效果作用于全卡文字内容层（颜色类效果经由 effectiveVisuals 生效）
-    val textBlurRadius = numberRenderSpec
-        ?.takeIf { it.effect == com.ybhgl.reminder.ui.common.NumberFontEffect.BLUR }
-        ?.blurRadius
+    // 玻璃字效果（BLUR）：文字区域透出模糊背景，veil+描边兜底可读性；
+    // 层级顺序对齐 SVG 玻璃字：清晰背景（下方）→ 模糊背景按文字 alpha 裁切 → 描边文字
+    val glassActive = numberRenderSpec
+        ?.takeIf { it.effect == com.ybhgl.reminder.ui.common.NumberFontEffect.BLUR } != null && backgroundSpec != null
+    val glassStrokeColor = parseGlassStrokeColor(numberRenderSpec?.strokeColor ?: "")
+    val glassStrokeResolved = glassStrokeColor
+        ?: if (parseGlassTextTheme(numberRenderSpec?.glassTheme ?: "DARK") == GlassTextTheme.LIGHT) {
+            Color(0xFF0A1418)
+        } else {
+            Color(0xFFF2FBFF)
+        }
+    val glassShadowResolved = glassShadowColor(parseGlassTextTheme(numberRenderSpec?.glassTheme ?: "DARK"))
+    val glassStrokeWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { GlassStrokeWidth.toPx() }
 
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -740,10 +778,23 @@ fun ReminderDetailCard(
                             modifier = Modifier.matchParentSize()
                         )
                     }
-                    Column(
-                        modifier = Modifier.textBlurEffect(textBlurRadius),
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+
+                    // 卡片前景文字：玻璃字激活时由 GlassTextOverlay 管理（mask/描边/玻璃/阴影分层），
+                    // 否则按普通模式直接排布
+                    @Composable
+                    fun CardTexts(mode: GlassTextMode) {
+                        fun modeStyle(base: TextStyle): TextStyle = when (mode) {
+                            GlassTextMode.STROKE -> glassStrokeTextStyle(base, glassStrokeResolved, glassStrokeWidthPx)
+                            GlassTextMode.SHADOW -> glassShadowTextStyle(base, glassShadowResolved)
+                            GlassTextMode.MASK -> base
+                        }
+                        fun modeColor(c: Color): Color =
+                            if (mode == GlassTextMode.MASK) c else Color.Unspecified
+
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                         // Top section
                         Box(
                             modifier = Modifier
@@ -757,15 +808,16 @@ fun ReminderDetailCard(
                         ) {
                             val title = displayInfo.headerTitle
                             val fontSize = if (title.length > 12) 22.sp else 30.sp
+                            val titleStyle = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontSize = fontSize,
+                                letterSpacing = 0.sp,
+                                textAlign = TextAlign.Center
+                            )
                             Text(
                                 text = title,
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = fontSize,
-                                    letterSpacing = 0.sp,
-                                    textAlign = TextAlign.Center
-                                ),
-                                color = effectiveVisuals.headerContentColor,
+                                style = modeStyle(titleStyle),
+                                color = modeColor(effectiveVisuals.headerContentColor),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -789,7 +841,10 @@ fun ReminderDetailCard(
                             DayCountRow(
                                 dayCount = displayInfo.dayCount,
                                 visuals = effectiveVisuals,
-                                isCountUp = reminderItem.type == ReminderType.COUNT_UP
+                                isCountUp = reminderItem.type == ReminderType.COUNT_UP,
+                                glassMode = mode,
+                                glassStrokeColor = glassStrokeResolved,
+                                glassShadowColor = glassShadowResolved
                             )
                         }
 
@@ -818,19 +873,40 @@ fun ReminderDetailCard(
                                 },
                                 label = "DateTransition"
                             ) { targetText ->
+                                val dateStyle = TextStyle(fontSize = 18.sp, textAlign = TextAlign.Center)
                                 Text(
                                     text = if (reminderItem.type == ReminderType.COUNT_UP) {
                                         "自 ${targetText} 起"
                                     } else {
                                         "目标日: ${targetText}"
                                     },
-                                    color = effectiveVisuals.secondaryTextColor,
-                                    fontSize = 18.sp,
-                                    textAlign = TextAlign.Center,
+                                    style = modeStyle(dateStyle),
+                                    color = modeColor(effectiveVisuals.secondaryTextColor),
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
+                        }
+                    }
+
+                    if (glassActive && backgroundSpec != null) {
+                        val spec = numberRenderSpec!!
+                        GlassTextOverlay(
+                            blurRadius = spec.blurRadius,
+                            theme = parseGlassTextTheme(spec.glassTheme),
+                            strokeEnabled = spec.strokeEnabled,
+                            shadowEnabled = spec.shadowEnabled,
+                            modifier = Modifier.matchParentSize(),
+                            backdrop = {
+                                com.ybhgl.reminder.ui.common.CardBackgroundLayer(
+                                    spec = backgroundSpec,
+                                    bitmap = backgroundBitmap
+                                )
+                            },
+                            textContent = { mode -> CardTexts(mode) }
+                        )
+                    } else {
+                        CardTexts(GlassTextMode.MASK)
                     }
                 }
             }

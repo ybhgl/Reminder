@@ -153,7 +153,15 @@ data class PersonalizationConfig(
     /** 玻璃效果透明度（0..1） */
     val customFontGlassTransparency: Float = 0.7f,
     /** 玻璃效果模糊度（0..24dp） */
-    val customFontGlassBlur: Float = 4f
+    val customFontGlassBlur: Float = 4f,
+    /** 玻璃字（BLUR 效果）明暗模板：DARK / LIGHT */
+    val customFontGlassTheme: String = "DARK",
+    /** 玻璃字阴影开关（默认关闭） */
+    val customFontShadowEnabled: Boolean = false,
+    /** 玻璃字描边开关（默认关闭） */
+    val customFontStrokeEnabled: Boolean = false,
+    /** 玻璃字描边颜色（hex），空 = 按模板默认 */
+    val customFontStrokeColor: String = ""
 )
 
 /** 重置为默认的个性化配置（含 isCustomized=false） */
@@ -180,7 +188,11 @@ fun ReminderItem.toPersonalizationConfig(): PersonalizationConfig = Personalizat
     customFontBlur = customFontBlur,
     customFontGlassRefraction = customFontGlassRefraction,
     customFontGlassTransparency = customFontGlassTransparency,
-    customFontGlassBlur = customFontGlassBlur
+    customFontGlassBlur = customFontGlassBlur,
+    customFontGlassTheme = customFontGlassTheme,
+    customFontShadowEnabled = customFontShadowEnabled,
+    customFontStrokeEnabled = customFontStrokeEnabled,
+    customFontStrokeColor = customFontStrokeColor
 )
 
 fun ReminderItem.withPersonalizationConfig(config: PersonalizationConfig): ReminderItem = copy(
@@ -204,7 +216,11 @@ fun ReminderItem.withPersonalizationConfig(config: PersonalizationConfig): Remin
     customFontBlur = config.customFontBlur,
     customFontGlassRefraction = config.customFontGlassRefraction,
     customFontGlassTransparency = config.customFontGlassTransparency,
-    customFontGlassBlur = config.customFontGlassBlur
+    customFontGlassBlur = config.customFontGlassBlur,
+    customFontGlassTheme = config.customFontGlassTheme,
+    customFontShadowEnabled = config.customFontShadowEnabled,
+    customFontStrokeEnabled = config.customFontStrokeEnabled,
+    customFontStrokeColor = config.customFontStrokeColor
 )
 
 /** 从新建/编辑页 UiState 提取个性化配置 */
@@ -229,7 +245,11 @@ fun com.ybhgl.reminder.ui.add.ReminderUiState.toPersonalizationConfig(): Persona
     customFontBlur = customFontBlur,
     customFontGlassRefraction = customFontGlassRefraction,
     customFontGlassTransparency = customFontGlassTransparency,
-    customFontGlassBlur = customFontGlassBlur
+    customFontGlassBlur = customFontGlassBlur,
+    customFontGlassTheme = customFontGlassTheme,
+    customFontShadowEnabled = customFontShadowEnabled,
+    customFontStrokeEnabled = customFontStrokeEnabled,
+    customFontStrokeColor = customFontStrokeColor
 )
 
 /** 应用个性化配置到新建/编辑页 UiState */
@@ -254,7 +274,11 @@ fun com.ybhgl.reminder.ui.add.ReminderUiState.withPersonalizationConfig(config: 
     customFontBlur = config.customFontBlur,
     customFontGlassRefraction = config.customFontGlassRefraction,
     customFontGlassTransparency = config.customFontGlassTransparency,
-    customFontGlassBlur = config.customFontGlassBlur
+    customFontGlassBlur = config.customFontGlassBlur,
+    customFontGlassTheme = config.customFontGlassTheme,
+    customFontShadowEnabled = config.customFontShadowEnabled,
+    customFontStrokeEnabled = config.customFontStrokeEnabled,
+    customFontStrokeColor = config.customFontStrokeColor
 )
 
 /** 契约输入：初始配置 + 预览所需的提醒类型 + 是否展示背景设置 */
@@ -369,6 +393,7 @@ fun PersonalizationScreen(
 
     var showBgColorPicker by remember { mutableStateOf(false) }
     var showFontColorPicker by remember { mutableStateOf(false) }
+    var showStrokeColorPicker by remember { mutableStateOf(false) }
     var showResetConfirm by remember { mutableStateOf(false) }
 
     fun cleanupNewImage() {
@@ -491,7 +516,11 @@ fun PersonalizationScreen(
             customFontBlur = config.customFontBlur,
             customFontGlassRefraction = config.customFontGlassRefraction,
             customFontGlassTransparency = config.customFontGlassTransparency,
-            customFontGlassBlur = config.customFontGlassBlur
+            customFontGlassBlur = config.customFontGlassBlur,
+            customFontGlassTheme = config.customFontGlassTheme,
+            customFontShadowEnabled = config.customFontShadowEnabled,
+            customFontStrokeEnabled = config.customFontStrokeEnabled,
+            customFontStrokeColor = config.customFontStrokeColor
         )
     }
 
@@ -525,14 +554,15 @@ fun PersonalizationScreen(
 
         // 上方区域：卡片实时预览窗口
         // 固定设计宽度渲染 + graphicsLayer 等比缩放（与分享预览同模式），
-        // 卡片与文字同步缩放，比例与详情页渲染保持一致
+        // 卡片与文字同步缩放，比例与详情页渲染保持一致；
+        // 设计宽度取 280dp 控制预览区纵向占位，避免挤压下方设置面板
         BoxWithConstraints(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(vertical = 12.dp),
             contentAlignment = Alignment.Center
         ) {
-            val designWidth = 340.dp
+            val designWidth = 280.dp
             val outerDensity = LocalDensity.current
             val scale = with(outerDensity) { maxWidth.toPx() / designWidth.toPx() }.coerceAtMost(1f)
 
@@ -559,22 +589,32 @@ fun PersonalizationScreen(
         }
 
         // 下方区域：设置面板
+        // 顶层同样禁用 spacedBy：卡片颜色区为联动项（LinkedPanel），收起移除瞬间
+        // spacedBy gap 数减一会让下方内容突跳（残留空白突然消失）。间距全部内化：
+        // 联动项用 LinkedPanel 的 bottomSpacing 随动画收缩，常驻项用固定 bottom padding
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp),
-            verticalArrangement = Arrangement.spacedBy(16.dp)
+                .padding(horizontal = 16.dp)
         ) {
-            ColorSection(
-                config = config,
-                reminderType = reminderType,
-                onHeaderColorChange = { config = config.copy(customHeaderColor = it) }
-            )
+            // 卡片颜色与卡片背景联动：仅默认背景时显示颜色选项（底部 16dp 间距内化随动画收缩）
+            LinkedPanel(
+                visible = parseCardBackgroundType(config.cardBackgroundType) == CardBackgroundType.DEFAULT,
+                spacing = 0.dp,
+                bottomSpacing = 16.dp
+            ) {
+                ColorSection(
+                    config = config,
+                    reminderType = reminderType,
+                    onHeaderColorChange = { config = config.copy(customHeaderColor = it) }
+                )
+            }
 
             if (input.showBackgroundOption) {
-                BackgroundSection(
+                Box(modifier = Modifier.padding(bottom = 16.dp)) {
+                    BackgroundSection(
                     config = config,
                     importing = importing,
                     importFailed = importFailed,
@@ -600,22 +640,29 @@ fun PersonalizationScreen(
                     onGlassDensityChange = { config = config.copy(cardBackgroundGlassDensity = it) },
                     onGlassRefractionChange = { config = config.copy(cardBackgroundGlassRefraction = it) },
                     onGlassTransparencyChange = { config = config.copy(cardBackgroundGlassTransparency = it) },
-                    onGlassBlurChange = { config = config.copy(cardBackgroundGlassBlur = it) },
                     onBackgroundColorChange = { config = config.copy(cardBackgroundColor = it) },
                     onShowColorPicker = { showBgColorPicker = true }
-                )
+                    )
+                }
             }
 
-            FontSection(
-                config = config,
-                isCustomBackground = isCustomBackground,
-                onFontChange = { config = config.copy(customFont = it) },
-                onEffectChange = { config = config.copy(customFontEffect = it.name) },
-                onFontColorChange = { config = config.copy(customFontColor = it) },
-                onOpacityChange = { config = config.copy(customFontOpacity = it) },
-                onBlurChange = { config = config.copy(customFontBlur = it) },
-                onShowFontColorPicker = { showFontColorPicker = true }
-            )
+            Box(modifier = Modifier.padding(bottom = 16.dp)) {
+                FontSection(
+                    config = config,
+                    isCustomBackground = isCustomBackground,
+                    onFontChange = { config = config.copy(customFont = it) },
+                    onEffectChange = { config = config.copy(customFontEffect = it.name) },
+                    onFontColorChange = { config = config.copy(customFontColor = it) },
+                    onOpacityChange = { config = config.copy(customFontOpacity = it) },
+                    onBlurChange = { config = config.copy(customFontBlur = it) },
+                    onGlassThemeChange = { config = config.copy(customFontGlassTheme = it) },
+                onShadowEnabledChange = { config = config.copy(customFontShadowEnabled = it) },
+                onStrokeEnabledChange = { config = config.copy(customFontStrokeEnabled = it) },
+                    onStrokeColorChange = { config = config.copy(customFontStrokeColor = it) },
+                    onShowFontColorPicker = { showFontColorPicker = true },
+                    onShowStrokeColorPicker = { showStrokeColorPicker = true }
+                )
+            }
 
             Spacer(modifier = Modifier.height(8.dp))
         }
@@ -688,6 +735,20 @@ fun PersonalizationScreen(
         )
     }
 
+    // 玻璃字描边颜色选择
+    if (showStrokeColorPicker) {
+        CustomColorPickerDialog(
+            initialColor = parseHexSafe(config.customFontStrokeColor, Color.White),
+            onDismissRequest = { showStrokeColorPicker = false },
+            onColorConfirmed = { color ->
+                config = config.copy(
+                    customFontStrokeColor = String.format("#%06X", color.toArgb() and 0x00FFFFFF)
+                )
+                showStrokeColorPicker = false
+            }
+        )
+    }
+
     // 图片裁剪
     cropBitmap?.let { pending ->
         ImageCropDialog(
@@ -739,45 +800,47 @@ private fun ColorSection(
                 PRESET_COLORS.map { it to it.toComposeColorSafe() } +
                 listOf("CUSTOM" to Color.Transparent)
         }
-        gridItems.chunked(5).forEach { rowItems ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.SpaceEvenly,
-                verticalAlignment = Alignment.CenterVertically
-            ) {
-                rowItems.forEach { (itemHex, itemColor) ->
-                    key(itemHex) {
-                        when (itemHex) {
-                            "DEFAULT" -> {
-                                ColorCircle(
-                                    color = parseHexSafe(defaultColorHex, Color.Gray),
-                                    isSelected = isDefault,
-                                    fallbackContent = {
-                                        Text(
-                                            "默",
-                                            style = MaterialTheme.typography.labelSmall.copy(
-                                                fontWeight = FontWeight.Bold,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+        Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            gridItems.chunked(5).forEach { rowItems ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceEvenly,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    rowItems.forEach { (itemHex, itemColor) ->
+                        key(itemHex) {
+                            when (itemHex) {
+                                "DEFAULT" -> {
+                                    ColorCircle(
+                                        color = parseHexSafe(defaultColorHex, Color.Gray),
+                                        isSelected = isDefault,
+                                        fallbackContent = {
+                                            Text(
+                                                "默",
+                                                style = MaterialTheme.typography.labelSmall.copy(
+                                                    fontWeight = FontWeight.Bold,
+                                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                                )
                                             )
-                                        )
-                                    },
-                                    onClick = { onHeaderColorChange("") }
-                                )
-                            }
-                            "CUSTOM" -> {
-                                CustomColorCircle(
-                                    isSelected = !isDefault &&
-                                        PRESET_COLORS.none { it.equals(config.customHeaderColor, ignoreCase = true) },
-                                    currentColor = parseHexSafe(config.customHeaderColor, Color.Transparent),
-                                    onClick = { showCustomPicker = true }
-                                )
-                            }
-                            else -> {
-                                ColorCircle(
-                                    color = itemColor,
-                                    isSelected = !isDefault && itemHex.equals(config.customHeaderColor, ignoreCase = true),
-                                    onClick = { onHeaderColorChange(itemHex) }
-                                )
+                                        },
+                                        onClick = { onHeaderColorChange("") }
+                                    )
+                                }
+                                "CUSTOM" -> {
+                                    CustomColorCircle(
+                                        isSelected = !isDefault &&
+                                            PRESET_COLORS.none { it.equals(config.customHeaderColor, ignoreCase = true) },
+                                        currentColor = parseHexSafe(config.customHeaderColor, Color.Transparent),
+                                        onClick = { showCustomPicker = true }
+                                    )
+                                }
+                                else -> {
+                                    ColorCircle(
+                                        color = itemColor,
+                                        isSelected = !isDefault && itemHex.equals(config.customHeaderColor, ignoreCase = true),
+                                        onClick = { onHeaderColorChange(itemHex) }
+                                    )
+                                }
                             }
                         }
                     }
@@ -818,7 +881,6 @@ private fun BackgroundSection(
     onGlassDensityChange: (Float) -> Unit,
     onGlassRefractionChange: (Float) -> Unit,
     onGlassTransparencyChange: (Float) -> Unit,
-    onGlassBlurChange: (Float) -> Unit,
     onBackgroundColorChange: (String) -> Unit,
     onShowColorPicker: () -> Unit
 ) {
@@ -844,8 +906,9 @@ private fun BackgroundSection(
         }
 
         // 图片模式子面板
-        SettingsLinkedVisibility(visible = type == CardBackgroundType.IMAGE) {
-            Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        LinkedPanel(visible = type == CardBackgroundType.IMAGE) {
+            // 面板内含联动项（光栅玻璃子面板），禁用 spacedBy，间距用 SectionGap 手动管理
+            Column {
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     verticalAlignment = Alignment.CenterVertically,
@@ -864,18 +927,21 @@ private fun BackgroundSection(
                     }
                 }
                 if (importFailed) {
+                    SectionGap()
                     Text(
                         "图片导入失败，请重试",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.error
                     )
                 }
+                SectionGap()
                 Text(
                     "选择图片后可拖动缩放，按卡片比例（1:1）自由裁剪",
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
 
+                SectionGap()
                 SliderRow(
                     title = "图片模糊",
                     valueText = "${config.cardBackgroundBlurRadius.roundToInt()}",
@@ -884,6 +950,7 @@ private fun BackgroundSection(
                     onValueChange = onBlurRadiusChange
                 )
 
+                SectionGap()
                 // 光栅玻璃
                 SwitchRow(
                     title = "光栅玻璃",
@@ -892,7 +959,8 @@ private fun BackgroundSection(
                     onCheckedChange = onGlassEnabledChange
                 )
 
-                SettingsLinkedVisibility(visible = config.cardBackgroundGlassEnabled) {
+                // 光栅玻璃子面板：间距内化，收起无残留
+                LinkedPanel(visible = config.cardBackgroundGlassEnabled) {
                     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                         SwitchRow(
                             title = "磨砂处理",
@@ -921,20 +989,13 @@ private fun BackgroundSection(
                             valueRange = 0f..1f,
                             onValueChange = onGlassTransparencyChange
                         )
-                        SliderRow(
-                            title = "玻璃模糊度",
-                            valueText = "${config.cardBackgroundGlassBlur.roundToInt()}",
-                            value = config.cardBackgroundGlassBlur,
-                            valueRange = 0f..24f,
-                            onValueChange = onGlassBlurChange
-                        )
                     }
                 }
             }
         }
 
         // 颜色模式子面板
-        SettingsLinkedVisibility(visible = type == CardBackgroundType.COLOR) {
+        LinkedPanel(visible = type == CardBackgroundType.COLOR) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier
@@ -992,7 +1053,7 @@ private val FONT_OPTIONS = listOf(
 private val FONT_EFFECT_META = listOf(
     Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "跟随背景亮度自动选择黑/白字体，任何背景均可用"),
     Triple(NumberFontEffect.SOLID, Icons.Filled.FormatColorFill, "自定义纯色字体及透明度，任何背景均可用"),
-    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "对文字应用官方高斯模糊，可调节模糊度")
+    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "玻璃字：文字区域透出模糊后的背景，边缘保持锐利，描边与投影保证可读")
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -1005,7 +1066,12 @@ private fun FontSection(
     onFontColorChange: (String) -> Unit,
     onOpacityChange: (Float) -> Unit,
     onBlurChange: (Float) -> Unit,
-    onShowFontColorPicker: () -> Unit
+    onGlassThemeChange: (String) -> Unit,
+    onShadowEnabledChange: (Boolean) -> Unit,
+    onStrokeEnabledChange: (Boolean) -> Unit,
+    onStrokeColorChange: (String) -> Unit,
+    onShowFontColorPicker: () -> Unit,
+    onShowStrokeColorPicker: () -> Unit
 ) {
     val currentEffect = runCatching {
         NumberFontEffect.valueOf(config.customFontEffect)
@@ -1018,25 +1084,30 @@ private fun FontSection(
             style = MaterialTheme.typography.bodyMedium,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        SectionGap()
         Row(
             modifier = Modifier
                 .fillMaxWidth()
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
+            // 未选择过字体时默认勾选第一项「系统默认」（customFont 为空 = 系统默认）
+            val currentFont = config.customFont.ifEmpty { "Default" }
             FONT_OPTIONS.forEach { font ->
                 FontOptionCard(
                     font = font,
-                    isSelected = config.customFont == font,
+                    isSelected = currentFont == font,
                     onClick = { onFontChange(font) }
                 )
             }
         }
+        SectionGap()
         Text(
             "数字字体仅作用于卡片中的数字内容",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant
         )
+        SectionGap()
 
         // 字体效果 FilterChip 组
         Text(
@@ -1078,6 +1149,7 @@ private fun FontSection(
                 )
             }
         }
+        SectionGap()
 
         // 效果说明与联动提示
         val meta = FONT_EFFECT_META.firstOrNull { it.first == currentEffect }
@@ -1091,6 +1163,7 @@ private fun FontSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
+        SectionGap()
         Text(
             text = "默认背景时效果仅作用于数字；自定义背景时应用于卡片全部文字",
             style = MaterialTheme.typography.bodySmall,
@@ -1098,7 +1171,7 @@ private fun FontSection(
         )
 
         // 各效果子参数面板
-        SettingsLinkedVisibility(visible = currentEffect == NumberFontEffect.SOLID) {
+        LinkedPanel(visible = currentEffect == NumberFontEffect.SOLID) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Row(
                     modifier = Modifier
@@ -1139,14 +1212,97 @@ private fun FontSection(
             }
         }
 
-        SettingsLinkedVisibility(visible = currentEffect == NumberFontEffect.BLUR && isCustomBackground) {
-            SliderRow(
-                title = "模糊度",
-                valueText = "${config.customFontBlur.roundToInt()}",
-                value = config.customFontBlur,
-                valueRange = 0f..24f,
-                onValueChange = onBlurChange
-            )
+        LinkedPanel(visible = currentEffect == NumberFontEffect.BLUR && isCustomBackground) {
+            // 面板内含联动项（描边颜色行），禁用 spacedBy，间距用 SectionGap 手动管理
+            Column {
+                SliderRow(
+                    title = "模糊度",
+                    valueText = "${config.customFontBlur.roundToInt()}",
+                    value = config.customFontBlur,
+                    valueRange = 0f..24f,
+                    onValueChange = onBlurChange
+                )
+
+                SectionGap()
+                // 明暗模板
+                Text(
+                    "玻璃模板",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                SectionGap()
+                val themeOptions = listOf("DARK" to "暗色玻璃", "LIGHT" to "亮色玻璃")
+                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+                    themeOptions.forEachIndexed { index, (value, label) ->
+                        SegmentedButton(
+                            selected = config.customFontGlassTheme == value,
+                            onClick = { onGlassThemeChange(value) },
+                            shape = SegmentedButtonDefaults.itemShape(index, themeOptions.size),
+                            icon = {},
+                            label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelLarge) }
+                        )
+                    }
+                }
+
+                SectionGap()
+                // 投影：独立的文字投影图层（描边上方）
+                SwitchCardRow(
+                    title = "投影",
+                    subtitle = "文字投影增加立体感，提升玻璃字可读性",
+                    checked = config.customFontShadowEnabled,
+                    onCheckedChange = onShadowEnabledChange
+                )
+
+                SectionGap()
+                // 清晰描边：与描边颜色行同款背景卡片，成组展示
+                SwitchCardRow(
+                    title = "清晰描边",
+                    subtitle = "玻璃字外圈描边，保证任意模糊度下可读",
+                    checked = config.customFontStrokeEnabled,
+                    onCheckedChange = onStrokeEnabledChange
+                )
+
+                // 描边颜色：联动展开，间距内化
+                LinkedPanel(visible = config.customFontStrokeEnabled) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clip(RoundedCornerShape(12.dp))
+                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                            .padding(12.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    ) {
+                        // 未自定义时预览模板默认描边色（随玻璃模板联动切换）
+                        val defaultStrokeColor = if (config.customFontGlassTheme == "LIGHT") {
+                            Color(0xFF0A1418)
+                        } else {
+                            Color(0xFFF2FBFF)
+                        }
+                        Box(
+                            modifier = Modifier
+                                .size(32.dp)
+                                .clip(CircleShape)
+                                .background(parseHexSafe(config.customFontStrokeColor, defaultStrokeColor))
+                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
+                        )
+                        Column(modifier = Modifier.weight(1f)) {
+                            Text("描边颜色", style = MaterialTheme.typography.bodyMedium)
+                            Text(
+                                // 未选择时展示模板默认描边色的 hex 值
+                                config.customFontStrokeColor.ifEmpty {
+                                    if (config.customFontGlassTheme == "LIGHT") "#0A1418" else "#F2FBFF"
+                                }.uppercase(),
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        OutlinedButton(onClick = onShowStrokeColorPicker, shape = RoundedCornerShape(12.dp)) {
+                            Text("选择颜色")
+                        }
+                    }
+                }
+            }
         }
     }
 }
@@ -1212,7 +1368,11 @@ private fun FontOptionCard(
 
 // ==================== 通用小组件 ====================
 
-/** 区块卡片容器：标题与内容、内容项之间统一 12dp 节奏 */
+/**
+ * 区块卡片容器：标题与内容间距 12dp。
+ * 内容项之间不使用父容器 spacedBy：联动收起项（LinkedPanel）的间距内化在动画内容顶部，
+ * 避免收起完成后父容器间隙数变化导致下方内容"突然跳动"。
+ */
 @Composable
 private fun SectionCard(
     title: String,
@@ -1225,17 +1385,40 @@ private fun SectionCard(
         ),
         shape = RoundedCornerShape(24.dp)
     ) {
-        Column(
-            modifier = Modifier.padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(12.dp)
-        ) {
+        Column(modifier = Modifier.padding(16.dp)) {
             Text(
                 text = title,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
             )
+            Spacer(modifier = Modifier.height(12.dp))
             content()
         }
     }
+}
+
+/**
+ * 区块内联动展开/收起面板：间距内化在动画内容顶部/底部，随收起动画一起收缩，
+ * 收起完成后不留残隙（对齐设置页 SettingsLinkedVisibility 的无跳变表现）。
+ * 注意：父容器不能使用 spacedBy——AnimatedVisibility 移除瞬间父容器 gap 数减一会导致下方内容突跳。
+ */
+@Composable
+private fun LinkedPanel(
+    visible: Boolean,
+    spacing: androidx.compose.ui.unit.Dp = 12.dp,
+    bottomSpacing: androidx.compose.ui.unit.Dp = 0.dp,
+    content: @Composable () -> Unit
+) {
+    SettingsLinkedVisibility(visible = visible) {
+        Column(modifier = Modifier.padding(top = spacing, bottom = bottomSpacing)) {
+            content()
+        }
+    }
+}
+
+/** 区块内静态项之间的固定间距 */
+@Composable
+private fun SectionGap() {
+    Spacer(modifier = Modifier.height(12.dp))
 }
 
 /** 带标题、副标题的开关行 */
@@ -1252,6 +1435,37 @@ private fun SwitchRow(
     ) {
         Column(modifier = Modifier.weight(1f)) {
             Text(title, style = MaterialTheme.typography.bodyLarge)
+            Text(
+                subtitle,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+        }
+        Switch(checked = checked, onCheckedChange = onCheckedChange)
+    }
+}
+
+/**
+ * 带背景的开关行：surfaceVariant 卡片样式，与颜色选择行（如描边颜色）同款式成组展示。
+ * 与裸排的 [SwitchRow] 区分：用于需要与背景卡片行视觉成组的场景。
+ */
+@Composable
+private fun SwitchCardRow(
+    title: String,
+    subtitle: String,
+    checked: Boolean,
+    onCheckedChange: (Boolean) -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .padding(horizontal = 12.dp, vertical = 10.dp),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Column(modifier = Modifier.weight(1f)) {
+            Text(title, style = MaterialTheme.typography.bodyMedium)
             Text(
                 subtitle,
                 style = MaterialTheme.typography.bodySmall,
