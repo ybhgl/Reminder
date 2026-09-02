@@ -44,7 +44,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.AppColorPalette
 import com.ybhgl.reminder.data.AppThemeOption
@@ -449,56 +451,63 @@ fun PersonalizationScreen(
             }
         }
 
-        // 上方区域：卡片实时预览窗口
-        // 固定设计宽度渲染 + graphicsLayer 等比缩放（与分享预览同模式），
-        // 卡片与文字同步缩放，比例与详情页渲染保持一致；
-        // 设计宽度取 280dp 控制预览区纵向占位，避免挤压下方设置面板
-        BoxWithConstraints(
-            modifier = Modifier
-                .fillMaxWidth()
-                .padding(vertical = 12.dp),
-            contentAlignment = Alignment.Center
-        ) {
-            val designWidth = 280.dp
-            val outerDensity = LocalDensity.current
-            val scale = with(outerDensity) { maxWidth.toPx() / designWidth.toPx() }.coerceAtMost(1f)
-
-            Box(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .height(designWidth * scale),
-                contentAlignment = Alignment.Center
-            ) {
-                Box(
-                    modifier = Modifier
-                        .wrapContentSize(unbounded = true)
-                        .graphicsLayer {
-                            scaleX = scale
-                            scaleY = scale
-                        }
-                ) {
-                    ReminderDetailCard(
-                        reminderItem = previewItem,
-                        modifier = Modifier.width(designWidth)
-                    )
-                }
-            }
-        }
-
-        // 下方区域：设置面板（滚动与水平内边距职责在本层，面板不带 padding）
+        // 预览与设置面板合并为同一滚动区域，作为一个整体一起滑动
         Column(
             modifier = Modifier
                 .weight(1f)
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
-                .padding(horizontal = 16.dp)
         ) {
-            PersonalizationSettingsPanel(
-                config = config,
-                onUpdate = { config = it },
-                reminderType = reminderType,
-                showBackgroundOption = input.showBackgroundOption
-            )
+            // 卡片实时预览窗口：
+            // 固定 280dp 设计宽渲染 + graphicsLayer 等比放大充满可用宽度（与分享预览同模式），
+            // 卡片与文字同步缩放，比例与详情页渲染保持一致；
+            // 高度按实测卡片高度 × scale 自适应，不固定占位
+            BoxWithConstraints(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                contentAlignment = Alignment.Center
+            ) {
+                val designWidth = 280.dp
+                val outerDensity = LocalDensity.current
+                val scale = with(outerDensity) { maxWidth.toPx() / designWidth.toPx() }
+                // 卡片布局尺寸（未缩放），onSizeChanged 在 graphicsLayer 之外测量
+                var cardSize by remember { mutableStateOf(IntSize.Zero) }
+                val previewHeightDp = with(outerDensity) { (cardSize.height * scale).toDp() }
+
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .height(previewHeightDp),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .wrapContentSize(unbounded = true)
+                            .graphicsLayer {
+                                scaleX = scale
+                                scaleY = scale
+                            }
+                    ) {
+                        ReminderDetailCard(
+                            reminderItem = previewItem,
+                            modifier = Modifier
+                                .width(designWidth)
+                                .onSizeChanged { cardSize = it }
+                        )
+                    }
+                }
+            }
+
+            // 设置面板（水平内边距由本层提供，面板自身不带 padding）
+            Box(modifier = Modifier.padding(horizontal = 16.dp)) {
+                PersonalizationSettingsPanel(
+                    config = config,
+                    onUpdate = { config = it },
+                    reminderType = reminderType,
+                    showBackgroundOption = input.showBackgroundOption
+                )
+            }
         }
 
         // 底部保存操作栏
