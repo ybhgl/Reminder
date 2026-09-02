@@ -9,15 +9,31 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.ChevronRight
+import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
+import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -29,10 +45,12 @@ import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.UiComposable
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.text.TextStyle
@@ -208,18 +226,18 @@ fun AutoResizeText(
     color: Color = Color.Unspecified,
     checkHeight: Boolean = false
 ) {
-    // 以 style 为 key：字体/颜色等样式变化时重置并重新测量，避免自定义配置不生效
-    var resizedTextStyle by remember(style) {
-        mutableStateOf(style)
-    }
     val textMeasurer = rememberTextMeasurer()
+    // 测量键剥离颜色：颜色（如纯色效果透明度）连续变化时不重置字号、不重启测量协程，
+    // 避免数字按初始字号渲染一帧再校正造成"来回闪烁"（基线对齐的相邻文字会跟着跳动）
+    val measureStyle = style.copy(color = Color.Unspecified)
+    // 字号状态跨样式变化保留：字体切换时先沿用上次收敛字号渲染，测量完成后平滑校正
+    var resizedTextStyle by remember { mutableStateOf(measureStyle) }
 
     BoxWithConstraints(modifier = modifier) {
-        val readyToDraw = remember { mutableStateOf(false) }
-        val rememberedStyle = remember(resizedTextStyle) { resizedTextStyle }
+        var readyToDraw by remember { mutableStateOf(false) }
 
-        LaunchedEffect(text, rememberedStyle, constraints) {
-            val styleWithoutLineHeight = rememberedStyle.copy(lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified)
+        LaunchedEffect(text, measureStyle, constraints) {
+            val styleWithoutLineHeight = measureStyle.copy(lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified)
             var currentFontSize = styleWithoutLineHeight.fontSize
             val minFontSize = 1.sp
 
@@ -241,13 +259,13 @@ fun AutoResizeText(
             }
 
             resizedTextStyle = styleWithoutLineHeight.copy(fontSize = currentFontSize)
-            readyToDraw.value = true
+            readyToDraw = true
         }
 
-        if (readyToDraw.value) {
+        if (readyToDraw) {
             Text(
                 text = text,
-                color = color,
+                color = if (color != Color.Unspecified) color else style.color,
                 textAlign = TextAlign.Center,
                 style = resizedTextStyle,
                 softWrap = false
@@ -322,6 +340,106 @@ fun rememberCollapsingTopBarState(): CollapsingTopBarState =
  * - 动画组合统一为 expandVertically + fadeIn 进入、shrinkVertically + fadeOut 退出，
  *   曲线为 spring(StiffnessMediumLow)。
  */
+/**
+ * Material 3 Expressive 风格的统一 Tonal 卡片行。
+ *
+ * - surfaceVariant 色调 + extraLarge 圆角的卡片容器
+ * - 统一的「图标圆底 + 标题/副标题 + 尾部内容」三段式结构
+ * - [onClick] 非空时整卡可点击；[trailing] 用于承载 Switch/Checkbox 等控件
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun TonalCardRow(
+    icon: ImageVector,
+    title: String,
+    modifier: Modifier = Modifier,
+    subtitle: String? = null,
+    value: String? = null,
+    showChevron: Boolean = false,
+    onClick: (() -> Unit)? = null,
+    trailing: (@Composable () -> Unit)? = null
+) {
+    val colors = CardDefaults.cardColors(
+        containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    )
+    val content: @Composable () -> Unit = {
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(horizontal = 16.dp, vertical = 14.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(16.dp)
+        ) {
+            Box(
+                modifier = Modifier
+                    .size(40.dp)
+                    .background(
+                        color = MaterialTheme.colorScheme.secondaryContainer,
+                        shape = CircleShape
+                    ),
+                contentAlignment = Alignment.Center
+            ) {
+                Icon(
+                    imageVector = icon,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                    modifier = Modifier.size(22.dp)
+                )
+            }
+            Column(modifier = Modifier.weight(1f)) {
+                Text(
+                    text = title,
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                if (subtitle != null) {
+                    Text(
+                        text = subtitle,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            if (value != null) {
+                Text(
+                    text = value,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    textAlign = TextAlign.End
+                )
+            }
+            if (showChevron) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+            trailing?.invoke()
+        }
+    }
+    if (onClick != null) {
+        Card(
+            onClick = onClick,
+            modifier = modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = colors
+        ) {
+            content()
+        }
+    } else {
+        Card(
+            modifier = modifier.fillMaxWidth(),
+            shape = MaterialTheme.shapes.extraLarge,
+            colors = colors
+        ) {
+            content()
+        }
+    }
+}
+
 @Composable
 fun SettingsLinkedVisibility(
     visible: Boolean?,
@@ -347,5 +465,82 @@ fun SettingsLinkedVisibility(
             ExitTransition.None
         },
         content = { content() }
+    )
+}
+
+/**
+ * 全应用统一的 Material 3 标准 AlertDialog。
+ *
+ * - 标题/正文使用 M3 默认排版，不额外覆盖字体样式
+ * - 按钮统一为 M3 规范的右下角 TextButton（确认在前、取消在后）
+ * - [destructive] 为 true 时确认按钮使用 error 色（删除等不可恢复操作）
+ * - [confirmEnabled] 控制确认按钮可用状态（如需先选择条目才能确认的场景）
+ * - 简单场景直接传 [text]；复杂内容（输入框、选择器等）用 [content] 槽，二者至多传其一
+ * - [confirmText] 传 null 表示无确认按钮（如仅靠内容区交互完成操作的弹窗）；
+ *   [neutralText] 用于"忽略"等中性第三操作，渲染在 [dismissText] 左侧；
+ *   [dismissText] 的点击行为默认回落到 [onDismissRequest]
+ */
+@Composable
+fun AppAlertDialog(
+    onDismissRequest: () -> Unit,
+    title: String,
+    modifier: Modifier = Modifier,
+    text: String? = null,
+    content: (@Composable () -> Unit)? = null,
+    confirmText: String? = null,
+    onConfirm: (() -> Unit)? = null,
+    dismissText: String? = null,
+    onDismiss: (() -> Unit)? = null,
+    neutralText: String? = null,
+    onNeutral: (() -> Unit)? = null,
+    destructive: Boolean = false,
+    confirmEnabled: Boolean = true
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        modifier = modifier,
+        title = { Text(title) },
+        text = when {
+            text != null -> {
+                { Text(text) }
+            }
+            content != null -> {
+                { content() }
+            }
+            else -> null
+        },
+        confirmButton = {
+            if (confirmText != null) {
+                TextButton(
+                    onClick = { onConfirm?.invoke() },
+                    enabled = confirmEnabled
+                ) {
+                    Text(
+                        confirmText,
+                        color = if (destructive) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.primary
+                        }
+                    )
+                }
+            }
+        },
+        dismissButton = if (neutralText != null || dismissText != null) {
+            {
+                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    if (neutralText != null) {
+                        TextButton(onClick = { onNeutral?.invoke() }) {
+                            Text(neutralText)
+                        }
+                    }
+                    if (dismissText != null) {
+                        TextButton(onClick = { onDismiss?.invoke() ?: onDismissRequest() }) {
+                            Text(dismissText)
+                        }
+                    }
+                }
+            }
+        } else null
     )
 }

@@ -38,7 +38,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
-import androidx.compose.material3.Card
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.CenterAlignedTopAppBar
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
@@ -98,7 +98,6 @@ import com.ybhgl.reminder.R
 import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
-import com.ybhgl.reminder.ui.add.ReminderCustomizationSection
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.CardBackgroundLayer
 import com.ybhgl.reminder.ui.common.CardBackgroundSpec
@@ -106,6 +105,8 @@ import com.ybhgl.reminder.ui.common.CardBackgroundType
 import com.ybhgl.reminder.ui.common.ImageCropDialog
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.detail.ReminderDetailCard
+import com.ybhgl.reminder.ui.personalization.PersonalizationSettingsPanel
+import com.ybhgl.reminder.ui.personalization.SectionCard
 import com.ybhgl.reminder.ui.settings.CustomColorPickerDialog
 import com.ybhgl.reminder.ui.tag.toComposeColor
 import com.ybhgl.reminder.ui.theme.ReminderTheme
@@ -281,6 +282,15 @@ fun ShareScreen(
                             contentDescription = "Back"
                         )
                     }
+                },
+                actions = {
+                    // 一键重置：底图背景 / LOGO / 个性化全部恢复默认（仅本次会话，不影响日程）
+                    IconButton(onClick = { viewModel.resetAll() }) {
+                        Icon(
+                            imageVector = Icons.Filled.Refresh,
+                            contentDescription = "重置全部设置"
+                        )
+                    }
                 }
             )
         },
@@ -358,143 +368,94 @@ fun ShareScreen(
                         backgroundGlassEnabled = options.backgroundGlassEnabled,
                         backgroundGlassFrosted = options.backgroundGlassFrosted,
                         backgroundGlassDensity = options.backgroundGlassDensity,
+                        backgroundGlassRefraction = options.backgroundGlassRefraction,
+                        backgroundGlassTransparency = options.backgroundGlassTransparency,
                         showLogo = options.showLogo,
                         logoColorOverride = options.logoColor,
                         modifier = captureModifier
                     )
                 }
 
-                // 背景设置
-                Card {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Text(
-                            text = "背景",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        ShareBackgroundSection(
-                            backgroundType = options.backgroundType,
-                            backgroundColorHex = options.backgroundColor,
-                            backgroundBlurRadius = options.backgroundBlurRadius,
-                            backgroundGlassEnabled = options.backgroundGlassEnabled,
-                            backgroundGlassFrosted = options.backgroundGlassFrosted,
-                            backgroundGlassDensity = options.backgroundGlassDensity,
-                            onBackgroundTypeChange = { viewModel.updateBackgroundType(it) },
-                            onBackgroundColorChange = { viewModel.updateBackgroundColor(it) },
-                            onPickCustomImage = {
-                                imagePickerLauncher.launch(
-                                    PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
-                                )
-                            },
-                            onBlurRadiusChange = { viewModel.updateBackgroundBlurRadius(it) },
-                            onGlassEnabledChange = { viewModel.updateBackgroundGlassEnabled(it) },
-                            onGlassFrostedChange = { viewModel.updateBackgroundGlassFrosted(it) },
-                            onGlassDensityChange = { viewModel.updateBackgroundGlassDensity(it) }
-                        )
-                    }
+                // 背景设置（SectionCard 与个性化面板区块同款容器样式）
+                SectionCard(title = "背景") {
+                    ShareBackgroundSection(
+                        backgroundType = options.backgroundType,
+                        backgroundColorHex = options.backgroundColor,
+                        backgroundBlurRadius = options.backgroundBlurRadius,
+                        backgroundGlassEnabled = options.backgroundGlassEnabled,
+                        backgroundGlassFrosted = options.backgroundGlassFrosted,
+                        backgroundGlassDensity = options.backgroundGlassDensity,
+                        backgroundGlassRefraction = options.backgroundGlassRefraction,
+                        backgroundGlassTransparency = options.backgroundGlassTransparency,
+                        onBackgroundTypeChange = { viewModel.updateBackgroundType(it) },
+                        onBackgroundColorChange = { viewModel.updateBackgroundColor(it) },
+                        onPickCustomImage = {
+                            imagePickerLauncher.launch(
+                                PickVisualMediaRequest(ActivityResultContracts.PickVisualMedia.ImageOnly)
+                            )
+                        },
+                        onBlurRadiusChange = { viewModel.updateBackgroundBlurRadius(it) },
+                        onGlassEnabledChange = { viewModel.updateBackgroundGlassEnabled(it) },
+                        onGlassFrostedChange = { viewModel.updateBackgroundGlassFrosted(it) },
+                        onGlassDensityChange = { viewModel.updateBackgroundGlassDensity(it) },
+                        onGlassRefractionChange = { viewModel.updateBackgroundGlassRefraction(it) },
+                        onGlassTransparencyChange = { viewModel.updateBackgroundGlassTransparency(it) }
+                    )
                 }
 
-                // LOGO 显示开关 + 颜色选项
-                Card {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        LogoSwitchRow(
-                            showLogo = options.showLogo,
-                            onShowLogoChange = { viewModel.updateShowLogo(it) }
-                        )
-                        SettingsLinkedVisibility(visible = options.showLogo) {
-                            Column(
-                                modifier = Modifier.padding(top = 12.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
+                // LOGO 显示开关 + 颜色选项（SectionCard 与个性化面板区块同款容器样式）
+                SectionCard(title = "LOGO") {
+                    LogoSwitchRow(
+                        showLogo = options.showLogo,
+                        onShowLogoChange = { viewModel.updateShowLogo(it) }
+                    )
+                    SettingsLinkedVisibility(visible = options.showLogo) {
+                        Column(
+                            modifier = Modifier.padding(top = 12.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Text(
+                                "Logo 颜色",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                            val logoColorOptions = listOf(
+                                "" to "自动",
+                                "BLACK" to "黑色",
+                                "WHITE" to "白色"
+                            )
+                            SingleChoiceSegmentedButtonRow(
+                                modifier = Modifier.fillMaxWidth()
                             ) {
-                                Text(
-                                    "Logo 颜色",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-                                val logoColorOptions = listOf(
-                                    "" to "自动",
-                                    "BLACK" to "黑色",
-                                    "WHITE" to "白色"
-                                )
-                                SingleChoiceSegmentedButtonRow(
-                                    modifier = Modifier.fillMaxWidth()
-                                ) {
-                                    logoColorOptions.forEachIndexed { index, (value, label) ->
-                                        SegmentedButton(
-                                            selected = options.logoColor == value,
-                                            onClick = { viewModel.updateLogoColor(value) },
-                                            shape = SegmentedButtonDefaults.itemShape(index, logoColorOptions.size),
-                                            icon = {},
-                                            label = {
-                                                Text(
-                                                    label,
-                                                    maxLines = 1,
-                                                    style = MaterialTheme.typography.labelLarge
-                                                )
-                                            }
-                                        )
-                                    }
+                                logoColorOptions.forEachIndexed { index, (value, label) ->
+                                    SegmentedButton(
+                                        selected = options.logoColor == value,
+                                        onClick = { viewModel.updateLogoColor(value) },
+                                        shape = SegmentedButtonDefaults.itemShape(index, logoColorOptions.size),
+                                        icon = {},
+                                        label = {
+                                            Text(
+                                                label,
+                                                maxLines = 1,
+                                                style = MaterialTheme.typography.labelLarge
+                                            )
+                                        }
+                                    )
                                 }
                             }
                         }
                     }
                 }
 
-                // 个性化（卡片颜色与数字字体，读取日程原有配置，不持久化）
-                Card {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(16.dp)
-                    ) {
-                        Text(
-                            text = "个性化",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.Bold
-                        )
-                        Spacer(modifier = Modifier.height(4.dp))
-                        ReminderCustomizationSection(
-                            isCustomized = options.isCustomized,
-                            loaded = reminder != null,
-                            onCustomizedChange = { checked ->
-                                val newColor = if (checked) options.customHeaderColor else ""
-                                val newFont = if (checked) options.customFont.ifEmpty { "Default" } else ""
-                                viewModel.updateCustomization(checked, newColor, newFont)
-                            },
-                            customHeaderColor = options.customHeaderColor,
-                            onHeaderColorChange = { colorHex ->
-                                viewModel.updateCustomization(options.isCustomized, colorHex, options.customFont)
-                            },
-                            customFont = options.customFont,
-                            onFontChange = { font ->
-                                viewModel.updateCustomization(options.isCustomized, options.customHeaderColor, font)
-                            },
-                            reminderType = previewItem.type,
-                            cardBackgroundType = options.cardBackgroundType,
-                            cardBackgroundColor = options.cardBackgroundColor,
-                            cardBackgroundImagePath = options.cardBackgroundImagePath,
-                            cardBackgroundBlurRadius = options.cardBackgroundBlurRadius,
-                            cardBackgroundGlassEnabled = options.cardBackgroundGlassEnabled,
-                            cardBackgroundGlassFrosted = options.cardBackgroundGlassFrosted,
-                            cardBackgroundGlassDensity = options.cardBackgroundGlassDensity,
-                            cardBackgroundTextColor = options.cardBackgroundTextColor,
-                            onBackgroundConfirmed = { result ->
-                                // 分享会话不写库：旧图仍被数据库引用，不删除；
-                                // 新导入的图片若最终未使用，由 pruneOrphans 统一清理
-                                viewModel.updateCardBackground(result)
-                            }
-                        )
-                    }
-                }
+                // 个性化：完整设置面板（卡片颜色/卡片背景/数字字体），内存态即时生效，不持久化
+                // 个性化面板内部含联动展开/收起项（LinkedPanel），自身不使用 spacedBy，
+                // 作为整体子项挂在本容器下不影响本层 gap 数量
+                PersonalizationSettingsPanel(
+                    config = remember(options) { options.toPersonalizationConfig() },
+                    onUpdate = { viewModel.updatePersonalization(it) },
+                    reminderType = previewItem.type,
+                    showBackgroundOption = true
+                )
             }
         }
     }
@@ -561,20 +522,23 @@ private fun ShareBackgroundSection(
     backgroundGlassEnabled: Boolean,
     backgroundGlassFrosted: Boolean,
     backgroundGlassDensity: Float,
+    backgroundGlassRefraction: Float,
+    backgroundGlassTransparency: Float,
     onBackgroundTypeChange: (ShareBackgroundType) -> Unit,
     onBackgroundColorChange: (String) -> Unit,
     onPickCustomImage: () -> Unit,
     onBlurRadiusChange: (Float) -> Unit,
     onGlassEnabledChange: (Boolean) -> Unit,
     onGlassFrostedChange: (Boolean) -> Unit,
-    onGlassDensityChange: (Float) -> Unit
+    onGlassDensityChange: (Float) -> Unit,
+    onGlassRefractionChange: (Float) -> Unit,
+    onGlassTransparencyChange: (Float) -> Unit
 ) {
     var showColorPicker by remember { mutableStateOf(false) }
 
-    Column(
-        modifier = Modifier.fillMaxWidth(),
-        verticalArrangement = Arrangement.spacedBy(8.dp)
-    ) {
+    // 容器禁用 spacedBy：内含 SettingsLinkedVisibility 联动项，收起移除瞬间 gap 数减一会导致内容突跳，
+    // 间距内化到联动项的 top padding
+    Column(modifier = Modifier.fillMaxWidth()) {
         FlowRow(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp)
@@ -582,26 +546,28 @@ private fun ShareBackgroundSection(
             FilterChip(
                 selected = backgroundType == ShareBackgroundType.DEFAULT,
                 onClick = { onBackgroundTypeChange(ShareBackgroundType.DEFAULT) },
-                label = { Text("默认") },
+                label = { Text("默认", style = MaterialTheme.typography.bodyMedium) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Home,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
-                }
+                },
+                shape = RoundedCornerShape(12.dp)
             )
             FilterChip(
                 selected = backgroundType == ShareBackgroundType.IMAGE,
                 onClick = onPickCustomImage,
-                label = { Text("图片") },
+                label = { Text("图片", style = MaterialTheme.typography.bodyMedium) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Image,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
-                }
+                },
+                shape = RoundedCornerShape(12.dp)
             )
             FilterChip(
                 selected = backgroundType == ShareBackgroundType.COLOR,
@@ -609,20 +575,21 @@ private fun ShareBackgroundSection(
                     onBackgroundTypeChange(ShareBackgroundType.COLOR)
                     showColorPicker = true
                 },
-                label = { Text("颜色") },
+                label = { Text("颜色", style = MaterialTheme.typography.bodyMedium) },
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Palette,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )
-                }
+                },
+                shape = RoundedCornerShape(12.dp)
             )
         }
 
-        // 图片背景效果：与卡片背景设置一致（模糊 / 光栅玻璃 / 磨砂 / 密度）
+        // 图片背景效果：与卡片背景设置一致（模糊 / 光栅玻璃 / 磨砂 / 密度 / 折射度 / 透明度）
         SettingsLinkedVisibility(visible = backgroundType == ShareBackgroundType.IMAGE) {
-            Column(modifier = Modifier.padding(top = 4.dp)) {
+            Column(modifier = Modifier.padding(top = 12.dp)) {
                 SliderRow(
                     title = "图片模糊",
                     valueText = "${backgroundBlurRadius.roundToInt()}",
@@ -672,6 +639,20 @@ private fun ShareBackgroundSection(
                             valueRange = 0f..1f,
                             onValueChange = onGlassDensityChange
                         )
+                        SliderRow(
+                            title = "玻璃折射度",
+                            valueText = "%.2f".format(backgroundGlassRefraction),
+                            value = backgroundGlassRefraction,
+                            valueRange = 0f..0.5f,
+                            onValueChange = onGlassRefractionChange
+                        )
+                        SliderRow(
+                            title = "玻璃透明度",
+                            valueText = "${(backgroundGlassTransparency * 100).roundToInt()}%",
+                            value = backgroundGlassTransparency,
+                            valueRange = 0f..1f,
+                            onValueChange = onGlassTransparencyChange
+                        )
                     }
                 }
             }
@@ -693,7 +674,7 @@ private fun ShareBackgroundSection(
 private fun colorToHex(color: Color): String =
     String.format("#%06X", color.toArgb() and 0x00FFFFFF)
 
-/** 带标题与数值展示的滑块行（与卡片背景设置对话框样式一致） */
+/** 带标题与数值展示的滑块行（与个性化面板 SliderRow 样式一致） */
 @Composable
 private fun SliderRow(
     title: String,
@@ -702,7 +683,10 @@ private fun SliderRow(
     valueRange: ClosedFloatingPointRange<Float>,
     onValueChange: (Float) -> Unit
 ) {
-    Column(modifier = Modifier.fillMaxWidth()) {
+    Column(
+        modifier = Modifier.fillMaxWidth(),
+        verticalArrangement = Arrangement.spacedBy(4.dp)
+    ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween
@@ -714,7 +698,8 @@ private fun SliderRow(
             )
             Text(
                 valueText,
-                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold)
+                style = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
         Slider(
@@ -768,6 +753,10 @@ fun ShareableReminderImage(
     backgroundGlassFrosted: Boolean = false,
     /** 图片背景：光栅密度（0..1） */
     backgroundGlassDensity: Float = 0.5f,
+    /** 图片背景：光栅玻璃折射度（0..0.5） */
+    backgroundGlassRefraction: Float = 0.24f,
+    /** 图片背景：光栅玻璃透明度（0..1） */
+    backgroundGlassTransparency: Float = 1f,
     showLogo: Boolean = true,
     /** LOGO 颜色：""=自动（默认背景强制白色，自定义背景按亮度反色），"WHITE"/"BLACK"=手动指定 */
     logoColorOverride: String = ""
@@ -821,7 +810,9 @@ fun ShareableReminderImage(
                                     blurRadius = backgroundBlurRadius,
                                     glassEnabled = backgroundGlassEnabled,
                                     glassFrosted = backgroundGlassFrosted,
-                                    glassDensity = backgroundGlassDensity
+                                    glassDensity = backgroundGlassDensity,
+                                    glassRefraction = backgroundGlassRefraction,
+                                    glassTransparency = backgroundGlassTransparency
                                 ),
                                 bitmap = backgroundBitmap,
                                 modifier = Modifier.matchParentSize()

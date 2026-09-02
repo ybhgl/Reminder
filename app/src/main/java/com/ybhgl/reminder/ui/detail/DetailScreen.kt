@@ -16,6 +16,7 @@ import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -39,9 +40,27 @@ import com.ybhgl.reminder.Routes
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.reminderDisplayInfo
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
+import com.ybhgl.reminder.ui.common.cardBackgroundAverageColor
+import com.ybhgl.reminder.ui.common.cardBackgroundSpec
+import com.ybhgl.reminder.ui.common.numberEffectSpec
+import com.ybhgl.reminder.ui.common.GlassTextOverlay
+import com.ybhgl.reminder.ui.common.GlassTextMode
+import com.ybhgl.reminder.ui.common.GlassTextTheme
+import com.ybhgl.reminder.ui.common.GlassStrokeWidth
+import com.ybhgl.reminder.ui.common.glassShadowColor
+import com.ybhgl.reminder.ui.common.glassShadowTextStyle
+import com.ybhgl.reminder.ui.common.glassStrokeTextStyle
+import com.ybhgl.reminder.ui.common.parseGlassStrokeColor
+import com.ybhgl.reminder.ui.common.parseGlassTextTheme
+import com.ybhgl.reminder.ui.common.resolveEffectiveFontEffect
+import androidx.activity.compose.rememberLauncherForActivityResult
+import com.ybhgl.reminder.ui.personalization.PersonalizationContract
+import com.ybhgl.reminder.ui.personalization.PersonalizationInput
+import com.ybhgl.reminder.ui.personalization.toPersonalizationConfig
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayInfo
@@ -104,34 +123,24 @@ fun DetailScreen(
         val latestReminderItems by rememberUpdatedState(reminderItems)
         var currentId by remember { mutableIntStateOf(viewModel.reminderId) }
         var editingReminderForTag by remember { mutableStateOf<ReminderItem?>(null) }
-        var reminderItemToCustomize by remember { mutableStateOf<ReminderItem?>(null) }
-        var tempIsCustomized by remember { mutableStateOf(false) }
-        var tempHeaderColor by remember { mutableStateOf("") }
-        var tempFont by remember { mutableStateOf("") }
-        var tempBgType by remember { mutableStateOf("DEFAULT") }
-        var tempBgColor by remember { mutableStateOf("") }
-        var tempBgImagePath by remember { mutableStateOf("") }
-        var tempBgBlur by remember { mutableStateOf(0f) }
-        var tempBgGlass by remember { mutableStateOf(false) }
-        var tempBgFrosted by remember { mutableStateOf(false) }
-        var tempBgDensity by remember { mutableStateOf(0.5f) }
-        var tempBgTextColor by remember { mutableStateOf("") }
+        // 正在个性化编辑的提醒（打开 Activity 前记录，结果返回时应用）
+        var customizingItem by remember { mutableStateOf<ReminderItem?>(null) }
 
-        // 打开个性化对话框时同步初始化 temp 状态。
-        // 若用 LaunchedEffect 同步会晚一帧：首帧 temp 为默认值导致背景卡片整帧消失（闪烁）。
-        fun openCustomizeDialog(item: ReminderItem) {
-            tempIsCustomized = item.isCustomized
-            tempHeaderColor = item.customHeaderColor
-            tempFont = item.customFont
-            tempBgType = item.cardBackgroundType
-            tempBgColor = item.cardBackgroundColor
-            tempBgImagePath = item.cardBackgroundImagePath
-            tempBgBlur = item.cardBackgroundBlurRadius
-            tempBgGlass = item.cardBackgroundGlassEnabled
-            tempBgFrosted = item.cardBackgroundGlassFrosted
-            tempBgDensity = item.cardBackgroundGlassDensity
-            tempBgTextColor = item.cardBackgroundTextColor
-            reminderItemToCustomize = item
+        // 个性化设置页结果回写：旧背景图被替换或恢复默认时清理残留图片并入库
+        val personalizationLauncher = rememberLauncherForActivityResult(PersonalizationContract()) { result ->
+            result ?: return@rememberLauncherForActivityResult
+            val item = customizingItem
+            customizingItem = null
+            if (item != null) {
+                val oldPath = item.cardBackgroundImagePath
+                val newPath = result.cardBackgroundImagePath
+                if (oldPath.isNotEmpty() && oldPath != newPath) {
+                    customizeScope.launch {
+                        CardBackgroundImageManager.deleteImage(context, oldPath)
+                    }
+                }
+                viewModel.updateReminderCustomization(context, item, result)
+            }
         }
 
         // Sync currentId/viewModel active reminder item when page changes (via user swipe)
@@ -187,144 +196,6 @@ fun DetailScreen(
                 )
             }
 
-            if (reminderItemToCustomize != null) {
-                val item = reminderItemToCustomize!!
-
-                fun handleCustomizedChange(checked: Boolean) {
-                    tempIsCustomized = checked
-                    if (checked) {
-                        if (tempFont.isEmpty()) {
-                            tempFont = "Default"
-                        }
-                    } else {
-                        tempHeaderColor = ""
-                        tempFont = ""
-                        tempBgType = "DEFAULT"
-                        tempBgColor = ""
-                        tempBgImagePath = ""
-                        tempBgBlur = 0f
-                        tempBgGlass = false
-                        tempBgFrosted = false
-                        tempBgDensity = 0.5f
-                        tempBgTextColor = ""
-                    }
-                }
-
-                Dialog(
-                    onDismissRequest = { reminderItemToCustomize = null },
-                    properties = DialogProperties(
-                        usePlatformDefaultWidth = false,
-                        decorFitsSystemWindows = false
-                    )
-                ) {
-                    Box(
-                        modifier = Modifier
-                            .fillMaxSize()
-                            .pointerInput(Unit) {
-                                detectTapGestures(onTap = { reminderItemToCustomize = null })
-                            },
-                        contentAlignment = Alignment.Center
-                    ) {
-                        Surface(
-                            modifier = Modifier
-                                .fillMaxWidth(0.9f)
-                                .widthIn(max = 440.dp)
-                                .wrapContentHeight()
-                                .pointerInput(Unit) {
-                                    detectTapGestures { }
-                                },
-                            shape = RoundedCornerShape(24.dp),
-                            color = MaterialTheme.colorScheme.surface,
-                            tonalElevation = 6.dp
-                        ) {
-                            Column(
-                                modifier = Modifier
-                                    .padding(24.dp)
-                                    .fillMaxWidth()
-                            ) {
-                                Text(
-                                    text = "个性化设置",
-                                    style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                                    color = MaterialTheme.colorScheme.onSurface
-                                )
-                                Spacer(modifier = Modifier.height(16.dp))
-
-                                ReminderCustomizationSection(
-                                    isCustomized = tempIsCustomized,
-                                    onCustomizedChange = { handleCustomizedChange(it) },
-                                    customHeaderColor = tempHeaderColor,
-                                    onHeaderColorChange = { tempHeaderColor = it },
-                                    customFont = tempFont,
-                                    onFontChange = { tempFont = it },
-                                    reminderType = item.type,
-                                    cardBackgroundType = tempBgType,
-                                    cardBackgroundColor = tempBgColor,
-                                    cardBackgroundImagePath = tempBgImagePath,
-                                    cardBackgroundBlurRadius = tempBgBlur,
-                                    cardBackgroundGlassEnabled = tempBgGlass,
-                                    cardBackgroundGlassFrosted = tempBgFrosted,
-                                    cardBackgroundGlassDensity = tempBgDensity,
-                                    cardBackgroundTextColor = tempBgTextColor,
-                                    onBackgroundConfirmed = { result ->
-                                        // 旧背景图被替换或恢复默认时清理残留图片
-                                        val oldPath = tempBgImagePath
-                                        val newPath = result.imagePath
-                                        if (oldPath.isNotEmpty() && oldPath != newPath) {
-                                            customizeScope.launch {
-                                                CardBackgroundImageManager.deleteImage(context, oldPath)
-                                            }
-                                        }
-                                        tempBgType = result.type.name
-                                        tempBgColor = result.colorHex
-                                        tempBgImagePath = result.imagePath
-                                        tempBgBlur = result.blurRadius
-                                        tempBgGlass = result.glassEnabled
-                                        tempBgFrosted = result.glassFrosted
-                                        tempBgDensity = result.glassDensity
-                                        tempBgTextColor = result.textColor
-                                    }
-                                )
-
-                                Spacer(modifier = Modifier.height(24.dp))
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.End,
-                                    verticalAlignment = Alignment.CenterVertically
-                                ) {
-                                    TextButton(onClick = { reminderItemToCustomize = null }) {
-                                        Text("取消")
-                                    }
-                                    Spacer(modifier = Modifier.width(8.dp))
-                                    TextButton(
-                                        onClick = {
-                                            viewModel.updateReminderCustomization(
-                                                context = context,
-                                                reminder = item,
-                                                isCustomized = tempIsCustomized,
-                                                customHeaderColor = tempHeaderColor,
-                                                customFont = tempFont,
-                                                cardBackgroundType = tempBgType,
-                                                cardBackgroundColor = tempBgColor,
-                                                cardBackgroundImagePath = tempBgImagePath,
-                                                cardBackgroundBlurRadius = tempBgBlur,
-                                                cardBackgroundGlassEnabled = tempBgGlass,
-                                                cardBackgroundGlassFrosted = tempBgFrosted,
-                                                cardBackgroundGlassDensity = tempBgDensity,
-                                                cardBackgroundTextColor = tempBgTextColor
-                                            )
-                                            reminderItemToCustomize = null
-                                        }
-                                    ) {
-                                        Text("保存", fontWeight = FontWeight.Bold)
-                                    }
-                                }
-                            }
-                        }
-                    }
-                }
-            }
-
             val configuration = LocalConfiguration.current
             val isLandscape = configuration.orientation == Configuration.ORIENTATION_LANDSCAPE
 
@@ -351,27 +222,8 @@ fun DetailScreen(
                 ) { pageIndex ->
                     val pageItem = reminderItems.getOrNull(pageIndex)
                     if (pageItem != null) {
-                        val isCustomizingThisItem = reminderItemToCustomize?.id == pageItem.id
-                        val displayReminderItem = if (isCustomizingThisItem) {
-                            pageItem.copy(
-                                isCustomized = tempIsCustomized,
-                                customHeaderColor = tempHeaderColor,
-                                customFont = tempFont,
-                                cardBackgroundType = tempBgType,
-                                cardBackgroundColor = tempBgColor,
-                                cardBackgroundImagePath = tempBgImagePath,
-                                cardBackgroundBlurRadius = tempBgBlur,
-                                cardBackgroundGlassEnabled = tempBgGlass,
-                                cardBackgroundGlassFrosted = tempBgFrosted,
-                                cardBackgroundGlassDensity = tempBgDensity,
-                                cardBackgroundTextColor = tempBgTextColor
-                            )
-                        } else {
-                            pageItem
-                        }
-
                         ReminderDetailPagerContent(
-                            displayReminderItem = displayReminderItem,
+                            displayReminderItem = pageItem,
                             originalPageItem = pageItem,
                             isLandscape = isLandscape,
                             uiState = uiState,
@@ -379,7 +231,15 @@ fun DetailScreen(
                             showNotesMap = showNotesMap,
                             viewModel = viewModel,
                             onEditTag = { editingReminderForTag = it },
-                            onCustomize = { openCustomizeDialog(it) },
+                            onCustomize = { item ->
+                                customizingItem = item
+                                personalizationLauncher.launch(
+                                    PersonalizationInput(
+                                        config = item.toPersonalizationConfig(),
+                                        reminderType = item.type.name
+                                    )
+                                )
+                            },
                             onShareClick = {
                                 currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
                             },
@@ -768,9 +628,20 @@ fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
 }
 
 @Composable
-private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: Boolean = false) {
+private fun DayCountRow(
+    dayCount: Int,
+    visuals: ReminderCardVisuals,
+    isCountUp: Boolean = false,
+    glassMode: GlassTextMode? = null,
+    glassStrokeColor: Color = Color.White,
+    glassShadowColor: Color = Color.Black
+) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
+    val strokePx = with(androidx.compose.ui.platform.LocalDensity.current) { GlassStrokeWidth.toPx() }
+    // 仅 STROKE/SHADOW 属于玻璃覆盖层模式；MASK（正常渲染）必须走常规颜色，
+    // 否则无颜色的样式会回落主题默认色导致"天"字锁死白色
+    val isGlassOverlay = glassMode == GlassTextMode.STROKE || glassMode == GlassTextMode.SHADOW
     Row(
         modifier = Modifier
             .fillMaxWidth()
@@ -778,28 +649,40 @@ private fun DayCountRow(dayCount: Int, visuals: ReminderCardVisuals, isCountUp: 
         horizontalArrangement = Arrangement.Center,
         verticalAlignment = Alignment.Bottom,
     ) {
+        val numberStyle = MaterialTheme.typography.displayLarge.copy(
+            fontSize = 140.sp,
+            fontWeight = FontWeight.Bold,
+            letterSpacing = (-1).sp,
+            color = visuals.numberColor,
+            fontFamily = visuals.fontFamily,
+            lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
+        )
+        val styledNumberStyle = when (glassMode) {
+            GlassTextMode.STROKE -> glassStrokeTextStyle(numberStyle, glassStrokeColor, strokePx)
+            GlassTextMode.SHADOW -> glassShadowTextStyle(numberStyle, glassShadowColor)
+            else -> numberStyle
+        }
         AutoResizeText(
             text = textToShow,
-            style = MaterialTheme.typography.displayLarge.copy(
-                fontSize = 140.sp,
-                fontWeight = FontWeight.Bold,
-                letterSpacing = (-1).sp,
-                color = visuals.numberColor,
-                fontFamily = visuals.fontFamily,
-                lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
-            ),
+            style = styledNumberStyle,
             modifier = Modifier
                 .weight(1f, fill = false)
                 .alignByBaseline(),
             checkHeight = true
         )
         Spacer(modifier = Modifier.width(6.dp))
+        val unitStyle = MaterialTheme.typography.bodyLarge.copy(
+            fontSize = 30.sp
+        )
+        val styledUnitStyle = when (glassMode) {
+            GlassTextMode.STROKE -> glassStrokeTextStyle(unitStyle, glassStrokeColor, strokePx)
+            GlassTextMode.SHADOW -> glassShadowTextStyle(unitStyle, glassShadowColor)
+            else -> unitStyle
+        }
         Text(
             text = "天",
-            style = MaterialTheme.typography.bodyLarge.copy(
-                fontSize = 30.sp
-            ),
-            color = visuals.secondaryTextColor,
+            style = styledUnitStyle,
+            color = if (isGlassOverlay) Color.Unspecified else visuals.secondaryTextColor,
             modifier = Modifier.alignByBaseline()
         )
     }
@@ -820,21 +703,47 @@ fun ReminderDetailCard(
     val visuals = displayInfo.visuals
     val density = androidx.compose.ui.platform.LocalDensity.current.density
 
-    // 自定义卡片背景：完整覆盖整卡，前景文字按背景亮度实时反色
+    // 自定义卡片背景：完整覆盖整卡，前景文字按背景亮度实时反色；
+    // 数字字体效果按范围规则覆盖（自定义背景→全卡文字；默认背景→仅数字且仅 SOLID）
     val backgroundSpec = visuals.backgroundSpec
     val backgroundBitmap = if (backgroundSpec?.type == com.ybhgl.reminder.ui.common.CardBackgroundType.IMAGE) {
         com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap(backgroundSpec.imagePath)
     } else null
     val hasCustomBackground = backgroundSpec != null
+    val effectSpec = if (reminderItem.isCustomized) reminderItem.numberEffectSpec else null
+    val numberRenderSpec: com.ybhgl.reminder.ui.common.NumberEffectSpec?
     val effectiveVisuals = if (backgroundSpec != null) {
         val bgLuminance = com.ybhgl.reminder.ui.common.cardBackgroundLuminance(backgroundSpec, backgroundBitmap)
-        val foreground = com.ybhgl.reminder.ui.common.resolveCardBackgroundForeground(backgroundSpec, bgLuminance)
+        val bgAverage = cardBackgroundAverageColor(backgroundSpec, backgroundBitmap)
+        val resolved = resolveEffectiveFontEffect(effectSpec, backgroundSpec, bgLuminance, bgAverage)
+        val foreground = resolved.cardTextColor
+            ?: com.ybhgl.reminder.ui.common.resolveCardBackgroundForeground(backgroundSpec, bgLuminance)
+        numberRenderSpec = resolved.numberRender
         visuals.copy(
             headerContentColor = foreground,
-            numberColor = foreground,
-            secondaryTextColor = foreground.copy(alpha = 0.92f)
+            numberColor = resolved.numberColor ?: foreground,
+            // 纯色/混色效果携带用户透明度时直接沿用；否则保持 0.92 的默认副文字弱化
+            secondaryTextColor = resolved.secondaryTextColor ?: foreground.copy(alpha = 0.92f)
         )
-    } else visuals
+    } else {
+        val resolved = resolveEffectiveFontEffect(effectSpec, null, 0.5f, Color.Gray)
+        val numberOverride = resolved.numberColor
+        numberRenderSpec = null
+        if (numberOverride != null) visuals.copy(numberColor = numberOverride) else visuals
+    }
+    // 玻璃字效果（BLUR）：文字区域透出模糊背景，veil+描边兜底可读性；
+    // 层级顺序对齐 SVG 玻璃字：清晰背景（下方）→ 模糊背景按文字 alpha 裁切 → 描边文字
+    val glassActive = numberRenderSpec
+        ?.takeIf { it.effect == com.ybhgl.reminder.ui.common.NumberFontEffect.BLUR } != null && backgroundSpec != null
+    val glassStrokeColor = parseGlassStrokeColor(numberRenderSpec?.strokeColor ?: "")
+    val glassStrokeResolved = glassStrokeColor
+        ?: if (parseGlassTextTheme(numberRenderSpec?.glassTheme ?: "DARK") == GlassTextTheme.LIGHT) {
+            Color(0xFF0A1418)
+        } else {
+            Color(0xFFF2FBFF)
+        }
+    val glassShadowResolved = glassShadowColor(parseGlassTextTheme(numberRenderSpec?.glassTheme ?: "DARK"))
+    val glassStrokeWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { GlassStrokeWidth.toPx() }
 
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -869,9 +778,23 @@ fun ReminderDetailCard(
                             modifier = Modifier.matchParentSize()
                         )
                     }
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally
-                    ) {
+
+                    // 卡片前景文字：玻璃字激活时由 GlassTextOverlay 管理（mask/描边/玻璃/阴影分层），
+                    // 否则按普通模式直接排布
+                    @Composable
+                    fun CardTexts(mode: GlassTextMode) {
+                        fun modeStyle(base: TextStyle): TextStyle = when (mode) {
+                            GlassTextMode.STROKE -> glassStrokeTextStyle(base, glassStrokeResolved, glassStrokeWidthPx)
+                            GlassTextMode.SHADOW -> glassShadowTextStyle(base, glassShadowResolved)
+                            GlassTextMode.MASK -> base
+                        }
+                        fun modeColor(c: Color): Color =
+                            if (mode == GlassTextMode.MASK) c else Color.Unspecified
+
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            horizontalAlignment = Alignment.CenterHorizontally
+                        ) {
                         // Top section
                         Box(
                             modifier = Modifier
@@ -885,15 +808,16 @@ fun ReminderDetailCard(
                         ) {
                             val title = displayInfo.headerTitle
                             val fontSize = if (title.length > 12) 22.sp else 30.sp
+                            val titleStyle = MaterialTheme.typography.titleLarge.copy(
+                                fontWeight = FontWeight.Medium,
+                                fontSize = fontSize,
+                                letterSpacing = 0.sp,
+                                textAlign = TextAlign.Center
+                            )
                             Text(
                                 text = title,
-                                style = MaterialTheme.typography.titleLarge.copy(
-                                    fontWeight = FontWeight.Medium,
-                                    fontSize = fontSize,
-                                    letterSpacing = 0.sp,
-                                    textAlign = TextAlign.Center
-                                ),
-                                color = effectiveVisuals.headerContentColor,
+                                style = modeStyle(titleStyle),
+                                color = modeColor(effectiveVisuals.headerContentColor),
                                 modifier = Modifier
                                     .fillMaxWidth()
                                     .padding(horizontal = 20.dp, vertical = 8.dp),
@@ -917,7 +841,10 @@ fun ReminderDetailCard(
                             DayCountRow(
                                 dayCount = displayInfo.dayCount,
                                 visuals = effectiveVisuals,
-                                isCountUp = reminderItem.type == ReminderType.COUNT_UP
+                                isCountUp = reminderItem.type == ReminderType.COUNT_UP,
+                                glassMode = mode,
+                                glassStrokeColor = glassStrokeResolved,
+                                glassShadowColor = glassShadowResolved
                             )
                         }
 
@@ -946,19 +873,40 @@ fun ReminderDetailCard(
                                 },
                                 label = "DateTransition"
                             ) { targetText ->
+                                val dateStyle = TextStyle(fontSize = 18.sp, textAlign = TextAlign.Center)
                                 Text(
                                     text = if (reminderItem.type == ReminderType.COUNT_UP) {
                                         "自 ${targetText} 起"
                                     } else {
                                         "目标日: ${targetText}"
                                     },
-                                    color = effectiveVisuals.secondaryTextColor,
-                                    fontSize = 18.sp,
-                                    textAlign = TextAlign.Center,
+                                    style = modeStyle(dateStyle),
+                                    color = modeColor(effectiveVisuals.secondaryTextColor),
                                     modifier = Modifier.fillMaxWidth()
                                 )
                             }
                         }
+                        }
+                    }
+
+                    if (glassActive && backgroundSpec != null) {
+                        val spec = numberRenderSpec!!
+                        GlassTextOverlay(
+                            blurRadius = spec.blurRadius,
+                            theme = parseGlassTextTheme(spec.glassTheme),
+                            strokeEnabled = spec.strokeEnabled,
+                            shadowEnabled = spec.shadowEnabled,
+                            modifier = Modifier.matchParentSize(),
+                            backdrop = {
+                                com.ybhgl.reminder.ui.common.CardBackgroundLayer(
+                                    spec = backgroundSpec,
+                                    bitmap = backgroundBitmap
+                                )
+                            },
+                            textContent = { mode -> CardTexts(mode) }
+                        )
+                    } else {
+                        CardTexts(GlassTextMode.MASK)
                     }
                 }
             }
@@ -1169,15 +1117,10 @@ fun ModifyTagDialog(
     onSelectTag: (String) -> Unit,
     onNavigateToTagManagement: () -> Unit
 ) {
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismiss,
-        title = {
-            Text(
-                text = "修改标签",
-                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
-            )
-        },
-        text = {
+        title = "修改标签",
+        content = {
             Column(
                 modifier = Modifier.fillMaxWidth(),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
@@ -1200,7 +1143,7 @@ fun ModifyTagDialog(
                             selectedLabelColor = MaterialTheme.colorScheme.onSecondaryContainer
                         )
                     )
-                    
+
                     tagsList.forEach { tagItem ->
                         val isSelected = tagItem.name.trim() == currentTag.trim()
                         val baseColor = remember(tagItem.color) { tagItem.color.toComposeColor() }
@@ -1237,26 +1180,12 @@ fun ModifyTagDialog(
                 }
             }
         },
-        confirmButton = {
-            TextButton(
-                onClick = {
-                    onDismiss()
-                    onNavigateToTagManagement()
-                }
-            ) {
-                Icon(
-                    imageVector = Icons.Default.Edit,
-                    contentDescription = null,
-                    modifier = Modifier.size(18.dp)
-                )
-                Spacer(modifier = Modifier.width(4.dp))
-                Text("管理标签")
-            }
+        confirmText = "管理标签",
+        onConfirm = {
+            onDismiss()
+            onNavigateToTagManagement()
         },
-        dismissButton = {
-            TextButton(onClick = onDismiss) {
-                Text("取消")
-            }
-        }
+        dismissText = "取消",
+        onDismiss = onDismiss
     )
 }

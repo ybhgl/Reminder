@@ -117,7 +117,7 @@ class BackupAndRestoreViewModel(
             val customColorSeed = customColorFlow(context).first()
             val scrollBehavior = scrollBehaviorFlow(context).first()
             val homeCategoryEnabled = homeCategoryFlow(context).first()
-    
+
             val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
             val webDavServer = BackupPreferences.webDavServerFlow(context).first()
             val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()

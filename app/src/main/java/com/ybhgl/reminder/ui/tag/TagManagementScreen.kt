@@ -109,6 +109,7 @@ import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.data.TagItem
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.common.StatusBarScrim
@@ -345,25 +346,17 @@ fun TagManagementScreen(
     // 删除标签确认 Dialog
     if (tagToDelete != null) {
         val tag = tagToDelete!!
-        AlertDialog(
+        AppAlertDialog(
             onDismissRequest = { tagToDelete = null },
-            title = { Text("确认删除标签") },
-            text = { Text("删除标签【${tag.name}】后，所有使用该标签的提醒都会被归为【无标签】。此操作不可撤销，是否确认删除？") },
-            confirmButton = {
-                TextButton(
-                    onClick = {
-                        viewModel.deleteTag(tag)
-                        tagToDelete = null
-                    }
-                ) {
-                    Text("确认删除", color = MaterialTheme.colorScheme.error)
-                }
+            title = "确认删除标签",
+            text = "删除标签【${tag.name}】后，所有使用该标签的提醒都会被归为【无标签】。此操作不可撤销，是否确认删除？",
+            confirmText = "确认删除",
+            onConfirm = {
+                viewModel.deleteTag(tag)
+                tagToDelete = null
             },
-            dismissButton = {
-                TextButton(onClick = { tagToDelete = null }) {
-                    Text("取消")
-                }
-            }
+            dismissText = "取消",
+            destructive = true
         )
     }
 }

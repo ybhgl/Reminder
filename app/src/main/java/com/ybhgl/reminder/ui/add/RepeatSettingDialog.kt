@@ -26,6 +26,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.ybhgl.reminder.data.RepeatInfo
 import com.ybhgl.reminder.data.RepeatUnit
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.seo4d696b75.compose.material3.picker.Picker
 import com.seo4d696b75.compose.material3.picker.rememberPickerState
@@ -117,10 +118,10 @@ fun RepeatSettingDialog(
         }
     }
 
-    AlertDialog(
+    AppAlertDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text("设置重复周期") },
-        text = {
+        title = "设置重复周期",
+        content = {
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
@@ -168,24 +169,17 @@ fun RepeatSettingDialog(
                 }
             }
         },
-        confirmButton = {
-            Button(onClick = {
-                val chosenInterval = intervalOptions.getOrNull(intervalState.settledIndex)?.value
-                val chosenUnit = unitOptions.getOrNull(unitState.settledIndex)?.value
-                if (chosenInterval == null || chosenUnit == null) {
-                    onConfirm(null)
-                } else {
-                    onConfirm(RepeatInfo(chosenInterval, chosenUnit))
-                }
-            }) {
-                Text("完成")
+        confirmText = "完成",
+        onConfirm = {
+            val chosenInterval = intervalOptions.getOrNull(intervalState.settledIndex)?.value
+            val chosenUnit = unitOptions.getOrNull(unitState.settledIndex)?.value
+            if (chosenInterval == null || chosenUnit == null) {
+                onConfirm(null)
+            } else {
+                onConfirm(RepeatInfo(chosenInterval, chosenUnit))
             }
         },
-        dismissButton = {
-            TextButton(onClick = onDismissRequest) {
-                Text("取消")
-            }
-        }
+        dismissText = "取消"
     )
 }
 

@@ -80,8 +80,36 @@ data class ReminderItem(
     val cardBackgroundGlassEnabled: Boolean = false,
     val cardBackgroundGlassFrosted: Boolean = false,
     val cardBackgroundGlassDensity: Float = 0.5f,
+    /** 光栅玻璃折射度（0..0.5，映射 AGSL distort/间距 比例） */
+    val cardBackgroundGlassRefraction: Float = 0.24f,
+    /** 光栅玻璃透明度（0..1，缩放玻璃叠层存在感，1=默认观感） */
+    val cardBackgroundGlassTransparency: Float = 1f,
+    /** 光栅玻璃模糊度（0..24dp，磨砂雾面模糊强度） */
+    val cardBackgroundGlassBlur: Float = 12f,
     /** 自定义背景下的字体颜色：""=按背景亮度自动反色，"WHITE"/"BLACK"=用户手动指定 */
-    val cardBackgroundTextColor: String = ""
+    val cardBackgroundTextColor: String = "",
+    /** 数字字体效果：AUTO=自动黑白、SOLID=纯色、MIXED=反色混色、BLUR=模糊、GLASS=玻璃 */
+    val customFontEffect: String = "AUTO",
+    /** 纯色效果的字体颜色（hex） */
+    val customFontColor: String = "",
+    /** 混色效果的字体透明度（0.2..1） */
+    val customFontOpacity: Float = 1f,
+    /** 模糊效果的模糊度（0..24dp） */
+    val customFontBlur: Float = 8f,
+    /** 玻璃字体效果折射度（0..0.5） */
+    val customFontGlassRefraction: Float = 0.24f,
+    /** 玻璃字体效果透明度（0..1） */
+    val customFontGlassTransparency: Float = 0.7f,
+    /** 玻璃字体效果模糊度（0..24dp） */
+    val customFontGlassBlur: Float = 4f,
+    /** 玻璃字（BLUR 效果）明暗模板：DARK=暗色玻璃字、LIGHT=亮色玻璃字 */
+    val customFontGlassTheme: String = "DARK",
+    /** 玻璃字阴影开关（文字投影，默认关闭） */
+    val customFontShadowEnabled: Boolean = false,
+    /** 玻璃字是否描边（外轮廓描边，默认关闭） */
+    val customFontStrokeEnabled: Boolean = false,
+    /** 玻璃字描边颜色（hex），空 = 按模板默认（暗模板亮描边 / 亮模板暗描边） */
+    val customFontStrokeColor: String = ""
 )
 
 @Serializer(forClass = LocalDate::class)

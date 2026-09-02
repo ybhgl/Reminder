@@ -34,6 +34,7 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.background
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayListItem
@@ -174,20 +175,13 @@ fun BirthdayListScreen(
             uiState.pendingBirthdayItem?.let { item ->
                 val label = if (item.age == 0) "出生" else "${item.age}岁生日"
                 val targetTitle = "${reminderItem?.title ?: ""}$label"
-                AlertDialog(
+                AppAlertDialog(
                     onDismissRequest = { viewModel.showAddBirthdayDialog(null) },
-                    title = { Text("添加倒数日") },
-                    text = { Text("是否添加“$targetTitle”的倒数日事件？") },
-                    confirmButton = {
-                        TextButton(onClick = { viewModel.addBirthdayReminder(item) }) {
-                            Text("添加")
-                        }
-                    },
-                    dismissButton = {
-                        TextButton(onClick = { viewModel.showAddBirthdayDialog(null) }) {
-                            Text("取消")
-                        }
-                    }
+                    title = "添加倒数日",
+                    text = "是否添加“$targetTitle”的倒数日事件？",
+                    confirmText = "添加",
+                    onConfirm = { viewModel.addBirthdayReminder(item) },
+                    dismissText = "取消"
                 )
             }
         }
