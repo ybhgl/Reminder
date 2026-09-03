@@ -102,6 +102,7 @@ import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.CardBackgroundLayer
 import com.ybhgl.reminder.ui.common.CardBackgroundSpec
 import com.ybhgl.reminder.ui.common.CardBackgroundType
+import com.ybhgl.reminder.ui.common.CollapsingPreviewItem
 import com.ybhgl.reminder.ui.common.ImageCropDialog
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.detail.ReminderDetailCard
@@ -345,35 +346,47 @@ fun ShareScreen(
             }
         } else {
             val useLunar = reminder?.isLunar ?: previewItem.isLunar
+            val scrollState = rememberScrollState()
             Column(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(paddingValues)
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(scrollState)
                     .padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(16.dp)
             ) {
-                // 预览（所见即所得，仅预览圆角；导出图为直角满幅）
-                SharePreviewContainer(
-                    captureModifier = Modifier.capturable(captureController),
-                    onContentSizeChanged = { previewSize = it }
-                ) { captureModifier ->
-                    ShareableReminderImage(
-                        reminderItem = previewItem,
-                        useLunar = useLunar,
-                        backgroundType = options.backgroundType,
-                        backgroundColor = options.backgroundColor.toComposeColor(),
-                        backgroundBitmap = backgroundBitmap,
-                        backgroundBlurRadius = options.backgroundBlurRadius,
-                        backgroundGlassEnabled = options.backgroundGlassEnabled,
-                        backgroundGlassFrosted = options.backgroundGlassFrosted,
-                        backgroundGlassDensity = options.backgroundGlassDensity,
-                        backgroundGlassRefraction = options.backgroundGlassRefraction,
-                        backgroundGlassTransparency = options.backgroundGlassTransparency,
-                        showLogo = options.showLogo,
-                        logoColorOverride = options.logoColor,
-                        modifier = captureModifier
-                    )
+                // 预览（所见即所得，仅预览圆角；导出图为直角满幅）。
+                // 吸顶收缩容器：向上滚动时预览钉在顶部并连续收缩到 260dp，
+                // 遮罩铺满整行且高度跟随预览显示高度实时变化、设置面板如圆角 Sheet 滑入；
+                // pinnedTopInset 补偿滚动列的 16dp 顶部内边距使预览钉在视口顶（消除上方空隙），
+                // headerBottomPadding 在预览下缘留出呼吸空间；capturable 挂在内层原始尺寸节点上，
+                // 导出图不受预览缩放影响
+                CollapsingPreviewItem(
+                    scrollState = scrollState,
+                    headerBottomPadding = 12.dp,
+                    pinnedTopInset = 16.dp
+                ) {
+                    SharePreviewContainer(
+                        captureModifier = Modifier.capturable(captureController),
+                        onContentSizeChanged = { previewSize = it }
+                    ) { captureModifier ->
+                        ShareableReminderImage(
+                            reminderItem = previewItem,
+                            useLunar = useLunar,
+                            backgroundType = options.backgroundType,
+                            backgroundColor = options.backgroundColor.toComposeColor(),
+                            backgroundBitmap = backgroundBitmap,
+                            backgroundBlurRadius = options.backgroundBlurRadius,
+                            backgroundGlassEnabled = options.backgroundGlassEnabled,
+                            backgroundGlassFrosted = options.backgroundGlassFrosted,
+                            backgroundGlassDensity = options.backgroundGlassDensity,
+                            backgroundGlassRefraction = options.backgroundGlassRefraction,
+                            backgroundGlassTransparency = options.backgroundGlassTransparency,
+                            showLogo = options.showLogo,
+                            logoColorOverride = options.logoColor,
+                            modifier = captureModifier
+                        )
+                    }
                 }
 
                 // 背景设置（SectionCard 与个性化面板区块同款容器样式）

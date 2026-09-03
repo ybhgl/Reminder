@@ -8,7 +8,11 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.tween
+import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -37,31 +41,49 @@ import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
-import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.UiComposable
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.geometry.RoundRect
+import androidx.compose.ui.geometry.Size
+import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.TransformOrigin
+import androidx.compose.ui.graphics.drawscope.clipPath
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.zIndex
 import kotlin.math.max
 
 @UiComposable
@@ -543,4 +565,176 @@ fun AppAlertDialog(
             }
         } else null
     )
+}
+
+/**
+ * 吸顶收缩预览容器：作为 [androidx.compose.foundation.verticalScroll] 滚动列的第一个子项使用。
+ *
+ * - 未滚动时预览按自然尺寸展示（高度由 [content] 自身测量决定）
+ * - 向上滚动时预览钉在滚动区顶部，并从充满屏宽连续收缩到 [compactHeight]，
+ *   下方设置内容从其下方穿过，全程保持实时预览可见
+ * - 吸顶后整行铺页面背景色遮罩（覆盖左右两侧），遮罩与 Sheet 圆角/投影的高度
+ *   始终跟随预览当前显示高度实时变化，呈现"设置面板如圆角 Sheet 滑入"的效果
+ * - 完全吸顶后点击预览：在屏宽全尺寸与收缩尺寸之间切换放大/收起（不改变滚动位置）
+ * - 平移/缩放全部在绘制层完成，不产生 recomposition，也不影响内层内容的测量与导出
+ *   （如分享页 capturable 挂在内层原始尺寸节点上，导出图不受预览缩放影响）
+ *
+ * @param headerBottomPadding 遮罩在预览显示高度之下额外延伸的留白，
+ *   供内容自身无垂直内边距的页面（如分享页）留出呼吸空间
+ * @param pinnedTopInset 滚动内容在预览槽位之前的顶部内边距。吸顶平移会补偿该值，
+ *   使预览钉在滚动视口顶部（而非内容区顶部），避免上方空隙露出滚动内容；
+ *   收缩进度也从越过该内边距后才开始计算
+ */
+@Composable
+fun CollapsingPreviewItem(
+    scrollState: ScrollState,
+    modifier: Modifier = Modifier,
+    compactHeight: Dp = 260.dp,
+    sheetCornerRadius: Dp = 24.dp,
+    headerBottomPadding: Dp = 0.dp,
+    pinnedTopInset: Dp = 0.dp,
+    content: @Composable () -> Unit
+) {
+    val density = LocalDensity.current
+    val compactPx = with(density) { compactHeight.toPx() }
+    val sheetRadiusPx = with(density) { sheetCornerRadius.toPx() }
+    val sheetShadowPx = with(density) { 16.dp.toPx() }
+    val bottomPadPx = with(density) { headerBottomPadding.toPx() }
+    val insetPx = with(density) { pinnedTopInset.toPx() }
+    val screenWidthPx = with(density) { LocalConfiguration.current.screenWidthDp.dp.toPx() }
+
+    var slotHeightPx by remember { mutableIntStateOf(0) }
+    val maskColor = MaterialTheme.colorScheme.background
+    val sheetShadowColor = MaterialTheme.colorScheme.scrim
+
+    // 完全吸顶后点击预览可放大回屏宽；离顶时自动复位
+    var expanded by remember { mutableStateOf(false) }
+    val expandProgress by animateFloatAsState(
+        targetValue = if (expanded) 1f else 0f,
+        animationSpec = tween(durationMillis = 280),
+        label = "previewExpand"
+    )
+
+    // 完全吸顶（收缩完成）后才响应点击；derivedStateOf 仅在布尔翻转时触发重组
+    val pinned by remember {
+        derivedStateOf {
+            slotHeightPx > 0 && scrollState.value >= insetPx + slotHeightPx - compactPx.toInt()
+        }
+    }
+    LaunchedEffect(pinned) { if (!pinned) expanded = false }
+
+    Box(
+        modifier = modifier
+            .zIndex(1f)
+            .onSizeChanged { slotHeightPx = it.height }
+            // 外层仅平移钉住（不缩放）：越过顶部内边距后钉在滚动视口顶部，
+            // 保证遮罩与 Sheet 圆角始终铺满整行
+            .graphicsLayer {
+                translationY = (scrollState.value - insetPx).coerceAtLeast(0f)
+            }
+            .drawBehind {
+                val h = slotHeightPx.toFloat()
+                if (h <= 0f) return@drawBehind
+                val scrolled = (scrollState.value - insetPx).coerceAtLeast(0f)
+                val fraction = if (h > compactPx) {
+                    (scrolled / (h - compactPx)).coerceIn(0f, 1f)
+                } else {
+                    1f
+                }
+                if (fraction <= 0f) return@drawBehind
+                val effFraction = fraction * (1f - expandProgress)
+
+                // 遮罩向左右扩展到整行屏宽（槽位在带水平内边距的滚动列中居中）
+                val w = size.width
+                val extra = ((screenWidthPx - w) / 2f).coerceAtLeast(0f)
+                val left = -extra
+                val right = w + extra
+
+                // 遮罩高度跟随预览当前显示高度（满高 ⇄ 收缩高，与缩放层同步）+ 底部留白
+                val drawnHeight = h + effFraction * (compactPx - h) + bottomPadPx
+
+                // 整行遮罩：盖住预览所在一整行，避免两侧露出滚动的设置内容
+                drawRect(
+                    color = maskColor.copy(alpha = fraction),
+                    topLeft = Offset(left, 0f),
+                    size = Size(right - left, drawnHeight)
+                )
+
+                // Sheet 顶部凹角：左右两块背景色凹角，让设置内容看起来像圆角 Sheet 滑入
+                val leftNotch = Path().apply {
+                    moveTo(left, drawnHeight)
+                    lineTo(left, drawnHeight + sheetRadiusPx)
+                    quadraticBezierTo(left, drawnHeight, left + sheetRadiusPx, drawnHeight)
+                    close()
+                }
+                val rightNotch = Path().apply {
+                    moveTo(right, drawnHeight)
+                    lineTo(right, drawnHeight + sheetRadiusPx)
+                    quadraticBezierTo(right, drawnHeight, right - sheetRadiusPx, drawnHeight)
+                    close()
+                }
+                drawPath(leftNotch, maskColor.copy(alpha = fraction))
+                drawPath(rightNotch, maskColor.copy(alpha = fraction))
+
+                // Sheet 顶边投影：沿圆角 Sheet 上边缘渐隐，增强层次感
+                val sheetPath = Path().apply {
+                    addRoundRect(
+                        RoundRect(
+                            rect = Rect(left, drawnHeight, right, drawnHeight + sheetRadiusPx + sheetShadowPx),
+                            topLeft = CornerRadius(sheetRadiusPx, sheetRadiusPx),
+                            topRight = CornerRadius(sheetRadiusPx, sheetRadiusPx),
+                            bottomRight = CornerRadius.Zero,
+                            bottomLeft = CornerRadius.Zero
+                        )
+                    )
+                }
+                clipPath(sheetPath) {
+                    drawRect(
+                        brush = Brush.verticalGradient(
+                            colors = listOf(
+                                sheetShadowColor.copy(alpha = 0.10f * fraction),
+                                Color.Transparent
+                            ),
+                            startY = drawnHeight,
+                            endY = drawnHeight + sheetShadowPx
+                        ),
+                        topLeft = Offset(left, drawnHeight),
+                        size = Size(right - left, sheetShadowPx)
+                    )
+                }
+            }
+    ) {
+        Box(
+            modifier = Modifier
+                .graphicsLayer {
+                    val h = slotHeightPx.toFloat()
+                    if (h > 0f) {
+                        val scrolled = (scrollState.value - insetPx).coerceAtLeast(0f)
+                        val fraction = if (h > compactPx) {
+                            (scrolled / (h - compactPx)).coerceIn(0f, 1f)
+                        } else {
+                            1f
+                        }
+                        // 吸顶收缩 + 点击放大的合成进度，均在绘制层读取，不触发重组
+                        val effFraction = fraction * (1f - expandProgress)
+                        val scale = if (h > compactPx) {
+                            1f + effFraction * (compactPx / h - 1f)
+                        } else {
+                            1f
+                        }
+                        transformOrigin = TransformOrigin(0.5f, 0f)
+                        scaleX = scale
+                        scaleY = scale
+                    }
+                }
+                // pointerInput 位于缩放层之内：命中区域跟随缩放，仅覆盖可见预览
+                .pointerInput(pinned) {
+                    if (pinned) {
+                        detectTapGestures { expanded = !expanded }
+                    }
+                }
+        ) {
+            content()
+        }
+    }
 }
