@@ -1085,8 +1085,8 @@ private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
     )
 }
 
-/** 标头自适应文字色（非纯黑白，取与主题色板文字一致的 M3 基线）：暗标头用亮色方案文字白，亮标头用暗色方案文字黑 */
-private val HeaderContentOnDarkBackground = Color(0xFFE6E1E5)
+/** 标头自适应文字色：暗标头用正白，亮标头用暗色方案文字黑 */
+private val HeaderContentOnDarkBackground = Color.White
 private val HeaderContentOnLightBackground = Color(0xFF1D1B20)
 
 /** 按标头背景明暗自动切换文字颜色：阈值与卡片自定义背景前景色反色逻辑保持一致 */
