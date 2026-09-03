@@ -548,8 +548,7 @@ fun PersonalizationScreen(
                 showResetConfirm = false
                 handleReset()
             },
-            neutralText = "取消",
-            onNeutral = { showResetConfirm = false }
+            dismissText = "取消"
         )
     }
 
