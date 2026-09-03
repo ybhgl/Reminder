@@ -99,6 +99,7 @@ import com.ybhgl.reminder.data.AppThemeOption
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.CardBackgroundLayer
 import com.ybhgl.reminder.ui.common.CardBackgroundSpec
 import com.ybhgl.reminder.ui.common.CardBackgroundType
@@ -213,12 +214,29 @@ fun ShareScreen(
 
     LaunchedEffect(Unit) {
         viewModel.saveResult.collect { result ->
-            val message = when (result) {
-                SaveResult.Success -> "已保存到相册"
-                SaveResult.Failure -> "保存失败"
-                SaveResult.PermissionDenied -> "请先授予存储权限"
+            when (result) {
+                SaveResult.Success -> {
+                    CustomToast.show(
+                        context,
+                        "已保存到相册",
+                        type = CustomToast.Type.SUCCESS
+                    )
+                }
+                SaveResult.Failure -> {
+                    CustomToast.show(
+                        context,
+                        "保存失败",
+                        type = CustomToast.Type.ERROR
+                    )
+                }
+                SaveResult.PermissionDenied -> {
+                    CustomToast.show(
+                        context,
+                        "请先授予存储权限",
+                        type = CustomToast.Type.ERROR
+                    )
+                }
             }
-            snackbarHostState.showSnackbar(message)
         }
     }
 
@@ -809,11 +827,12 @@ fun ShareableReminderImage(
                                 .background(backgroundColor)
                         )
                     }
+
                     backgroundBitmap != null -> {
                         // 图片效果仅对"图片"背景类型生效：默认内置图/纯色背景不做任何处理
                         val hasEffects = backgroundType == ShareBackgroundType.IMAGE &&
-                            (backgroundBlurRadius > 0f ||
-                                backgroundGlassEnabled || backgroundGlassFrosted)
+                                (backgroundBlurRadius > 0f ||
+                                        backgroundGlassEnabled || backgroundGlassFrosted)
                         if (hasEffects) {
                             // 复用卡片背景效果渲染链：模糊 / 光栅玻璃（折射+竖纹）/ 磨砂
                             CardBackgroundLayer(
@@ -912,6 +931,7 @@ private fun rememberShareBackgroundBitmap(
                 backgroundType == ShareBackgroundType.COLOR -> null
                 backgroundType == ShareBackgroundType.IMAGE && customImageUri.isNotEmpty() ->
                     decodeSampledBitmap(context, Uri.parse(customImageUri), SHARE_OUTPUT_WIDTH_PX)
+
                 else -> decodeRawSampledBitmap(context, R.drawable.background, SHARE_OUTPUT_WIDTH_PX)
             }
         }
@@ -963,8 +983,8 @@ private fun bitmapAverageLuminance(bitmap: Bitmap): Float {
         while (x < bitmap.width) {
             val pixel = bitmap.getPixel(x, y)
             sum += 0.299 * android.graphics.Color.red(pixel) +
-                0.587 * android.graphics.Color.green(pixel) +
-                0.114 * android.graphics.Color.blue(pixel)
+                    0.587 * android.graphics.Color.green(pixel) +
+                    0.114 * android.graphics.Color.blue(pixel)
             count++
             x += step
         }
