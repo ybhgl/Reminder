@@ -41,6 +41,7 @@ import androidx.compose.material.icons.filled.Cloud
 import androidx.compose.material.icons.filled.CloudDone
 import androidx.compose.material.icons.filled.CloudDownload
 import androidx.compose.material.icons.filled.CloudUpload
+import androidx.compose.material.icons.filled.EnhancedEncryption
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Folder
 import androidx.compose.material.icons.filled.NotificationsActive
@@ -136,6 +137,7 @@ fun BackupAndRestoreScreen(
 
     // Preferences states
     val backupReminderEnabled by viewModel.backupReminderEnabledFlow(context).collectAsState(initial = false)
+    val backupEncryptionEnabled by viewModel.backupEncryptionEnabledFlow(context).collectAsState(initial = true)
     val webDavServer by viewModel.webDavServerFlow(context).collectAsState(initial = "")
     val webDavUsername by viewModel.webDavUsernameFlow(context).collectAsState(initial = "")
     val webDavPassword by viewModel.webDavPasswordFlow(context).collectAsState(initial = "")
@@ -157,6 +159,7 @@ fun BackupAndRestoreScreen(
     var showCloudRecoveryDialog by remember { mutableStateOf(false) }
     var showLocalRestoreConfirmDialog by remember { mutableStateOf(false) }
     var pendingLocalRestoreUri by remember { mutableStateOf<android.net.Uri?>(null) }
+    var showEncryptionDisableConfirm by remember { mutableStateOf(false) }
 
     // Auto folder confirmation dialog states
     var showAutoFolderConfirmDialog by remember { mutableStateOf(false) }
@@ -176,7 +179,7 @@ fun BackupAndRestoreScreen(
 
     // Document launchers
     val backupLauncher = rememberLauncherForActivityResult(
-        ActivityResultContracts.CreateDocument("application/json")
+        ActivityResultContracts.CreateDocument("application/zip")
     ) { uri ->
         if (uri != null) {
             coroutineScope.launch {
@@ -312,6 +315,77 @@ fun BackupAndRestoreScreen(
                             onCheckedChange = { enabled ->
                                 coroutineScope.launch {
                                     viewModel.saveBackupReminderEnabled(context, enabled)
+                                }
+                            },
+                            colors = SwitchDefaults.colors(
+                                checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                                checkedTrackColor = MaterialTheme.colorScheme.primary,
+                                uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
+                                uncheckedTrackColor = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.3f)
+                            )
+                        )
+                    }
+                }
+
+                // Section 1.4: Data Security (数据安全)
+                Text(
+                    text = "数据安全",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
+                )
+                HorizontalDivider()
+                Card(
+                    modifier = Modifier.fillMaxWidth(),
+                    colors = CardDefaults.cardColors(
+                        containerColor = MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp)
+                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(16.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(16.dp)
+                    ) {
+                        Box(
+                            modifier = Modifier
+                                .size(40.dp)
+                                .background(
+                                    color = MaterialTheme.colorScheme.primary.copy(alpha = 0.1f),
+                                    shape = RoundedCornerShape(8.dp)
+                                ),
+                            contentAlignment = Alignment.Center
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.EnhancedEncryption,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.primary,
+                                modifier = Modifier.size(22.dp)
+                            )
+                        }
+                        Column(
+                            modifier = Modifier.weight(1f),
+                            verticalArrangement = Arrangement.spacedBy(4.dp)
+                        ) {
+                            Text(
+                                text = "备份数据加密",
+                                style = MaterialTheme.typography.bodyLarge,
+                                fontWeight = FontWeight.Medium
+                            )
+                            Text(
+                                text = "开启后备份文件将加密；关闭后所有备份均以明文存储，请注意数据安全",
+                                style = MaterialTheme.typography.bodySmall,
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                            )
+                        }
+                        Switch(
+                            checked = backupEncryptionEnabled,
+                            onCheckedChange = { enabled ->
+                                if (!enabled) {
+                                    showEncryptionDisableConfirm = true
+                                } else {
+                                    coroutineScope.launch {
+                                        viewModel.saveBackupEncryptionEnabled(context, true)
+                                    }
                                 }
                             },
                             colors = SwitchDefaults.colors(
@@ -646,7 +720,7 @@ fun BackupAndRestoreScreen(
                 HorizontalDivider()
                 SettingsActionItem(
                     title = "导出为文件",
-                    description = "导出所有提醒及偏好设置数据为 JSON 备份文件",
+                    description = "导出所有提醒、偏好设置、图片数据",
                     icon = Icons.Default.Archive,
                     enabled = !isProcessing
                 ) {
@@ -656,12 +730,12 @@ fun BackupAndRestoreScreen(
                 }
                 SettingsActionItem(
                     title = "从文件恢复",
-                    description = "从 JSON 备份文件中读取并导入数据",
+                    description = "从备份文件中读取并导入数据",
                     icon = Icons.Default.Restore,
                     enabled = !isProcessing
                 ) {
                     if (!isProcessing) {
-                        restoreLauncher.launch(arrayOf("application/json"))
+                        restoreLauncher.launch(arrayOf("application/zip", "application/json", "application/octet-stream"))
                     }
                 }
 
@@ -1193,29 +1267,35 @@ fun BackupAndRestoreScreen(
                                                                 modifier = Modifier.weight(1f),
                                                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                                                             ) {
-                                                                // 中文 Badge 带图标 "自动" (本地小图标)
+                                                                // 中文 Badge 带图标 "自动" (本地小图标) + 格式 Badge
                                                                 Row(
                                                                     verticalAlignment = Alignment.CenterVertically,
-                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                                    modifier = Modifier
-                                                                        .background(
-                                                                            color = MaterialTheme.colorScheme.primaryContainer,
-                                                                            shape = RoundedCornerShape(8.dp)
-                                                                        )
-                                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                                 ) {
-                                                                    Icon(
-                                                                        imageVector = Icons.Default.Folder,
-                                                                        contentDescription = null,
-                                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                        modifier = Modifier.size(12.dp)
-                                                                    )
-                                                                    Text(
-                                                                        text = "自动",
-                                                                        style = MaterialTheme.typography.labelMedium,
-                                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                        fontWeight = FontWeight.Bold
-                                                                    )
+                                                                    Row(
+                                                                        verticalAlignment = Alignment.CenterVertically,
+                                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                        modifier = Modifier
+                                                                            .background(
+                                                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                                                shape = RoundedCornerShape(8.dp)
+                                                                            )
+                                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                    ) {
+                                                                        Icon(
+                                                                            imageVector = Icons.Default.Folder,
+                                                                            contentDescription = null,
+                                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            modifier = Modifier.size(12.dp)
+                                                                        )
+                                                                        Text(
+                                                                            text = "自动",
+                                                                            style = MaterialTheme.typography.labelMedium,
+                                                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            fontWeight = FontWeight.Bold
+                                                                        )
+                                                                    }
+                                                                    BackupFormatBadge(file.name ?: "")
                                                                 }
                                                                 Text(
                                                                     text = formatBackupTime(file.name ?: ""),
@@ -1337,29 +1417,35 @@ fun BackupAndRestoreScreen(
                                                                 modifier = Modifier.weight(1f),
                                                                 verticalArrangement = Arrangement.spacedBy(6.dp)
                                                             ) {
-                                                                // 中文 Badge 带图标 "自动" (云端小图标)
+                                                                // 中文 Badge 带图标 "自动" (云端小图标) + 格式 Badge
                                                                 Row(
                                                                     verticalAlignment = Alignment.CenterVertically,
-                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                                    modifier = Modifier
-                                                                        .background(
-                                                                            color = MaterialTheme.colorScheme.primaryContainer,
-                                                                            shape = RoundedCornerShape(8.dp)
-                                                                        )
-                                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp)
                                                                 ) {
-                                                                    Icon(
-                                                                        imageVector = Icons.Default.Cloud,
-                                                                        contentDescription = null,
-                                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                        modifier = Modifier.size(12.dp)
-                                                                    )
-                                                                    Text(
-                                                                        text = "自动",
-                                                                        style = MaterialTheme.typography.labelMedium,
-                                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                        fontWeight = FontWeight.Bold
-                                                                    )
+                                                                    Row(
+                                                                        verticalAlignment = Alignment.CenterVertically,
+                                                                        horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                        modifier = Modifier
+                                                                            .background(
+                                                                                color = MaterialTheme.colorScheme.primaryContainer,
+                                                                                shape = RoundedCornerShape(8.dp)
+                                                                            )
+                                                                            .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                    ) {
+                                                                        Icon(
+                                                                            imageVector = Icons.Default.Cloud,
+                                                                            contentDescription = null,
+                                                                            tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            modifier = Modifier.size(12.dp)
+                                                                        )
+                                                                        Text(
+                                                                            text = "自动",
+                                                                            style = MaterialTheme.typography.labelMedium,
+                                                                            color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                            fontWeight = FontWeight.Bold
+                                                                        )
+                                                                    }
+                                                                    BackupFormatBadge(file.name)
                                                                 }
                                                                 Text(
                                                                     text = formatBackupTime(file.name),
@@ -1598,6 +1684,24 @@ fun BackupAndRestoreScreen(
                 }
             }
             
+            // Encryption Disable Confirmation Dialog (数据安全：关闭备份数据加密)
+            if (showEncryptionDisableConfirm) {
+                AppAlertDialog(
+                    onDismissRequest = { showEncryptionDisableConfirm = false },
+                    title = "关闭备份数据加密",
+                    text = "关闭后，所有备份（本地文件、自动备份、WebDAV 云端备份）都将以明文存储，备份中包含的账号信息与图片将不再受保护。确定要关闭吗？",
+                    confirmText = "关闭加密",
+                    onConfirm = {
+                        showEncryptionDisableConfirm = false
+                        coroutineScope.launch {
+                            viewModel.saveBackupEncryptionEnabled(context, false)
+                        }
+                    },
+                    dismissText = "取消",
+                    destructive = true
+                )
+            }
+
             // Auto Folder Existing Confirmation Dialog
             if (showAutoFolderConfirmDialog) {
                 AppAlertDialog(
@@ -1886,55 +1990,61 @@ fun BackupAndRestoreScreen(
                                                         modifier = Modifier.weight(1f),
                                                         verticalArrangement = Arrangement.spacedBy(6.dp)
                                                     ) {
-                                                        // 根据 isAuto 渲染 “自动” 还是 “手动” Badge 徽章，统一前置云端图标
-                                                        if (item.isAuto) {
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                                modifier = Modifier
-                                                                    .background(
-                                                                        color = MaterialTheme.colorScheme.primaryContainer,
-                                                                        shape = RoundedCornerShape(8.dp)
+                                                        // 根据 isAuto 渲染 “自动” 还是 “手动” Badge 徽章，统一前置云端图标，尾部附加格式 Badge
+                                                        Row(
+                                                            verticalAlignment = Alignment.CenterVertically,
+                                                            horizontalArrangement = Arrangement.spacedBy(4.dp)
+                                                        ) {
+                                                            if (item.isAuto) {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                    modifier = Modifier
+                                                                        .background(
+                                                                            color = MaterialTheme.colorScheme.primaryContainer,
+                                                                            shape = RoundedCornerShape(8.dp)
+                                                                        )
+                                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.Cloud,
+                                                                        contentDescription = null,
+                                                                        tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                        modifier = Modifier.size(12.dp)
                                                                     )
-                                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                            ) {
-                                                                Icon(
-                                                                    imageVector = Icons.Default.Cloud,
-                                                                    contentDescription = null,
-                                                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                    modifier = Modifier.size(12.dp)
-                                                                )
-                                                                Text(
-                                                                    text = "自动",
-                                                                    style = MaterialTheme.typography.labelMedium,
-                                                                    color = MaterialTheme.colorScheme.onPrimaryContainer,
-                                                                    fontWeight = FontWeight.Bold
-                                                                )
-                                                            }
-                                                        } else {
-                                                            Row(
-                                                                verticalAlignment = Alignment.CenterVertically,
-                                                                horizontalArrangement = Arrangement.spacedBy(4.dp),
-                                                                modifier = Modifier
-                                                                    .background(
-                                                                        color = MaterialTheme.colorScheme.secondaryContainer,
-                                                                        shape = RoundedCornerShape(8.dp)
+                                                                    Text(
+                                                                        text = "自动",
+                                                                        style = MaterialTheme.typography.labelMedium,
+                                                                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                                                                        fontWeight = FontWeight.Bold
                                                                     )
-                                                                    .padding(horizontal = 8.dp, vertical = 4.dp)
-                                                            ) {
-                                                                Icon(
-                                                                    imageVector = Icons.Default.Cloud,
-                                                                    contentDescription = null,
-                                                                    tint = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                                    modifier = Modifier.size(12.dp)
-                                                                )
-                                                                Text(
-                                                                    text = "手动",
-                                                                    style = MaterialTheme.typography.labelMedium,
-                                                                    color = MaterialTheme.colorScheme.onSecondaryContainer,
-                                                                    fontWeight = FontWeight.Bold
-                                                                )
+                                                                }
+                                                            } else {
+                                                                Row(
+                                                                    verticalAlignment = Alignment.CenterVertically,
+                                                                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                                                                    modifier = Modifier
+                                                                        .background(
+                                                                            color = MaterialTheme.colorScheme.secondaryContainer,
+                                                                            shape = RoundedCornerShape(8.dp)
+                                                                        )
+                                                                        .padding(horizontal = 8.dp, vertical = 4.dp)
+                                                                ) {
+                                                                    Icon(
+                                                                        imageVector = Icons.Default.Cloud,
+                                                                        contentDescription = null,
+                                                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                                        modifier = Modifier.size(12.dp)
+                                                                    )
+                                                                    Text(
+                                                                        text = "手动",
+                                                                        style = MaterialTheme.typography.labelMedium,
+                                                                        color = MaterialTheme.colorScheme.onSecondaryContainer,
+                                                                        fontWeight = FontWeight.Bold
+                                                                    )
+                                                                }
                                                             }
+                                                            BackupFormatBadge(file.name)
                                                         }
                                                         Text(
                                                             text = formatBackupTime(file.name),
@@ -2190,7 +2300,35 @@ private fun formatBackupTime(fileName: String): String {
     }
     return fileName
         .replace("reminder-backup-", "", ignoreCase = true)
+        .replace(".zip", "", ignoreCase = true)
         .replace(".json", "", ignoreCase = true)
+}
+
+/** 根据文件扩展名返回备份格式标签（新版压缩包 ZIP / 旧版 JSON） */
+private fun backupFormatLabel(fileName: String): String =
+    if (fileName.endsWith(".zip", ignoreCase = true)) "ZIP" else "JSON"
+
+/** 备份格式 Badge：ZIP 用 tertiaryContainer、JSON 用 surfaceVariant，二者颜色区分 */
+@Composable
+private fun BackupFormatBadge(fileName: String) {
+    val isZip = fileName.endsWith(".zip", ignoreCase = true)
+    val containerColor = if (isZip) MaterialTheme.colorScheme.tertiaryContainer
+                         else MaterialTheme.colorScheme.surfaceVariant
+    val contentColor = if (isZip) MaterialTheme.colorScheme.onTertiaryContainer
+                       else MaterialTheme.colorScheme.onSurfaceVariant
+    Row(
+        verticalAlignment = Alignment.CenterVertically,
+        modifier = Modifier
+            .background(color = containerColor, shape = RoundedCornerShape(8.dp))
+            .padding(horizontal = 8.dp, vertical = 4.dp)
+    ) {
+        Text(
+            text = backupFormatLabel(fileName),
+            style = MaterialTheme.typography.labelMedium,
+            color = contentColor,
+            fontWeight = FontWeight.Bold
+        )
+    }
 }
 
 private fun formatFileSize(bytes: Long): String {

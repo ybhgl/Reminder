@@ -51,6 +51,47 @@ object BackupEncryptor {
     }
 
     /**
+     * 加密二进制数据。
+     * 返回的格式是：[16 字节 IV][密文]
+     */
+    fun encryptBytes(data: ByteArray): ByteArray? {
+        return try {
+            val cipher = Cipher.getInstance(ALGORITHM)
+            val iv = ByteArray(16)
+            SecureRandom().nextBytes(iv)
+            val ivSpec = IvParameterSpec(iv)
+
+            cipher.init(Cipher.ENCRYPT_MODE, secretKey, ivSpec)
+            val encryptedBytes = cipher.doFinal(data)
+
+            iv + encryptedBytes
+        } catch (e: Exception) {
+            e.printStackTrace()
+            null
+        }
+    }
+
+    /**
+     * 解密二进制数据。
+     * 如果解密成功，返回解密后的原始字节；失败返回 null。
+     */
+    fun decryptBytes(data: ByteArray): ByteArray? {
+        if (data.size <= 16) return null
+        return try {
+            val iv = data.copyOfRange(0, 16)
+            val encryptedBytes = data.copyOfRange(16, data.size)
+
+            val cipher = Cipher.getInstance(ALGORITHM)
+            val ivSpec = IvParameterSpec(iv)
+            cipher.init(Cipher.DECRYPT_MODE, secretKey, ivSpec)
+
+            cipher.doFinal(encryptedBytes)
+        } catch (e: Exception) {
+            null
+        }
+    }
+
+    /**
      * 解密文本。
      * 如果解密成功，返回解密后的明文。
      * 如果解密失败（格式不对，或密钥不对，说明原数据可能是明文），返回 null。

@@ -9,7 +9,7 @@ import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.*
 import com.ybhgl.reminder.util.WebDavClient
 import com.ybhgl.reminder.util.WebDavResult
-import com.ybhgl.reminder.util.WebDavDownloadResult
+import com.ybhgl.reminder.util.WebDavDownloadBytesResult
 import com.ybhgl.reminder.util.WebDavListResult
 import com.ybhgl.reminder.util.WebDavFile
 import kotlinx.coroutines.Dispatchers
@@ -31,7 +31,7 @@ class BackupAndRestoreViewModel(
     fun generateBackupFileName(): String {
         val timestamp = LocalDateTime.now()
             .format(DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", Locale.getDefault()))
-        return "reminder-backup-$timestamp.json"
+        return "reminder-backup-$timestamp${com.ybhgl.reminder.util.BackupArchiveManager.BACKUP_EXTENSION}"
     }
 
     // Backup preferences
@@ -40,6 +40,13 @@ class BackupAndRestoreViewModel(
 
     suspend fun saveBackupReminderEnabled(context: Context, enabled: Boolean) {
         BackupPreferences.saveBackupReminderEnabled(context, enabled)
+    }
+
+    fun backupEncryptionEnabledFlow(context: Context): Flow<Boolean> =
+        BackupPreferences.backupEncryptionEnabledFlow(context)
+
+    suspend fun saveBackupEncryptionEnabled(context: Context, enabled: Boolean) {
+        BackupPreferences.saveBackupEncryptionEnabled(context, enabled)
     }
 
     fun autoBackupLocalEnabledFlow(context: Context): Flow<Boolean> =
@@ -99,7 +106,7 @@ class BackupAndRestoreViewModel(
         BackupPreferences.saveWebDavPath(context, path)
     }
 
-    // Local JSON Backup
+    // Local Zip Backup
     suspend fun backupToUri(context: Context, targetUri: Uri): String = withContext(Dispatchers.IO) {
         return@withContext try {
             val reminders = reminderRepository.getAllRemindersStream().first()
@@ -107,51 +114,15 @@ class BackupAndRestoreViewModel(
                 return@withContext "没有可备份的数据"
             }
 
-            val themeOption = themeOptionFlow(context).first()
-            val pureBlackEnabled = pureBlackFlow(context).first()
-            val cardColoringEnabled = cardColoringFlow(context).first()
-            val defaultPage = defaultPageFlow(context).first()
-            val viewMode = viewModeFlow(context).first()
-            val dynamicColorEnabled = dynamicColorFlow(context).first()
-            val themeColorPalette = colorPaletteFlow(context).first()
-            val customColorSeed = customColorFlow(context).first()
-            val scrollBehavior = scrollBehaviorFlow(context).first()
-            val homeCategoryEnabled = homeCategoryFlow(context).first()
-
-            val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
-            val webDavServer = BackupPreferences.webDavServerFlow(context).first()
-            val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()
-            val webDavPassword = BackupPreferences.webDavPasswordFlow(context).first()
-            val webDavPath = BackupPreferences.webDavPathFlow(context).first()
-
-            val tags = tagRepository.getAllTags()
-
-            val backupData = BackupData(
-                reminders = reminders,
-                tags = tags,
-                themeOption = themeOption,
-                pureBlackEnabled = pureBlackEnabled,
-                cardColoringEnabled = cardColoringEnabled,
-                defaultPage = defaultPage,
-                viewMode = viewMode,
-                backupReminderEnabled = backupReminderEnabled,
-                webDavServer = webDavServer,
-                webDavUsername = webDavUsername,
-                webDavPassword = webDavPassword,
-                webDavPath = webDavPath,
-                dynamicColorEnabled = dynamicColorEnabled,
-                themeColorPalette = themeColorPalette,
-                customColorSeed = customColorSeed,
-                scrollBehavior = scrollBehavior,
-                homeCategoryEnabled = homeCategoryEnabled,
-                cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
-                    .collectForBackup(context, reminders)
-            )
-
+            val backupData = BackupDataBuilder.build(context, reminders, tagRepository.getAllTags())
             val json = Json.encodeToString(backupData)
-            val encryptedData = com.ybhgl.reminder.util.BackupEncryptor.encrypt(json)
+            val imageFiles = com.ybhgl.reminder.util.CardBackgroundImageManager.collectImageFiles(context, reminders)
+            val encrypt = BackupPreferences.backupEncryptionEnabledFlow(context).first()
+            val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, encrypt)
+                ?: return@withContext "备份失败：压缩包打包失败"
+
             context.contentResolver.openOutputStream(targetUri)?.use { output ->
-                output.write(encryptedData.toByteArray(Charsets.UTF_8))
+                output.write(archiveBytes)
                 output.flush()
             } ?: return@withContext "备份失败：无法写入目标位置"
 
@@ -164,16 +135,16 @@ class BackupAndRestoreViewModel(
         }
     }
 
-    // Local JSON Restore
+    // Local Restore (兼容新版加密 zip 与旧版 JSON)
     suspend fun restoreFromUri(context: Context, sourceUri: Uri, isSmartMerge: Boolean): String = withContext(Dispatchers.IO) {
         return@withContext try {
-            val json = context.contentResolver.openInputStream(sourceUri)?.use { input ->
-                input.readBytes().decodeToString()
+            val bytes = context.contentResolver.openInputStream(sourceUri)?.use { input ->
+                input.readBytes()
             } ?: return@withContext "恢复失败：无法读取文件"
 
-            val backupData = parseBackupData(json) ?: return@withContext "恢复失败：文件格式不正确"
+            val payload = parseBackupPayload(bytes) ?: return@withContext "恢复失败：文件格式不正确"
 
-            performRestore(context, backupData, isSmartMerge)
+            performRestore(context, payload.first, isSmartMerge, payload.second)
         } catch (e: Exception) {
             "恢复失败：${e.localizedMessage ?: "未知错误"}"
         }
@@ -217,52 +188,16 @@ class BackupAndRestoreViewModel(
             return@withContext "没有可备份的数据"
         }
 
-        val themeOption = themeOptionFlow(context).first()
-        val pureBlackEnabled = pureBlackFlow(context).first()
-        val cardColoringEnabled = cardColoringFlow(context).first()
-        val defaultPage = defaultPageFlow(context).first()
-        val viewMode = viewModeFlow(context).first()
-        val dynamicColorEnabled = dynamicColorFlow(context).first()
-        val themeColorPalette = colorPaletteFlow(context).first()
-        val customColorSeed = customColorFlow(context).first()
-        val scrollBehavior = scrollBehaviorFlow(context).first()
-        val homeCategoryEnabled = homeCategoryFlow(context).first()
-
-        val backupReminderEnabled = BackupPreferences.backupReminderEnabledFlow(context).first()
-        val webDavServer = BackupPreferences.webDavServerFlow(context).first()
-        val webDavUsername = BackupPreferences.webDavUsernameFlow(context).first()
-        val webDavPassword = BackupPreferences.webDavPasswordFlow(context).first()
-        val webDavPath = BackupPreferences.webDavPathFlow(context).first()
-
-        val tags = tagRepository.getAllTags()
-
-        val backupData = BackupData(
-            reminders = reminders,
-            tags = tags,
-            themeOption = themeOption,
-            pureBlackEnabled = pureBlackEnabled,
-            cardColoringEnabled = cardColoringEnabled,
-            defaultPage = defaultPage,
-            viewMode = viewMode,
-            backupReminderEnabled = backupReminderEnabled,
-            webDavServer = webDavServer,
-            webDavUsername = webDavUsername,
-            webDavPassword = webDavPassword,
-            webDavPath = webDavPath,
-            dynamicColorEnabled = dynamicColorEnabled,
-            themeColorPalette = themeColorPalette,
-            customColorSeed = customColorSeed,
-            scrollBehavior = scrollBehavior,
-            homeCategoryEnabled = homeCategoryEnabled,
-            cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
-                .collectForBackup(context, reminders)
-        )
-
+        val backupData = BackupDataBuilder.build(context, reminders, tagRepository.getAllTags())
         val json = Json.encodeToString(backupData)
-        val encryptedData = com.ybhgl.reminder.util.BackupEncryptor.encrypt(json)
+        val imageFiles = com.ybhgl.reminder.util.CardBackgroundImageManager.collectImageFiles(context, reminders)
+        val encrypt = BackupPreferences.backupEncryptionEnabledFlow(context).first()
+        val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, encrypt)
+            ?: return@withContext "云端备份失败：压缩包打包失败"
+
         val fileName = generateBackupFileName()
 
-        return@withContext when (val result = WebDavClient.uploadFile(server, username, password, path, fileName, encryptedData)) {
+        return@withContext when (val result = WebDavClient.uploadFileBytes(server, username, password, path, fileName, archiveBytes)) {
             is WebDavResult.Success -> {
                 // Update last backup timestamp
                 BackupPreferences.saveLastBackupTimestamp(context, System.currentTimeMillis())
@@ -378,12 +313,12 @@ class BackupAndRestoreViewModel(
             return@withContext "请先设置 WebDAV 服务器信息"
         }
 
-        return@withContext when (val result = WebDavClient.downloadFile(server, username, password, path, fileName)) {
-            is WebDavDownloadResult.Success -> {
-                val backupData = parseBackupData(result.content) ?: return@withContext "恢复失败：文件格式不正确"
-                performRestore(context, backupData, isSmartMerge)
+        return@withContext when (val result = WebDavClient.downloadFileBytes(server, username, password, path, fileName)) {
+            is WebDavDownloadBytesResult.Success -> {
+                val payload = parseBackupPayload(result.content) ?: return@withContext "恢复失败：文件格式不正确"
+                performRestore(context, payload.first, isSmartMerge, payload.second)
             }
-            is WebDavDownloadResult.Failure -> {
+            is WebDavDownloadBytesResult.Failure -> {
                 "云端下载失败（码:${result.code}）"
             }
         }
@@ -419,10 +354,39 @@ class BackupAndRestoreViewModel(
         }
     }
 
-    private suspend fun performRestore(context: Context, backupData: BackupData, isSmartMerge: Boolean): String {
+    /**
+     * 解析备份数据：优先按新版"加密 zip 压缩包"处理，失败则回退旧版"加密/明文 JSON"。
+     * @return BackupData + zip 内图片（旧版格式返回 null，图片走 BackupData.cardBackgroundImages Base64）；格式不正确返回 null
+     */
+    private fun parseBackupPayload(bytes: ByteArray): Pair<BackupData, Map<String, ByteArray>?>? {
+        // 新版：整包加密 zip
+        com.ybhgl.reminder.util.BackupArchiveManager.decode(bytes)?.let { archive ->
+            try {
+                val backupData = Json.decodeFromString<BackupData>(archive.metadataJson)
+                return backupData to archive.images
+            } catch (_: Exception) {
+            }
+        }
+        // 旧版：加密字符串 / 明文 JSON（二进制转 String 会产生乱码，解析失败自然返回 null）
+        val text = bytes.toString(Charsets.UTF_8)
+        val backupData = parseBackupData(text) ?: return null
+        return backupData to null
+    }
+
+    private suspend fun performRestore(
+        context: Context,
+        backupData: BackupData,
+        isSmartMerge: Boolean,
+        archiveImages: Map<String, ByteArray>? = null
+    ): String {
         // 先恢复卡片背景图片，保证提醒项引用的图片文件在插入前就位
-        backupData.cardBackgroundImages?.let { images ->
-            com.ybhgl.reminder.util.CardBackgroundImageManager.restoreFromBackup(context, images)
+        if (archiveImages != null) {
+            com.ybhgl.reminder.util.CardBackgroundImageManager.restoreImages(context, archiveImages)
+        } else {
+            // 旧版备份：图片以 Base64 内联在 JSON 中
+            backupData.cardBackgroundImages?.let { images ->
+                com.ybhgl.reminder.util.CardBackgroundImageManager.restoreFromBackup(context, images)
+            }
         }
 
         // 如果当前 WebDAV 账号为空，则覆盖备份中的 WebDAV 账号及备份提醒设置
@@ -542,7 +506,8 @@ class BackupAndRestoreViewModel(
                 val autoDir = pickedDir.findFile("Auto")
                 if (autoDir != null && autoDir.exists() && autoDir.isDirectory) {
                     autoDir.listFiles().filter { file ->
-                        file.isFile && file.name != null && file.name!!.startsWith("reminder-autobackup-") && file.name!!.endsWith(".json")
+                        file.isFile && file.name != null && file.name!!.startsWith("reminder-autobackup-") &&
+                                (file.name!!.endsWith(".zip") || file.name!!.endsWith(".json"))
                     }.sortedByDescending { it.name }
                 } else {
                     emptyList()
@@ -584,7 +549,8 @@ class BackupAndRestoreViewModel(
         return@withContext when (val result = WebDavClient.listFilesActual(server, username, password, autoPath)) {
             is WebDavListResult.Success -> {
                 val sortedFiles = result.files.filter {
-                    it.name.startsWith("reminder-autobackup-") && it.name.endsWith(".json")
+                    it.name.startsWith("reminder-autobackup-") &&
+                            (it.name.endsWith(".zip") || it.name.endsWith(".json"))
                 }.sortedByDescending { it.name }
                 sortedFiles to "获取成功"
             }
@@ -606,12 +572,12 @@ class BackupAndRestoreViewModel(
 
         val autoPath = if (path.endsWith("/")) "${path}Auto" else "$path/Auto"
 
-        return@withContext when (val result = WebDavClient.downloadFile(server, username, password, autoPath, fileName)) {
-            is WebDavDownloadResult.Success -> {
-                val backupData = parseBackupData(result.content) ?: return@withContext "恢复失败：文件格式不正确"
-                performRestore(context, backupData, isSmartMerge)
+        return@withContext when (val result = WebDavClient.downloadFileBytes(server, username, password, autoPath, fileName)) {
+            is WebDavDownloadBytesResult.Success -> {
+                val payload = parseBackupPayload(result.content) ?: return@withContext "恢复失败：文件格式不正确"
+                performRestore(context, payload.first, isSmartMerge, payload.second)
             }
-            is WebDavDownloadResult.Failure -> {
+            is WebDavDownloadBytesResult.Failure -> {
                 "云端下载失败（码:${result.code}）"
             }
         }

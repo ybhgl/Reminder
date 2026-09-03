@@ -3,7 +3,6 @@ package com.ybhgl.reminder.util
 import android.util.Base64
 import java.io.BufferedReader
 import java.io.InputStreamReader
-import java.io.OutputStreamWriter
 import java.net.HttpURLConnection
 import java.net.URL
 import java.net.URLDecoder
@@ -17,9 +16,9 @@ sealed class WebDavResult {
     data class Failure(val code: Int, val message: String) : WebDavResult()
 }
 
-sealed class WebDavDownloadResult {
-    data class Success(val content: String) : WebDavDownloadResult()
-    data class Failure(val code: Int, val message: String) : WebDavDownloadResult()
+sealed class WebDavDownloadBytesResult {
+    data class Success(val content: ByteArray) : WebDavDownloadBytesResult()
+    data class Failure(val code: Int, val message: String) : WebDavDownloadBytesResult()
 }
 
 data class WebDavFile(val name: String, val size: Long)
@@ -81,7 +80,7 @@ object WebDavClient {
         return listFilesInternal(dirUrl, username, password)
     }
 
-    fun uploadFile(serverUrl: String, username: String, password: String, path: String, fileName: String, content: String): WebDavResult {
+    fun uploadFileBytes(serverUrl: String, username: String, password: String, path: String, fileName: String, content: ByteArray): WebDavResult {
         // Ensure directory exists
         val dirUrl = buildFullUrl(serverUrl, path)
         val mkcolResult = createDirectoryInternal(dirUrl, username, password)
@@ -98,13 +97,14 @@ object WebDavClient {
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
             connection.doOutput = true
-            
-            connection.setRequestProperty("Authorization", getAuthHeader(username, password))
-            connection.setRequestProperty("Content-Type", "application/json; charset=utf-8")
+            connection.setFixedLengthStreamingMode(content.size)
 
-            OutputStreamWriter(connection.outputStream, Charsets.UTF_8).use { writer ->
-                writer.write(content)
-                writer.flush()
+            connection.setRequestProperty("Authorization", getAuthHeader(username, password))
+            connection.setRequestProperty("Content-Type", "application/octet-stream")
+
+            connection.outputStream.use { output ->
+                output.write(content)
+                output.flush()
             }
 
             val responseCode = connection.responseCode
@@ -125,7 +125,7 @@ object WebDavClient {
         }
     }
 
-    fun downloadFile(serverUrl: String, username: String, password: String, path: String, fileName: String): WebDavDownloadResult {
+    fun downloadFileBytes(serverUrl: String, username: String, password: String, path: String, fileName: String): WebDavDownloadBytesResult {
         val dirUrl = buildFullUrl(serverUrl, path)
         val fileUrlStr = dirUrl + fileName.trim()
         var connection: HttpURLConnection? = null
@@ -135,23 +135,23 @@ object WebDavClient {
             connection.requestMethod = "GET"
             connection.connectTimeout = CONNECT_TIMEOUT
             connection.readTimeout = READ_TIMEOUT
-            
+
             connection.setRequestProperty("Authorization", getAuthHeader(username, password))
 
             val responseCode = connection.responseCode
             if (responseCode in 200..299) {
-                val content = connection.inputStream.bufferedReader(Charsets.UTF_8).use { it.readText() }
-                WebDavDownloadResult.Success(content)
+                val content = connection.inputStream.use { it.readBytes() }
+                WebDavDownloadBytesResult.Success(content)
             } else {
                 val errorMsg = connection.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
-                WebDavDownloadResult.Failure(responseCode, errorMsg.take(100))
+                WebDavDownloadBytesResult.Failure(responseCode, errorMsg.take(100))
             }
         } catch (e: SocketTimeoutException) {
-            WebDavDownloadResult.Failure(-1, "ERR_TIMEOUT")
+            WebDavDownloadBytesResult.Failure(-1, "ERR_TIMEOUT")
         } catch (e: UnknownHostException) {
-            WebDavDownloadResult.Failure(-2, "ERR_NETWORK_UNREACHABLE")
+            WebDavDownloadBytesResult.Failure(-2, "ERR_NETWORK_UNREACHABLE")
         } catch (e: IOException) {
-            WebDavDownloadResult.Failure(-3, "ERR_IO_EXCEPTION: ${e.localizedMessage}")
+            WebDavDownloadBytesResult.Failure(-3, "ERR_IO_EXCEPTION: ${e.localizedMessage}")
         } finally {
             connection?.disconnect()
         }
@@ -323,7 +323,9 @@ object WebDavClient {
                         decodedHref
                     }
                     
-                    if (filename.endsWith(".json", ignoreCase = true) && filename.isNotBlank()) {
+                    if (filename.isNotBlank() &&
+                        (filename.endsWith(".json", ignoreCase = true) || filename.endsWith(".zip", ignoreCase = true))
+                    ) {
                         val lengthMatcher = lengthPattern.matcher(responseContent)
                         val size = if (lengthMatcher.find()) {
                             lengthMatcher.group(1)?.trim()?.toLongOrNull() ?: 0L

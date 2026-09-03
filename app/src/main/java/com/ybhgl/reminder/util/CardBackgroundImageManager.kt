@@ -15,13 +15,22 @@ import java.util.Locale
 /**
  * 卡片背景图片管理器：
  * - 将用户选择的图片中心裁剪为卡片比例（1:1 正方形）
- * - 降采样 + JPEG 压缩后转存到应用私有目录，避免占用外部存储且不受原图删除影响
+ * - 降采样 + WebP 有损压缩（支持透明通道）后转存到应用私有目录，避免占用外部存储且不受原图删除影响
  * - 提供按文件名加载与删除能力（数据库仅存储文件名）
  */
 object CardBackgroundImageManager {
 
     private const val DIR_NAME = "card_backgrounds"
-    private const val JPEG_QUALITY = 85
+    private const val WEBP_QUALITY = 85
+
+    /** 按系统版本选择 WebP 压缩格式（API 30+ 用非废弃常量） */
+    private val webpFormat: Bitmap.CompressFormat =
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.R) {
+            Bitmap.CompressFormat.WEBP_LOSSY
+        } else {
+            @Suppress("DEPRECATION")
+            Bitmap.CompressFormat.WEBP
+        }
 
     /** 解码结果内存缓存（按位图字节计，上限约 8MB）：避免同一图片反复解码，消除首帧 null 闪烁 */
     private val bitmapCache = object : android.util.LruCache<String, Bitmap>((8 * 1024 * 1024)) {
@@ -43,7 +52,7 @@ object CardBackgroundImageManager {
     /**
      * 解码图片 URI 为位图（降采样到 [maxSide] 以内），供裁剪对话框展示。
      */
-    suspend fun decodeScaledBitmap(context: Context, uri: Uri, maxSide: Int = 1600): Bitmap? =
+    suspend fun decodeScaledBitmap(context: Context, uri: Uri, maxSide: Int = 1080): Bitmap? =
         withContext(Dispatchers.IO) {
             try {
                 val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
@@ -76,16 +85,30 @@ object CardBackgroundImageManager {
         }
 
     /**
-     * 导入用户裁剪好的正方形位图：压缩后转存到应用私有目录。
+     * 导入用户裁剪好的位图：降采样到最长边 1080 后以 WebP 有损（质量 85）压缩转存到应用私有目录。
      * @return 成功时返回文件名（用于持久化到 ReminderItem），失败返回 null
      */
     suspend fun importBitmap(context: Context, source: Bitmap): String? = withContext(Dispatchers.IO) {
         try {
-            val fileName = String.format(Locale.US, "bg_%d.jpg", System.currentTimeMillis())
+            val scaled = run {
+                val longest = maxOf(source.width, source.height)
+                if (longest <= 1080) source
+                else {
+                    val ratio = 1080f / longest
+                    Bitmap.createScaledBitmap(
+                        source,
+                        (source.width * ratio).toInt().coerceAtLeast(1),
+                        (source.height * ratio).toInt().coerceAtLeast(1),
+                        true
+                    )
+                }
+            }
+            val fileName = String.format(Locale.US, "bg_%d.webp", System.currentTimeMillis())
             val target = File(backgroundDir(context), fileName)
             FileOutputStream(target).use { out ->
-                source.compress(Bitmap.CompressFormat.JPEG, JPEG_QUALITY, out)
+                scaled.compress(webpFormat, WEBP_QUALITY, out)
             }
+            if (scaled != source) scaled.recycle()
             fileName
         } catch (_: Throwable) {
             null
@@ -116,20 +139,17 @@ object CardBackgroundImageManager {
     }
 
     /**
-     * 备份收集：将所有被提醒项引用的背景图片编码为 Base64，
-     * 随 JSON 备份文件一同导出，保证恢复时图片不丢失。
-     * @return 文件名 -> Base64 内容（仅包含实际存在且被引用的图片）
+     * 备份收集：返回所有被提醒项引用的图片文件（仅包含实际存在的），
+     * 供压缩包备份原样打包，不做任何转码。
      */
-    suspend fun collectForBackup(context: Context, reminders: List<ReminderItem>): Map<String, String> =
+    suspend fun collectImageFiles(context: Context, reminders: List<ReminderItem>): Map<String, File> =
         withContext(Dispatchers.IO) {
             val referenced = reminders.map { it.cardBackgroundImagePath }.filter { it.isNotEmpty() }.distinct()
-            val result = mutableMapOf<String, String>()
+            val result = mutableMapOf<String, File>()
             for (name in referenced) {
                 try {
                     val file = File(backgroundDir(context), name)
-                    if (file.exists()) {
-                        result[name] = Base64.getEncoder().encodeToString(file.readBytes())
-                    }
+                    if (file.exists()) result[name] = file
                 } catch (_: Throwable) {
                 }
             }
@@ -137,7 +157,25 @@ object CardBackgroundImageManager {
         }
 
     /**
-     * 备份恢复：将 Base64 图片写回应用私有目录。
+     * 备份恢复：将压缩包内 images/ 目录的图片字节写回应用私有目录。
+     * 已存在的同名文件跳过（智能合并时避免重复写盘）。
+     */
+    suspend fun restoreImages(context: Context, images: Map<String, ByteArray>) = withContext(Dispatchers.IO) {
+        for ((name, bytes) in images) {
+            if (name.isEmpty()) continue
+            try {
+                // 只取文件名部分，防止压缩包内异常路径逃逸出私有目录
+                val safeName = name.substringAfterLast('/')
+                val target = File(backgroundDir(context), safeName)
+                if (target.exists()) continue
+                target.writeBytes(bytes)
+            } catch (_: Throwable) {
+            }
+        }
+    }
+
+    /**
+     * 旧版备份恢复（兼容读取）：将 Base64 图片写回应用私有目录。
      * 已存在的同名文件跳过（智能合并时避免重复写盘）。
      */
     suspend fun restoreFromBackup(context: Context, images: Map<String, String>) = withContext(Dispatchers.IO) {

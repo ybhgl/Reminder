@@ -24,6 +24,7 @@ import java.io.IOException
 private const val BACKUP_DATA_STORE_NAME = "backup_preferences"
 
 private val BACKUP_REMINDER_ENABLED_KEY = booleanPreferencesKey("backup_reminder_enabled")
+private val BACKUP_ENCRYPTION_ENABLED_KEY = booleanPreferencesKey("backup_encryption_enabled")
 private val WEBDAV_SERVER_KEY = stringPreferencesKey("webdav_server")
 private val WEBDAV_USERNAME_KEY = stringPreferencesKey("webdav_username")
 private val WEBDAV_PASSWORD_KEY = stringPreferencesKey("webdav_password")
@@ -72,6 +73,26 @@ object BackupPreferences {
     suspend fun saveBackupReminderEnabled(context: Context, enabled: Boolean) {
         context.backupDataStore.edit { preferences ->
             preferences[BACKUP_REMINDER_ENABLED_KEY] = enabled
+        }
+    }
+
+    /** 备份数据加密开关（默认开启；关闭后所有备份方式均明文存储） */
+    fun backupEncryptionEnabledFlow(context: Context): Flow<Boolean> =
+        context.backupDataStore.data
+            .catch { exception ->
+                if (exception is IOException) {
+                    emit(emptyPreferences())
+                } else {
+                    throw exception
+                }
+            }
+            .map { preferences ->
+                preferences[BACKUP_ENCRYPTION_ENABLED_KEY] ?: true
+            }
+
+    suspend fun saveBackupEncryptionEnabled(context: Context, enabled: Boolean) {
+        context.backupDataStore.edit { preferences ->
+            preferences[BACKUP_ENCRYPTION_ENABLED_KEY] = enabled
         }
     }
 
@@ -299,55 +320,26 @@ object BackupPreferences {
             autoBackupStatusFlow.value = "BACKUPING"
 
             val actualRepository = reminderRepository ?: (context.applicationContext as? com.ybhgl.reminder.ReminderApplication)?.container?.reminderRepository
-            val reminders = actualRepository?.getAllRemindersStream()?.first() 
+            val reminders = actualRepository?.getAllRemindersStream()?.first()
                 ?: ReminderDatabase.getDatabase(context).reminderDao().getAllRemindersList()
 
             if (reminders.isEmpty()) return@withLock AutoBackupResult(success = false, errorMessage = "无提醒事项数据，不进行备份")
 
-            val themeOption = themeOptionFlow(context).first()
-            val pureBlackEnabled = pureBlackFlow(context).first()
-            val cardColoringEnabled = cardColoringFlow(context).first()
-            val defaultPage = defaultPageFlow(context).first()
-            val viewMode = viewModeFlow(context).first()
-            val dynamicColorEnabled = dynamicColorFlow(context).first()
-            val themeColorPalette = colorPaletteFlow(context).first()
-            val customColorSeed = customColorFlow(context).first()
-            val scrollBehavior = scrollBehaviorFlow(context).first()
-            val homeCategoryEnabled = homeCategoryFlow(context).first()
+            val tags = ReminderDatabase.getDatabase(context).tagDao().getAllTags()
 
-            val backupReminderEnabled = backupReminderEnabledFlow(context).first()
+            val backupData = com.ybhgl.reminder.data.BackupDataBuilder.build(context, reminders, tags)
+            val json = kotlinx.serialization.json.Json.encodeToString(backupData)
+            val imageFiles = com.ybhgl.reminder.util.CardBackgroundImageManager.collectImageFiles(context, reminders)
+            val encrypt = backupEncryptionEnabledFlow(context).first()
+            val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, encrypt)
+                ?: return@withLock AutoBackupResult(success = false, errorMessage = "压缩包打包失败")
+
+            val maxCount = autoBackupMaxCountFlow(context).first()
+
             val webDavServer = webDavServerFlow(context).first()
             val webDavUsername = webDavUsernameFlow(context).first()
             val webDavPassword = webDavPasswordFlow(context).first()
             val webDavPath = webDavPathFlow(context).first()
-
-            val tags = ReminderDatabase.getDatabase(context).tagDao().getAllTags()
-
-            val backupData = BackupData(
-                reminders = reminders,
-                tags = tags,
-                themeOption = themeOption,
-                pureBlackEnabled = pureBlackEnabled,
-                cardColoringEnabled = cardColoringEnabled,
-                defaultPage = defaultPage,
-                viewMode = viewMode,
-                backupReminderEnabled = backupReminderEnabled,
-                webDavServer = webDavServer,
-                webDavUsername = webDavUsername,
-                webDavPassword = webDavPassword,
-                webDavPath = webDavPath,
-                dynamicColorEnabled = dynamicColorEnabled,
-                themeColorPalette = themeColorPalette,
-                customColorSeed = customColorSeed,
-                scrollBehavior = scrollBehavior,
-                homeCategoryEnabled = homeCategoryEnabled,
-                cardBackgroundImages = com.ybhgl.reminder.util.CardBackgroundImageManager
-                    .collectForBackup(context, reminders)
-            )
-
-            val json = kotlinx.serialization.json.Json.encodeToString(backupData)
-            val encryptedData = com.ybhgl.reminder.util.BackupEncryptor.encrypt(json)
-            val maxCount = autoBackupMaxCountFlow(context).first()
 
             val timestamp = java.time.LocalDateTime.now()
                 .format(java.time.format.DateTimeFormatter.ofPattern("yyyyMMdd-HHmmss", java.util.Locale.getDefault()))
@@ -370,11 +362,11 @@ object BackupPreferences {
                         if (pickedDir != null && pickedDir.exists() && pickedDir.isDirectory) {
                             val autoDir = pickedDir.findFile("Auto") ?: pickedDir.createDirectory("Auto")
                             if (autoDir != null && autoDir.exists() && autoDir.isDirectory) {
-                                val newFile = autoDir.createFile("application/json", fileName)
+                                val newFile = autoDir.createFile("application/zip", fileName)
                                 if (newFile != null) {
                                     try {
                                         context.contentResolver.openOutputStream(newFile.uri)?.use { output ->
-                                            output.write(encryptedData.toByteArray(Charsets.UTF_8))
+                                            output.write(archiveBytes)
                                             output.flush()
                                         }
                                     } catch (e: Exception) {
@@ -385,7 +377,7 @@ object BackupPreferences {
                                     if (localSuccess) {
                                         val allFiles = autoDir.listFiles()
                                         val autoBackupFiles = allFiles.filter { file ->
-                                            file.isFile && file.name != null && file.name!!.startsWith("reminder-autobackup-") && file.name!!.endsWith(".json")
+                                            file.isFile && file.name != null && file.name!!.startsWith("reminder-autobackup-") && file.name!!.endsWith(".zip")
                                         }.sortedBy { it.name }
 
                                         if (autoBackupFiles.size > maxCount) {
@@ -421,15 +413,15 @@ object BackupPreferences {
                     webDavError = "WebDAV 配置信息不完整"
                 } else {
                     try {
-                        val fullFileName = "$fileName.json"
+                        val fullFileName = "$fileName.zip"
                         val autoWebDavPath = if (webDavPath.endsWith("/")) "${webDavPath}Auto" else "$webDavPath/Auto"
-                        val result = com.ybhgl.reminder.util.WebDavClient.uploadFile(
+                        val result = com.ybhgl.reminder.util.WebDavClient.uploadFileBytes(
                             webDavServer,
                             webDavUsername,
                             webDavPassword,
                             autoWebDavPath,
                             fullFileName,
-                            encryptedData
+                            archiveBytes
                         )
                         if (result is com.ybhgl.reminder.util.WebDavResult.Success) {
                             val listResult = com.ybhgl.reminder.util.WebDavClient.listFilesActual(
@@ -440,7 +432,7 @@ object BackupPreferences {
                             )
                             if (listResult is com.ybhgl.reminder.util.WebDavListResult.Success) {
                                 val autoBackupFiles = listResult.files.filter { file ->
-                                    file.name.startsWith("reminder-autobackup-") && file.name.endsWith(".json")
+                                    file.name.startsWith("reminder-autobackup-") && file.name.endsWith(".zip")
                                 }.sortedBy { it.name }
 
                                 if (autoBackupFiles.size > maxCount) {
