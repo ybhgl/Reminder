@@ -41,7 +41,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
-import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.ExposurePlus1
 import androidx.compose.material.icons.filled.Label
@@ -69,9 +68,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import kotlinx.coroutines.delay
-import androidx.compose.material3.ModalBottomSheet
-import androidx.compose.material3.rememberModalBottomSheetState
-import androidx.compose.material3.BottomSheetDefaults
 import com.ybhgl.reminder.ui.common.smoothImePadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -100,7 +96,6 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.material3.HorizontalDivider
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.navigation.compose.rememberNavController
@@ -309,7 +304,7 @@ fun AddReminderScreen(
                     }
                 )
 
-                // 5. 标签（独立入口，点击打开底部标签选择器）
+                // 5. 标签（独立入口，点击打开标签选择对话框）
                 TonalCardRow(
                     modifier = Modifier.padding(top = 16.dp),
                     icon = Icons.Default.Label,
@@ -519,119 +514,88 @@ fun AddReminderScreen(
             }
 
             if (showTagSheet) {
-                ModalBottomSheet(
+                AppAlertDialog(
                     onDismissRequest = { showTagSheet = false },
-                    sheetState = rememberModalBottomSheetState()
-                ) {
-                    Column(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .padding(horizontal = 24.dp)
-                            .padding(bottom = 24.dp)
-                    ) {
-                        Text(
-                            text = "标签",
-                            style = MaterialTheme.typography.titleLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(16.dp))
-
-                        OutlinedTextField(
-                            value = uiState.tag,
-                            onValueChange = { newValue ->
-                                viewModel.updateUiState(uiState.copy(tag = newValue))
-                            },
-                            label = { Text("标签名称") },
-                            modifier = Modifier.fillMaxWidth(),
-                            singleLine = true,
-                            shape = MaterialTheme.shapes.large
-                        )
-
-                        if (tagOptions.isNotEmpty()) {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            // 与主界面筛选 chips 同风格：色点在 label 内，选中时 leadingIcon 显示勾；
-                            // 点击仅切换选中（可反复点选），由用户下滑或点外部自行关闭
-                            FlowRow(
-                                modifier = Modifier.fillMaxWidth(),
-                                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                                verticalArrangement = Arrangement.spacedBy(8.dp)
-                            ) {
-                                tagOptions.forEach { tagItem ->
-                                    val isSelected = uiState.tag.trim().equals(tagItem.name, ignoreCase = true)
-                                    FilterChip(
-                                        selected = isSelected,
-                                        onClick = {
-                                            viewModel.updateUiState(
-                                                uiState.copy(tag = if (isSelected) "" else tagItem.name)
-                                            )
-                                        },
-                                        label = {
-                                            Row(
-                                                verticalAlignment = Alignment.CenterVertically,
-                                                horizontalArrangement = Arrangement.spacedBy(6.dp)
-                                            ) {
-                                                Box(
-                                                    modifier = Modifier
-                                                        .size(8.dp)
-                                                        .background(color = tagItem.color.toComposeColor(), shape = CircleShape)
-                                                )
-                                                Text(tagItem.name, style = MaterialTheme.typography.bodyMedium)
-                                            }
-                                        },
-                                        leadingIcon = if (isSelected) {
-                                            {
-                                                Icon(
-                                                    imageVector = Icons.Default.Check,
-                                                    contentDescription = null,
-                                                    modifier = Modifier.size(FilterChipDefaults.IconSize)
-                                                )
-                                            }
-                                        } else null,
-                                        shape = RoundedCornerShape(12.dp)
-                                    )
-                                }
-                            }
-                        } else {
-                            Spacer(modifier = Modifier.height(8.dp))
-                            Text(
-                                text = "暂无标签，可输入新标签或点击下方管理",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-
-                        HorizontalDivider(
-                            modifier = Modifier.padding(vertical = 8.dp),
-                            thickness = 0.5.dp,
-                            color = MaterialTheme.colorScheme.outlineVariant
-                        )
-                        Row(
+                    title = "标签",
+                    content = {
+                        Column(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .clickable {
-                                    showTagSheet = false
-                                    navController.navigate(Routes.tagManagement())
-                                }
-                                .padding(vertical = 8.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(10.dp)
+                                .heightIn(max = 360.dp)
+                                .verticalScroll(rememberScrollState()),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
                         ) {
-                            Icon(
-                                imageVector = Icons.Default.Edit,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.primary,
-                                modifier = Modifier.size(18.dp)
+                            OutlinedTextField(
+                                value = uiState.tag,
+                                onValueChange = { newValue ->
+                                    viewModel.updateUiState(uiState.copy(tag = newValue))
+                                },
+                                label = { Text("标签名称") },
+                                modifier = Modifier.fillMaxWidth(),
+                                singleLine = true,
+                                shape = MaterialTheme.shapes.large
                             )
-                            Text(
-                                text = "管理标签...",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.primary,
-                                fontWeight = FontWeight.SemiBold
-                            )
+
+                            if (tagOptions.isNotEmpty()) {
+                                // 与主界面筛选 chips 同风格：色点在 label 内，选中时 leadingIcon 显示勾；
+                                // 点击仅切换选中（可反复点选），由用户点击"完成"或弹窗外部自行关闭
+                                FlowRow(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                                ) {
+                                    tagOptions.forEach { tagItem ->
+                                        val isSelected = uiState.tag.trim().equals(tagItem.name, ignoreCase = true)
+                                        FilterChip(
+                                            selected = isSelected,
+                                            onClick = {
+                                                viewModel.updateUiState(
+                                                    uiState.copy(tag = if (isSelected) "" else tagItem.name)
+                                                )
+                                            },
+                                            label = {
+                                                Row(
+                                                    verticalAlignment = Alignment.CenterVertically,
+                                                    horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                                ) {
+                                                    Box(
+                                                        modifier = Modifier
+                                                            .size(8.dp)
+                                                            .background(color = tagItem.color.toComposeColor(), shape = CircleShape)
+                                                    )
+                                                    Text(tagItem.name, style = MaterialTheme.typography.bodyMedium)
+                                                }
+                                            },
+                                            leadingIcon = if (isSelected) {
+                                                {
+                                                    Icon(
+                                                        imageVector = Icons.Default.Check,
+                                                        contentDescription = null,
+                                                        modifier = Modifier.size(FilterChipDefaults.IconSize)
+                                                    )
+                                                }
+                                            } else null,
+                                            shape = RoundedCornerShape(12.dp)
+                                        )
+                                    }
+                                }
+                            } else {
+                                Text(
+                                    text = "暂无标签，可输入新标签或点击左下角管理",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
                         }
+                    },
+                    confirmText = "完成",
+                    onConfirm = { showTagSheet = false },
+                    neutralText = "管理标签",
+                    onNeutral = {
+                        showTagSheet = false
+                        navController.navigate(Routes.tagManagement())
                     }
-                }
+                )
             }
         }
     }

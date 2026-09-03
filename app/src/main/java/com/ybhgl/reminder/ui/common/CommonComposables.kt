@@ -499,7 +499,7 @@ fun SettingsLinkedVisibility(
  * - [confirmEnabled] 控制确认按钮可用状态（如需先选择条目才能确认的场景）
  * - 简单场景直接传 [text]；复杂内容（输入框、选择器等）用 [content] 槽，二者至多传其一
  * - [confirmText] 传 null 表示无确认按钮（如仅靠内容区交互完成操作的弹窗）；
- *   [neutralText] 用于"忽略"等中性第三操作，渲染在 [dismissText] 左侧；
+ *   [neutralText] 用于"管理"等中性第三操作，独立渲染在弹窗左下角（与右侧 dismiss/confirm 分离）；
  *   [dismissText] 的点击行为默认回落到 [onDismissRequest]
  */
 @Composable
@@ -532,7 +532,41 @@ fun AppAlertDialog(
             else -> null
         },
         confirmButton = {
-            if (confirmText != null) {
+            if (neutralText != null) {
+                // 有中性第三操作时：neutral 独立靠左，dismiss/confirm 仍靠右，
+                // 避免 neutral 落在 M3 默认右对齐按钮组里紧贴确认按钮
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    TextButton(onClick = { onNeutral?.invoke() }) {
+                        Text(neutralText)
+                    }
+                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                        if (dismissText != null) {
+                            TextButton(onClick = { onDismiss?.invoke() ?: onDismissRequest() }) {
+                                Text(dismissText)
+                            }
+                        }
+                        if (confirmText != null) {
+                            TextButton(
+                                onClick = { onConfirm?.invoke() },
+                                enabled = confirmEnabled
+                            ) {
+                                Text(
+                                    confirmText,
+                                    color = if (destructive) {
+                                        MaterialTheme.colorScheme.error
+                                    } else {
+                                        MaterialTheme.colorScheme.primary
+                                    }
+                                )
+                            }
+                        }
+                    }
+                }
+            } else if (confirmText != null) {
                 TextButton(
                     onClick = { onConfirm?.invoke() },
                     enabled = confirmEnabled
@@ -548,19 +582,10 @@ fun AppAlertDialog(
                 }
             }
         },
-        dismissButton = if (neutralText != null || dismissText != null) {
+        dismissButton = if (neutralText == null && dismissText != null) {
             {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                    if (neutralText != null) {
-                        TextButton(onClick = { onNeutral?.invoke() }) {
-                            Text(neutralText)
-                        }
-                    }
-                    if (dismissText != null) {
-                        TextButton(onClick = { onDismiss?.invoke() ?: onDismissRequest() }) {
-                            Text(dismissText)
-                        }
-                    }
+                TextButton(onClick = { onDismiss?.invoke() ?: onDismissRequest() }) {
+                    Text(dismissText)
                 }
             }
         } else null
