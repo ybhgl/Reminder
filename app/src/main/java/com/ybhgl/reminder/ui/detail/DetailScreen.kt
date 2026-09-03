@@ -78,6 +78,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.foundation.gestures.detectTapGestures
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.Palette
 import com.ybhgl.reminder.ui.tag.toComposeColor
 import com.ybhgl.reminder.data.TagItem
@@ -240,6 +241,11 @@ fun DetailScreen(
                                     )
                                 )
                             },
+                            onOpenReminderSetting = { item ->
+                                navController.navigate(
+                                    Routes.reminderSetting(reminderId = item.id, fromManage = true)
+                                )
+                            },
                             onShareClick = {
                                 currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
                             },
@@ -301,6 +307,7 @@ fun ReminderDetailPagerContent(
     viewModel: DetailViewModel,
     onEditTag: (ReminderItem) -> Unit,
     onCustomize: (ReminderItem) -> Unit,
+    onOpenReminderSetting: (ReminderItem) -> Unit,
     onShareClick: () -> Unit,
     onSaveClick: () -> Unit,
     onBirthdayListClick: (() -> Unit)?
@@ -411,6 +418,24 @@ fun ReminderDetailPagerContent(
             )
         }
 
+        // 提醒设置入口：已开启提醒且配置了提醒时间时高亮（M3 主题色）
+        val hasActiveNotification = displayReminderItem.notificationConfig.isEnabled &&
+            displayReminderItem.notificationConfig.notificationTimes.isNotEmpty()
+        val notificationBaseColor = MaterialTheme.colorScheme.primary
+        val (notificationContainerColor, notificationContentColor, notificationBorderColor) = if (hasActiveNotification) {
+            Triple(
+                notificationBaseColor.copy(alpha = 0.15f),
+                notificationBaseColor,
+                notificationBaseColor.copy(alpha = 0.3f)
+            )
+        } else {
+            Triple(
+                Color.Transparent,
+                MaterialTheme.colorScheme.onSurfaceVariant,
+                MaterialTheme.colorScheme.outline.copy(alpha = 0.3f)
+            )
+        }
+
         if (isLandscape) {
             Card(
                 colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)),
@@ -435,6 +460,18 @@ fun ReminderDetailPagerContent(
                             onClick = { onEditTag(displayReminderItem) }
                         )
                         Spacer(modifier = Modifier.weight(1f))
+                        OutlinedIconButton(
+                            onClick = { onOpenReminderSetting(displayReminderItem) },
+                            modifier = Modifier.size(36.dp),
+                            colors = IconButtonDefaults.outlinedIconButtonColors(
+                                containerColor = notificationContainerColor,
+                                contentColor = notificationContentColor
+                            ),
+                            border = androidx.compose.foundation.BorderStroke(1.dp, notificationBorderColor)
+                        ) {
+                            Icon(Icons.Default.Notifications, contentDescription = "提醒设置", modifier = Modifier.size(20.dp))
+                        }
+                        Spacer(modifier = Modifier.width(12.dp))
                         OutlinedIconButton(
                             onClick = { showNotesMap[displayReminderItem.id] = !isNotesFlipped },
                             modifier = Modifier.size(36.dp),
@@ -472,6 +509,18 @@ fun ReminderDetailPagerContent(
                     tagColorHex = matchedTag?.color,
                     onClick = { onEditTag(displayReminderItem) }
                 )
+                Spacer(modifier = Modifier.width(8.dp))
+                OutlinedIconButton(
+                    onClick = { onOpenReminderSetting(displayReminderItem) },
+                    modifier = Modifier.size(32.dp),
+                    colors = IconButtonDefaults.outlinedIconButtonColors(
+                        containerColor = notificationContainerColor,
+                        contentColor = notificationContentColor
+                    ),
+                    border = androidx.compose.foundation.BorderStroke(1.dp, notificationBorderColor)
+                ) {
+                    Icon(Icons.Default.Notifications, contentDescription = "提醒设置", modifier = Modifier.size(18.dp))
+                }
                 Spacer(modifier = Modifier.width(8.dp))
                 OutlinedIconButton(
                     onClick = { showNotesMap[displayReminderItem.id] = !isNotesFlipped },
