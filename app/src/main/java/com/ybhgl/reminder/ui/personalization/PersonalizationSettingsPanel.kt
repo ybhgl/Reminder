@@ -577,7 +577,7 @@ private fun BackgroundSection(
 
 /** 内置字体选项（与数字渲染层共用同一套 FontFamily 映射） */
 private val FONT_OPTIONS = listOf(
-    "Default", "Serif", "SansSerif", "Monospace", "Cursive",
+    "Default", "Serif", "Monospace", "Cursive",
     "SansSerif-Condensed", "SansSerif-Black", "SansSerif-Light"
 )
 
