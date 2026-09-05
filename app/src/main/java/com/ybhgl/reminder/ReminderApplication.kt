@@ -4,6 +4,7 @@ import android.app.Application
 import com.ybhgl.reminder.data.AppContainer
 import com.ybhgl.reminder.data.DefaultAppContainer
 import com.ybhgl.reminder.util.CardBackgroundImageManager
+import com.ybhgl.reminder.util.FontManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
@@ -24,6 +25,8 @@ class ReminderApplication : Application() {
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
             val reminders = container.reminderRepository.getAllRemindersList()
             CardBackgroundImageManager.pruneOrphans(this@ReminderApplication, reminders)
+            // 预热用户导入字体的 FontFamily 缓存，避免首帧渲染大数字时主线程读盘解析
+            FontManager.preload(this@ReminderApplication)
         }
     }
 }

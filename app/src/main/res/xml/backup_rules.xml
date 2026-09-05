@@ -10,4 +10,6 @@
    <include domain="sharedpref" path="."/>
    <exclude domain="sharedpref" path="device.xml"/>
 -->
+    <!-- 用户导入的字体文件不进入系统云备份 -->
+    <exclude domain="file" path="fonts"/>
 </full-backup-content>

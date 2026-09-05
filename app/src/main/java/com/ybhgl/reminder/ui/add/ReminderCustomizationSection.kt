@@ -1,5 +1,6 @@
 package com.ybhgl.reminder.ui.add
 
+import android.content.Context
 import android.graphics.Typeface
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -16,13 +17,23 @@ import com.ybhgl.reminder.ui.common.TonalCardRow
 import com.ybhgl.reminder.ui.personalization.PersonalizationConfig
 import com.ybhgl.reminder.ui.personalization.PersonalizationContract
 import com.ybhgl.reminder.ui.personalization.PersonalizationInput
+import com.ybhgl.reminder.util.FontManager
 
 // 7种不占用应用体积的高表现力系统内置 FontFamily 静态声明
 val SansSerifCondensed: FontFamily = FontFamily(Typeface.create("sans-serif-condensed", Typeface.NORMAL))
 val SansSerifBlack: FontFamily = FontFamily(Typeface.create("sans-serif-black", Typeface.NORMAL))
 val SansSerifLight: FontFamily = FontFamily(Typeface.create("sans-serif-light", Typeface.NORMAL))
 
-fun String.toFontFamily(): FontFamily {
+/**
+ * 字体名解析为 FontFamily：内置字体走静态映射；
+ * "custom:<文件名>" 为用户导入字体，需传入 context 以从私有目录加载（缺失/解析失败回落系统默认）
+ */
+fun String.toFontFamily(context: Context? = null): FontFamily {
+    if (context != null) {
+        FontManager.fileNameOf(this)?.let { fileName ->
+            return FontManager.resolveFontFamily(context, fileName)
+        }
+    }
     return when (this) {
         "Serif" -> FontFamily.Serif
         "SansSerif" -> FontFamily.SansSerif

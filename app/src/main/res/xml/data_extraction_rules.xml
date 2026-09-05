@@ -5,15 +5,11 @@
 -->
 <data-extraction-rules>
     <cloud-backup>
-        <!-- TODO: Use <include> and <exclude> to control what is backed up.
-        <include .../>
-        <exclude .../>
-        -->
+        <!-- 用户导入的字体文件不进入系统云备份 -->
+        <exclude domain="file" path="fonts"/>
     </cloud-backup>
-    <!--
     <device-transfer>
-        <include .../>
-        <exclude .../>
+        <!-- 用户导入的字体文件不进入设备迁移 -->
+        <exclude domain="file" path="fonts"/>
     </device-transfer>
-    -->
 </data-extraction-rules>

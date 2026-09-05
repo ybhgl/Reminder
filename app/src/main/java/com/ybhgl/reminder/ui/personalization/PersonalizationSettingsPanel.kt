@@ -27,8 +27,10 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.BlurOn
 import androidx.compose.material.icons.filled.BrightnessAuto
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.Palette
+import androidx.compose.material.icons.filled.UploadFile
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -46,6 +48,7 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -61,11 +64,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.toFontFamily
+import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.CardBackgroundType
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.ImageCropDialog
 import com.ybhgl.reminder.ui.common.NumberFontEffect
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
@@ -74,6 +80,7 @@ import com.ybhgl.reminder.ui.common.importCardBackgroundBitmap
 import com.ybhgl.reminder.ui.common.parseCardBackgroundType
 import com.ybhgl.reminder.ui.settings.CustomColorPickerDialog
 import com.ybhgl.reminder.util.CardBackgroundImageManager
+import com.ybhgl.reminder.util.FontManager
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -581,6 +588,12 @@ private val FONT_OPTIONS = listOf(
     "SansSerif-Condensed", "SansSerif-Black", "SansSerif-Light"
 )
 
+/** 用户导入字体可选 MIME：部分厂商文件管理器把 ttf/otf 标为 octet-stream，需兜底 */
+private val FONT_FILE_MIME_TYPES = arrayOf(
+    "font/ttf", "font/otf", "font/sfnt", "font/collection",
+    "application/x-font-ttf", "application/x-font-opentype", "application/octet-stream"
+)
+
 /** 字体效果选项元信息：图标 + 描述 */
 private val FONT_EFFECT_META = listOf(
     Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "跟随背景自动选择黑/白字体"),
@@ -597,9 +610,51 @@ private fun FontSection(
     onShowStrokeColorPicker: () -> Unit,
     onUpdate: (PersonalizationConfig) -> Unit
 ) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
     val currentEffect = runCatching {
         NumberFontEffect.valueOf(config.customFontEffect)
     }.getOrDefault(NumberFontEffect.AUTO)
+
+    // 用户导入字体库（filesDir/fonts/，跨页面共享）：先预热解析缓存再加载列表
+    var userFonts by remember { mutableStateOf<List<FontManager.UserFont>>(emptyList()) }
+    var pendingDeleteFont by remember { mutableStateOf<FontManager.UserFont?>(null) }
+
+    LaunchedEffect(Unit) {
+        FontManager.preload(context)
+        userFonts = FontManager.listFonts(context)
+    }
+
+    // 字体导入：系统文件选择器选择后转存私有目录，成败均用 CustomToast 反馈
+    val fontPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) {
+            scope.launch {
+                val imported = FontManager.importFont(context, uri)
+                if (imported != null) {
+                    userFonts = FontManager.listFonts(context)
+                    CustomToast.showSuccess(context, "已导入字体「${imported.displayName}」")
+                } else {
+                    CustomToast.showError(context, "导入失败，请选择有效的字体文件（.ttf/.otf）")
+                }
+            }
+        }
+    }
+
+    fun handleDeleteConfirmed(font: FontManager.UserFont) {
+        pendingDeleteFont = null
+        scope.launch {
+            if (FontManager.deleteFont(context, font.fileName)) {
+                userFonts = FontManager.listFonts(context)
+                // 删除的是当前选中字体时回落系统默认；历史提醒的引用由 toFontFamily 兜底回落
+                if (config.customFont == FontManager.fontId(font.fileName)) {
+                    onUpdate(config.copy(customFont = ""))
+                }
+                CustomToast.showSuccess(context, "已删除字体「${font.displayName}」")
+            } else {
+                CustomToast.showError(context, "删除字体失败")
+            }
+        }
+    }
 
     SectionCard(title = "字体") {
         // 数字字体：横排单选预览卡（仅对数字内容生效）
@@ -615,15 +670,26 @@ private fun FontSection(
                 .horizontalScroll(rememberScrollState()),
             horizontalArrangement = Arrangement.spacedBy(8.dp)
         ) {
-            // 未选择过字体时默认勾选第一项「系统默认」（customFont 为空 = 系统默认）
+            // 未选择过字体时默认选中第一项「系统默认」（customFont 为空 = 系统默认）
             val currentFont = config.customFont.ifEmpty { "Default" }
             FONT_OPTIONS.forEach { font ->
                 FontOptionCard(
-                    font = font,
+                    fontFamily = font.toFontFamily(context),
                     isSelected = currentFont == font,
                     onClick = { onUpdate(config.copy(customFont = font)) }
                 )
             }
+            // 用户导入的字体卡片：紧跟预设字体之后按导入顺序排列，右上角带删除按钮
+            userFonts.forEach { font ->
+                FontOptionCard(
+                    fontFamily = FontManager.resolveFontFamily(context, font.fileName),
+                    isSelected = config.customFont == FontManager.fontId(font.fileName),
+                    onClick = { onUpdate(config.copy(customFont = FontManager.fontId(font.fileName))) },
+                    onDelete = { pendingDeleteFont = font }
+                )
+            }
+            // 导入入口卡：排在所有字体卡片最后
+            ImportFontCard(onClick = { fontPicker.launch(FONT_FILE_MIME_TYPES) })
         }
         SectionGap()
 
@@ -817,14 +883,31 @@ private fun FontSection(
             }
         }
     }
+
+    // 删除字体确认：复用通用弹窗，destructive 红色确认键
+    pendingDeleteFont?.let { font ->
+        AppAlertDialog(
+            onDismissRequest = { pendingDeleteFont = null },
+            title = "删除字体",
+            text = "删除「${font.displayName}」后，使用该字体的提醒将恢复默认字体，确定删除吗？",
+            confirmText = "删除",
+            onConfirm = { handleDeleteConfirmed(font) },
+            dismissText = "取消",
+            destructive = true
+        )
+    }
 }
 
-/** 数字字体横排单选预览卡：以对应字体直接渲染 "17"，无文字标签 */
+/**
+ * 数字字体横排单选预览卡：以对应字体直接渲染 "17"，无文字标签。
+ * 选中态仅以底色/边框/文字色高亮（无勾选角标，为用户字体卡右上角的删除按钮让位）。
+ */
 @Composable
 private fun FontOptionCard(
-    font: String,
+    fontFamily: FontFamily,
     isSelected: Boolean,
-    onClick: () -> Unit
+    onClick: () -> Unit,
+    onDelete: (() -> Unit)? = null
 ) {
     Box(
         modifier = Modifier
@@ -852,29 +935,61 @@ private fun FontOptionCard(
         Text(
             text = "17",
             style = MaterialTheme.typography.headlineMedium.copy(
-                fontFamily = font.toFontFamily(),
+                fontFamily = fontFamily,
                 fontWeight = FontWeight.Bold
             ),
             color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
         )
-        if (isSelected) {
+        // 用户字体删除按钮：内层 clickable 拦截点击，不触发卡片选中
+        if (onDelete != null) {
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(4.dp)
                     .size(16.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary),
+                    .background(MaterialTheme.colorScheme.surface)
+                    .border(
+                        width = 0.5.dp,
+                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        shape = CircleShape
+                    )
+                    .clickable(onClick = onDelete),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
-                    imageVector = Icons.Filled.Check,
-                    contentDescription = null,
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    imageVector = Icons.Filled.Close,
+                    contentDescription = "删除字体",
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.size(10.dp)
                 )
             }
         }
+    }
+}
+
+/** 导入字体入口卡：与预览卡同尺寸，仅一个导入图标 */
+@Composable
+private fun ImportFontCard(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(width = 76.dp, height = 64.dp)
+            .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .border(
+                width = 1.dp,
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
+                shape = RoundedCornerShape(14.dp)
+            )
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Icon(
+            imageVector = Icons.Filled.UploadFile,
+            contentDescription = "导入字体",
+            tint = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.size(24.dp)
+        )
     }
 }
 

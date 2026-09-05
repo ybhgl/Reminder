@@ -1095,6 +1095,7 @@ private fun headerContentColorFor(headerColor: Color): Color =
 
 @Composable
 private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
+    val context = LocalContext.current
     val type = reminder.type
     val isDark = LocalAppDarkTheme.current
     val isCardColoringEnabled = LocalCardColoringEnabled.current
@@ -1163,7 +1164,8 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
 
     return finalVisuals.copy(
         fontFamily = if (reminder.isCustomized && reminder.customFont.isNotEmpty()) {
-            reminder.customFont.toFontFamily()
+            // 传入 context 以解析用户导入字体（custom: 前缀），字体文件缺失时回落系统默认
+            reminder.customFont.toFontFamily(context)
         } else {
             finalVisuals.fontFamily
         },
