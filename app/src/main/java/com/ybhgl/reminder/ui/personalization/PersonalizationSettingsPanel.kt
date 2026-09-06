@@ -957,10 +957,10 @@ private fun FontOptionCard(
                     .padding(4.dp)
                     .size(16.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.primary)
+                    .background(MaterialTheme.colorScheme.primary.copy(alpha = 0.12f))
                     .border(
-                        width = 0.5.dp,
-                        color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
+                        width = 1.dp,
+                        color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f),
                         shape = CircleShape
                     )
                     .pointerInput(Unit) {
@@ -980,7 +980,7 @@ private fun FontOptionCard(
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = "删除字体",
-                    tint = MaterialTheme.colorScheme.onPrimary,
+                    tint = MaterialTheme.colorScheme.primary,
                     modifier = Modifier.size(10.dp)
                 )
             }
