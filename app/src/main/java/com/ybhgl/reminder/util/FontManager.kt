@@ -5,6 +5,7 @@ import android.graphics.Typeface
 import android.net.Uri
 import android.provider.OpenableColumns
 import androidx.compose.ui.text.font.FontFamily
+import com.ybhgl.reminder.data.ReminderItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
@@ -14,7 +15,8 @@ import java.util.concurrent.ConcurrentHashMap
  * 用户导入字体管理器：
  * - 将用户通过系统文件选择器选择的字体文件原样转存到应用私有目录 fonts/ 子目录（不做转码）
  * - 数据库仅存储 "custom:<文件名>" 标识（ReminderItem.customFont / PersonalizationConfig.customFont）
- * - 导入的字体文件不进入应用内备份，也通过 backup_rules.xml / data_extraction_rules.xml 排除出系统备份
+ * - 备份策略：仅被提醒项使用的字体随应用备份 zip 打包（collectFontFiles，未使用的导入字体不打包）；
+ *   原始字体目录通过 backup_rules.xml / data_extraction_rules.xml 排除出系统云备份
  */
 object FontManager {
 
@@ -89,6 +91,42 @@ object FontManager {
             !file.exists() || file.delete()
         } catch (_: Throwable) {
             false
+        }
+    }
+
+    /**
+     * 备份收集：返回所有被提醒项引用（custom: 前缀）且实际存在的字体文件，
+     * 仅包含实际存在的；未被任何卡片使用的导入字体不打包
+     */
+    suspend fun collectFontFiles(context: Context, reminders: List<ReminderItem>): Map<String, File> =
+        withContext(Dispatchers.IO) {
+            val referenced = reminders.map { fileNameOf(it.customFont) }.filterNotNull().distinct()
+            val result = mutableMapOf<String, File>()
+            for (name in referenced) {
+                try {
+                    val file = File(fontsDir(context), name)
+                    if (file.exists()) result[name] = file
+                } catch (_: Throwable) {
+                }
+            }
+            result
+        }
+
+    /**
+     * 备份恢复：将压缩包内 fonts/ 目录的字体字节写回应用私有目录。
+     * 已存在的同名文件跳过（重复恢复幂等、不覆盖本地）；只取文件名部分防止路径逃逸。
+     */
+    suspend fun restoreFonts(context: Context, fonts: Map<String, ByteArray>) = withContext(Dispatchers.IO) {
+        for ((name, bytes) in fonts) {
+            if (name.isEmpty()) continue
+            try {
+                val safeName = name.substringAfterLast('/')
+                val target = File(fontsDir(context), safeName)
+                if (target.exists()) continue
+                target.writeBytes(bytes)
+                familyCache.remove(safeName)
+            } catch (_: Throwable) {
+            }
         }
     }
 

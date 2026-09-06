@@ -117,8 +117,9 @@ class BackupAndRestoreViewModel(
             val backupData = BackupDataBuilder.build(context, reminders, tagRepository.getAllTags())
             val json = Json.encodeToString(backupData)
             val imageFiles = com.ybhgl.reminder.util.CardBackgroundImageManager.collectImageFiles(context, reminders)
+            val fontFiles = com.ybhgl.reminder.util.FontManager.collectFontFiles(context, reminders)
             val encrypt = BackupPreferences.backupEncryptionEnabledFlow(context).first()
-            val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, encrypt)
+            val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, fontFiles, encrypt)
                 ?: return@withContext "备份失败：压缩包打包失败"
 
             context.contentResolver.openOutputStream(targetUri)?.use { output ->
@@ -144,7 +145,7 @@ class BackupAndRestoreViewModel(
 
             val payload = parseBackupPayload(bytes) ?: return@withContext "恢复失败：文件格式不正确"
 
-            performRestore(context, payload.first, isSmartMerge, payload.second)
+            performRestore(context, payload.backupData, isSmartMerge, payload.images, payload.fonts)
         } catch (e: Exception) {
             "恢复失败：${e.localizedMessage ?: "未知错误"}"
         }
@@ -191,8 +192,9 @@ class BackupAndRestoreViewModel(
         val backupData = BackupDataBuilder.build(context, reminders, tagRepository.getAllTags())
         val json = Json.encodeToString(backupData)
         val imageFiles = com.ybhgl.reminder.util.CardBackgroundImageManager.collectImageFiles(context, reminders)
+        val fontFiles = com.ybhgl.reminder.util.FontManager.collectFontFiles(context, reminders)
         val encrypt = BackupPreferences.backupEncryptionEnabledFlow(context).first()
-        val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, encrypt)
+        val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, fontFiles, encrypt)
             ?: return@withContext "云端备份失败：压缩包打包失败"
 
         val fileName = generateBackupFileName()
@@ -316,7 +318,7 @@ class BackupAndRestoreViewModel(
         return@withContext when (val result = WebDavClient.downloadFileBytes(server, username, password, path, fileName)) {
             is WebDavDownloadBytesResult.Success -> {
                 val payload = parseBackupPayload(result.content) ?: return@withContext "恢复失败：文件格式不正确"
-                performRestore(context, payload.first, isSmartMerge, payload.second)
+                performRestore(context, payload.backupData, isSmartMerge, payload.images, payload.fonts)
             }
             is WebDavDownloadBytesResult.Failure -> {
                 "云端下载失败（码:${result.code}）"
@@ -354,30 +356,38 @@ class BackupAndRestoreViewModel(
         }
     }
 
+    /** 解析出的备份载荷：BackupData + zip 内图片/字体（旧版 JSON 格式两者均为 null） */
+    private data class BackupPayload(
+        val backupData: BackupData,
+        val images: Map<String, ByteArray>?,
+        val fonts: Map<String, ByteArray>?
+    )
+
     /**
      * 解析备份数据：优先按新版"加密 zip 压缩包"处理，失败则回退旧版"加密/明文 JSON"。
-     * @return BackupData + zip 内图片（旧版格式返回 null，图片走 BackupData.cardBackgroundImages Base64）；格式不正确返回 null
+     * 旧版格式的图片走 BackupData.cardBackgroundImages Base64，字体为空。
      */
-    private fun parseBackupPayload(bytes: ByteArray): Pair<BackupData, Map<String, ByteArray>?>? {
+    private fun parseBackupPayload(bytes: ByteArray): BackupPayload? {
         // 新版：整包加密 zip
         com.ybhgl.reminder.util.BackupArchiveManager.decode(bytes)?.let { archive ->
             try {
                 val backupData = Json.decodeFromString<BackupData>(archive.metadataJson)
-                return backupData to archive.images
+                return BackupPayload(backupData, archive.images, archive.fonts)
             } catch (_: Exception) {
             }
         }
         // 旧版：加密字符串 / 明文 JSON（二进制转 String 会产生乱码，解析失败自然返回 null）
         val text = bytes.toString(Charsets.UTF_8)
         val backupData = parseBackupData(text) ?: return null
-        return backupData to null
+        return BackupPayload(backupData, null, null)
     }
 
     private suspend fun performRestore(
         context: Context,
         backupData: BackupData,
         isSmartMerge: Boolean,
-        archiveImages: Map<String, ByteArray>? = null
+        archiveImages: Map<String, ByteArray>? = null,
+        archiveFonts: Map<String, ByteArray>? = null
     ): String {
         // 先恢复卡片背景图片，保证提醒项引用的图片文件在插入前就位
         if (archiveImages != null) {
@@ -387,6 +397,12 @@ class BackupAndRestoreViewModel(
             backupData.cardBackgroundImages?.let { images ->
                 com.ybhgl.reminder.util.CardBackgroundImageManager.restoreFromBackup(context, images)
             }
+        }
+
+        // 恢复备份内被使用的导入字体文件，并预热解析缓存，保证提醒项引用的字体在插入前就位
+        if (!archiveFonts.isNullOrEmpty()) {
+            com.ybhgl.reminder.util.FontManager.restoreFonts(context, archiveFonts)
+            com.ybhgl.reminder.util.FontManager.preload(context)
         }
 
         // 如果当前 WebDAV 账号为空，则覆盖备份中的 WebDAV 账号及备份提醒设置
@@ -575,7 +591,7 @@ class BackupAndRestoreViewModel(
         return@withContext when (val result = WebDavClient.downloadFileBytes(server, username, password, autoPath, fileName)) {
             is WebDavDownloadBytesResult.Success -> {
                 val payload = parseBackupPayload(result.content) ?: return@withContext "恢复失败：文件格式不正确"
-                performRestore(context, payload.first, isSmartMerge, payload.second)
+                performRestore(context, payload.backupData, isSmartMerge, payload.images, payload.fonts)
             }
             is WebDavDownloadBytesResult.Failure -> {
                 "云端下载失败（码:${result.code}）"

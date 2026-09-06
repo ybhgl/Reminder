@@ -330,8 +330,9 @@ object BackupPreferences {
             val backupData = com.ybhgl.reminder.data.BackupDataBuilder.build(context, reminders, tags)
             val json = kotlinx.serialization.json.Json.encodeToString(backupData)
             val imageFiles = com.ybhgl.reminder.util.CardBackgroundImageManager.collectImageFiles(context, reminders)
+            val fontFiles = com.ybhgl.reminder.util.FontManager.collectFontFiles(context, reminders)
             val encrypt = backupEncryptionEnabledFlow(context).first()
-            val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, encrypt)
+            val archiveBytes = com.ybhgl.reminder.util.BackupArchiveManager.encode(json, imageFiles, fontFiles, encrypt)
                 ?: return@withLock AutoBackupResult(success = false, errorMessage = "压缩包打包失败")
 
             val maxCount = autoBackupMaxCountFlow(context).first()
