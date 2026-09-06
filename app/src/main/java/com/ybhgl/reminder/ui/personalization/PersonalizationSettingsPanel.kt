@@ -7,6 +7,9 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -59,10 +62,12 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.graphics.toArgb
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -940,27 +945,42 @@ private fun FontOptionCard(
             ),
             color = if (isSelected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface
         )
-        // 用户字体删除按钮：内层 clickable 拦截点击，不触发卡片选中
+        // 用户字体删除按钮：16dp 圆形 + 0.5dp 描边，填充用主题动态色（primary，随动态取色变化）。
+        // 命中范围用 pointerInput 严格限定在可见圆内：触摸事件下 Compose 会把小于 48dp 的
+        // 可点击节点热区自动扩展为 48dp 矩形（缩小尺寸无法解决误触的根因），圆内点击消费
+        // 事件并触发删除；圆外不消费，事件回落给卡片的选择点击
         if (onDelete != null) {
+            val currentOnDelete by rememberUpdatedState(onDelete)
             Box(
                 modifier = Modifier
                     .align(Alignment.TopEnd)
                     .padding(4.dp)
                     .size(16.dp)
                     .clip(CircleShape)
-                    .background(MaterialTheme.colorScheme.surface)
+                    .background(MaterialTheme.colorScheme.primary)
                     .border(
                         width = 0.5.dp,
                         color = MaterialTheme.colorScheme.outline.copy(alpha = 0.4f),
                         shape = CircleShape
                     )
-                    .clickable(onClick = onDelete),
+                    .pointerInput(Unit) {
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            val up = waitForUpOrCancellation() ?: return@awaitEachGesture
+                            val center = Offset(size.width / 2f, size.height / 2f)
+                            val radius = minOf(size.width, size.height) / 2f
+                            if ((up.position - center).getDistance() <= radius) {
+                                up.consume()
+                                currentOnDelete()
+                            }
+                        }
+                    },
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = Icons.Filled.Close,
                     contentDescription = "删除字体",
-                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                    tint = MaterialTheme.colorScheme.onPrimary,
                     modifier = Modifier.size(10.dp)
                 )
             }
