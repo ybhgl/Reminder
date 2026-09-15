@@ -18,11 +18,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import java.time.temporal.ChronoUnit
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -64,6 +67,7 @@ import com.ybhgl.reminder.ui.personalization.toPersonalizationConfig
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.BirthdayInfo
+import com.ybhgl.reminder.util.CalendarUtil
 import android.content.res.Configuration
 import androidx.compose.ui.platform.LocalConfiguration
 import java.time.LocalDate
@@ -330,6 +334,7 @@ fun ReminderDetailPagerContent(
             onNotesSave = { updatedNotes ->
                 viewModel.updateReminderNotes(context, displayReminderItem, updatedNotes)
             },
+            enableDayFormatToggle = true,
             modifier = modifier
         )
     }
@@ -676,64 +681,221 @@ fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
     )
 }
 
+/** 天数栏分段：数字 + 跟随单位（"年"/"月"/"天"），单位为空表示纯数字段 */
+private data class DayCountSegment(val number: String, val unit: String)
+
+/** 按日历实际月份换算 anchor→target 的"整月数 + 剩余天数"；target 不晚于 anchor 时返回 null */
+private fun monthsAndDaysBetween(anchor: LocalDate, target: LocalDate): Pair<Int, Int>? {
+    if (!target.isAfter(anchor)) return null
+    var months = ChronoUnit.MONTHS.between(anchor, target).toInt()
+    var monthAnchor = anchor.plusMonths(months.toLong())
+    if (monthAnchor.isAfter(target)) {
+        months -= 1
+        monthAnchor = anchor.plusMonths(months.toLong())
+    }
+    val days = ChronoUnit.DAYS.between(monthAnchor, target).toInt()
+    return months to days
+}
+
+/** 天数格式换算锚点对 (start, target)，与 `reminderDisplayInfo` 的 dayCount 口径一致 */
+private fun dayFormatAnchor(reminder: ReminderItem): Pair<LocalDate, LocalDate> {
+    val today = LocalDate.now()
+    return when (reminder.type) {
+        ReminderType.ANNUAL, ReminderType.BIRTHDAY -> {
+            val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
+            if (nextDate == null) reminder.date to today else today to nextDate
+        }
+        ReminderType.COUNT_UP -> {
+            // "包含起始日"时 dayCount 比 between 多 1，锚点前移一天保持换算口径一致
+            val anchor = if (reminder.notificationConfig.includeStartDay) {
+                reminder.date.minusDays(1)
+            } else {
+                reminder.date
+            }
+            anchor to today
+        }
+    }
+}
+
+/**
+ * 天数栏可循环切换的格式：纯天数 → 年月天 → 月天（月可超 12）。
+ * 零段省略（"1年0月4天"→"1年4天"、"1月0天"→"1月"），去重后与前一格式相同时自动跳过；
+ * "今"或不足 1 个月时仅有纯天数一种（点击不切换）。
+ */
+private fun buildDayCountFormats(
+    dayCount: Int,
+    isToday: Boolean,
+    anchor: LocalDate,
+    target: LocalDate
+): List<List<DayCountSegment>> {
+    val totalFormat = listOf(
+        if (isToday) DayCountSegment("今", "天") else DayCountSegment(dayCount.toString(), "天")
+    )
+    val (months, days) = monthsAndDaysBetween(anchor, target) ?: return listOf(totalFormat)
+    if (months <= 0) return listOf(totalFormat)
+    val years = months / 12
+    val monthsInYear = months % 12
+    val yearFormat = buildList {
+        if (years > 0) add(DayCountSegment(years.toString(), "年"))
+        if (monthsInYear > 0) add(DayCountSegment(monthsInYear.toString(), "月"))
+        if (days > 0) add(DayCountSegment(days.toString(), "天"))
+    }
+    val monthFormat = buildList {
+        add(DayCountSegment(months.toString(), "月"))
+        if (days > 0) add(DayCountSegment(days.toString(), "天"))
+    }
+    return listOf(totalFormat, yearFormat, monthFormat)
+        .distinctBy { format -> format.joinToString("|") { it.number + it.unit } }
+}
+
 @Composable
 private fun DayCountRow(
-    dayCount: Int,
+    segments: List<DayCountSegment>,
     visuals: ReminderCardVisuals,
-    isCountUp: Boolean = false,
     glassMode: GlassTextMode? = null,
     glassStrokeColor: Color = Color.White,
-    glassShadowColor: Color = Color.Black
+    glassShadowColor: Color = Color.Black,
+    onClick: (() -> Unit)? = null
 ) {
-    val isToday = dayCount == 0 && !isCountUp
-    val textToShow = if (isToday) "今" else dayCount.toString()
     val strokePx = with(androidx.compose.ui.platform.LocalDensity.current) { GlassStrokeWidth.toPx() }
     // 仅 STROKE/SHADOW 属于玻璃覆盖层模式；MASK（正常渲染）必须走常规颜色，
     // 否则无颜色的样式会回落主题默认色导致"天"字锁死白色
     val isGlassOverlay = glassMode == GlassTextMode.STROKE || glassMode == GlassTextMode.SHADOW
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(horizontal = 16.dp),
-        horizontalArrangement = Arrangement.Center,
-        verticalAlignment = Alignment.Bottom,
-    ) {
-        val numberStyle = MaterialTheme.typography.displayLarge.copy(
-            fontSize = 140.sp,
-            fontWeight = FontWeight.Bold,
-            letterSpacing = (-1).sp,
-            color = visuals.numberColor,
-            fontFamily = visuals.fontFamily,
-            lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
-        )
-        val styledNumberStyle = when (glassMode) {
-            GlassTextMode.STROKE -> glassStrokeTextStyle(numberStyle, glassStrokeColor, strokePx)
-            GlassTextMode.SHADOW -> glassShadowTextStyle(numberStyle, glassShadowColor)
-            else -> numberStyle
+    val numberStyle = MaterialTheme.typography.displayLarge.copy(
+        fontSize = 140.sp,
+        fontWeight = FontWeight.Bold,
+        letterSpacing = (-1).sp,
+        color = visuals.numberColor,
+        fontFamily = visuals.fontFamily,
+        lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified
+    )
+    val styledNumberStyle = when (glassMode) {
+        GlassTextMode.STROKE -> glassStrokeTextStyle(numberStyle, glassStrokeColor, strokePx)
+        GlassTextMode.SHADOW -> glassShadowTextStyle(numberStyle, glassShadowColor)
+        else -> numberStyle
+    }
+    val unitStyle = MaterialTheme.typography.bodyLarge.copy(
+        fontSize = 30.sp
+    )
+    val styledUnitStyle = when (glassMode) {
+        GlassTextMode.STROKE -> glassStrokeTextStyle(unitStyle, glassStrokeColor, strokePx)
+        GlassTextMode.SHADOW -> glassShadowTextStyle(unitStyle, glassShadowColor)
+        else -> unitStyle
+    }
+    val rowHorizontalPadding = 16.dp
+    val rowModifier = Modifier
+        .fillMaxWidth()
+        .then(if (onClick != null) Modifier.clickable(onClick = onClick) else Modifier)
+        .padding(horizontal = rowHorizontalPadding)
+
+    if (segments.size == 1) {
+        // 单段（纯天数/"今"）：完全沿用原有 AutoResizeText 自适应路径（checkHeight 防止
+        // 数字下方被裁、weight 收缩保证与"天"字整体居中不超界）
+        Row(
+            modifier = rowModifier,
+            horizontalArrangement = Arrangement.Center,
+            verticalAlignment = Alignment.Bottom
+        ) {
+            AutoResizeText(
+                text = segments[0].number,
+                style = styledNumberStyle,
+                modifier = Modifier
+                    .weight(1f, fill = false)
+                    .alignByBaseline(),
+                checkHeight = true
+            )
+            Spacer(modifier = Modifier.width(6.dp))
+            Text(
+                text = segments[0].unit,
+                style = styledUnitStyle,
+                color = if (isGlassOverlay) Color.Unspecified else visuals.secondaryTextColor,
+                modifier = Modifier.alignByBaseline()
+            )
         }
-        AutoResizeText(
-            text = textToShow,
-            style = styledNumberStyle,
-            modifier = Modifier
-                .weight(1f, fill = false)
-                .alignByBaseline(),
-            checkHeight = true
-        )
-        Spacer(modifier = Modifier.width(6.dp))
-        val unitStyle = MaterialTheme.typography.bodyLarge.copy(
-            fontSize = 30.sp
-        )
-        val styledUnitStyle = when (glassMode) {
-            GlassTextMode.STROKE -> glassStrokeTextStyle(unitStyle, glassStrokeColor, strokePx)
-            GlassTextMode.SHADOW -> glassShadowTextStyle(unitStyle, glassShadowColor)
-            else -> unitStyle
+    } else {
+        // 多段（年月天）：各段字号必须一致，按可用宽度/高度双约束等比缩小数字段；
+        // 单位字保持 30sp 与"天"一致；padding(16dp) 防止单位字超出卡片安全范围
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val textMeasurer = rememberTextMeasurer()
+            // 测量键剥离颜色：颜色（如纯色效果透明度）连续变化时不重启测量，避免数字闪烁
+            val measureNumberStyle = styledNumberStyle.copy(color = Color.Unspecified)
+            val measureUnitStyle = styledUnitStyle.copy(color = Color.Unspecified)
+            var numberFontSize by remember { mutableStateOf(numberStyle.fontSize) }
+            var readyToDraw by remember { mutableStateOf(false) }
+            val density = androidx.compose.ui.platform.LocalDensity.current
+
+            LaunchedEffect(segments, measureNumberStyle, measureUnitStyle, constraints) {
+                // 可用宽度必须扣除 Row 的水平 padding，否则整行系统性溢出、"天"字超出安全范围
+                val availWidth = constraints.maxWidth - with(density) { rowHorizontalPadding.toPx() * 2 }
+                val gapPx = with(density) { 6.dp.toPx() }
+                // 单位字固定 30sp 不缩放（与原"天"字行为一致），宽度只需测一次
+                val unitWidths = segments.map { segment ->
+                    if (segment.unit.isNotEmpty()) {
+                        textMeasurer.measure(segment.unit, measureUnitStyle, softWrap = false)
+                            .size.width.toFloat()
+                    } else {
+                        0f
+                    }
+                }
+                val elementCount = segments.size + unitWidths.count { it > 0f }
+                val gapTotal = gapPx * (elementCount - 1).coerceAtLeast(0)
+                // 迭代收缩对齐原 AutoResizeText 的收敛行为：数字字号从 140sp 起
+                // 按 0.95 递减，直到整行宽度与数字行高都真正放入可用区域
+                val baseFontSize = numberStyle.fontSize.value
+                var currentFontSize = baseFontSize
+                while (currentFontSize > 1f) {
+                    var totalWidth = gapTotal
+                    var numberHeight = 0f
+                    segments.forEachIndexed { index, segment ->
+                        val numberResult = textMeasurer.measure(
+                            segment.number,
+                            measureNumberStyle.copy(fontSize = currentFontSize.sp),
+                            softWrap = false
+                        )
+                        totalWidth += numberResult.size.width + unitWidths[index]
+                        numberHeight = maxOf(numberHeight, numberResult.size.height.toFloat())
+                    }
+                    val widthOverflow = totalWidth > availWidth
+                    val heightOverflow = constraints.maxHeight != Constraints.Infinity &&
+                        numberHeight > constraints.maxHeight
+                    if (!widthOverflow && !heightOverflow) {
+                        break
+                    }
+                    currentFontSize *= 0.95f
+                }
+                numberFontSize = currentFontSize.sp
+                readyToDraw = true
+            }
+
+            if (readyToDraw) {
+                Row(
+                    modifier = rowModifier,
+                    horizontalArrangement = Arrangement.Center,
+                    verticalAlignment = Alignment.Bottom
+                ) {
+                    val scaledNumberStyle = styledNumberStyle.copy(fontSize = numberFontSize)
+                    segments.forEachIndexed { index, segment ->
+                        if (index > 0) Spacer(modifier = Modifier.width(6.dp))
+                        Text(
+                            text = segment.number,
+                            style = scaledNumberStyle,
+                            softWrap = false,
+                            modifier = Modifier.alignByBaseline()
+                        )
+                        if (segment.unit.isNotEmpty()) {
+                            Spacer(modifier = Modifier.width(6.dp))
+                            Text(
+                                text = segment.unit,
+                                style = styledUnitStyle,
+                                color = if (isGlassOverlay) Color.Unspecified else visuals.secondaryTextColor,
+                                softWrap = false,
+                                modifier = Modifier.alignByBaseline()
+                            )
+                        }
+                    }
+                }
+            }
         }
-        Text(
-            text = "天",
-            style = styledUnitStyle,
-            color = if (isGlassOverlay) Color.Unspecified else visuals.secondaryTextColor,
-            modifier = Modifier.alignByBaseline()
-        )
     }
 }
 
@@ -746,7 +908,8 @@ fun ReminderDetailCard(
     onDateClick: (() -> Unit)? = null,
     isFlipped: Boolean = false,
     onFlippedChange: (Boolean) -> Unit = {},
-    onNotesSave: (String) -> Unit = {}
+    onNotesSave: (String) -> Unit = {},
+    enableDayFormatToggle: Boolean = false
 ) {
     val displayInfo = reminderDisplayInfo(reminderItem, useLunar = useLunar)
     val visuals = displayInfo.visuals
@@ -793,6 +956,22 @@ fun ReminderDetailCard(
         }
     val glassShadowResolved = glassShadowColor(parseGlassTextTheme(numberRenderSpec?.glassTheme ?: "DARK"))
     val glassStrokeWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { GlassStrokeWidth.toPx() }
+
+    // 天数栏日期格式（纯天数 → 年月天 → 月天循环切换）：仅详情页启用；
+    // 格式选择仅在会话内有效（rememberSaveable，翻页返回保留、离开页面重置），不写入数据库
+    val dayCountIsToday = displayInfo.dayCount == 0 && reminderItem.type != ReminderType.COUNT_UP
+    val dayCountFormats = remember(
+        reminderItem.id,
+        reminderItem.date,
+        reminderItem.type,
+        reminderItem.notificationConfig.includeStartDay,
+        dayCountIsToday,
+        displayInfo.dayCount
+    ) {
+        val (formatAnchor, formatTarget) = dayFormatAnchor(reminderItem)
+        buildDayCountFormats(displayInfo.dayCount, dayCountIsToday, formatAnchor, formatTarget)
+    }
+    var dayFormatIndex by rememberSaveable(reminderItem.id) { mutableIntStateOf(0) }
 
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -887,14 +1066,28 @@ fun ReminderDetailCard(
                             horizontalAlignment = Alignment.CenterHorizontally,
                             verticalArrangement = Arrangement.Center
                         ) {
-                            DayCountRow(
-                                dayCount = displayInfo.dayCount,
-                                visuals = effectiveVisuals,
-                                isCountUp = reminderItem.type == ReminderType.COUNT_UP,
-                                glassMode = mode,
-                                glassStrokeColor = glassStrokeResolved,
-                                glassShadowColor = glassShadowResolved
-                            )
+                            val currentSegments = dayCountFormats[dayFormatIndex % dayCountFormats.size]
+                            AnimatedContent(
+                                targetState = currentSegments,
+                                transitionSpec = {
+                                    (slideInVertically { height -> height } + fadeIn()) togetherWith
+                                        (slideOutVertically { height -> -height } + fadeOut())
+                                },
+                                label = "DayFormatTransition"
+                            ) { segments ->
+                                DayCountRow(
+                                    segments = segments,
+                                    visuals = effectiveVisuals,
+                                    glassMode = mode,
+                                    glassStrokeColor = glassStrokeResolved,
+                                    glassShadowColor = glassShadowResolved,
+                                    onClick = if (enableDayFormatToggle && dayCountFormats.size > 1) {
+                                        { dayFormatIndex = (dayFormatIndex + 1) % dayCountFormats.size }
+                                    } else {
+                                        null
+                                    }
+                                )
+                            }
                         }
 
                         val clickableModifier = if (onDateClick != null) {
