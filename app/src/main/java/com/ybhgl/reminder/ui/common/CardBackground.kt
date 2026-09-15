@@ -93,7 +93,15 @@ data class NumberEffectSpec(
     /** BLUR 玻璃字描边开关 */
     val strokeEnabled: Boolean = true,
     /** BLUR 玻璃字描边颜色（hex），空 = 模板默认 */
-    val strokeColor: String = ""
+    val strokeColor: String = "",
+    /** 玻璃效果（GLASS）模糊强度（0..24dp），仅作用于数字 */
+    val liquidBlur: Float = 12f,
+    /** 玻璃效果玻璃浓度（0..0.6，玻璃底色 tint alpha） */
+    val liquidDensity: Float = 0.13f,
+    /** 玻璃效果折射强度（0..1 归一存储，渲染端换算为位移量） */
+    val liquidRefraction: Float = 0.3f,
+    /** 玻璃效果高光强度（0..1） */
+    val liquidHighlight: Float = 0.6f
 )
 
 /** 卡片背景配置（渲染层使用的聚合参数） */
@@ -160,7 +168,11 @@ val ReminderItem.numberEffectSpec: NumberEffectSpec
         glassTheme = customFontGlassTheme,
         shadowEnabled = customFontShadowEnabled,
         strokeEnabled = customFontStrokeEnabled,
-        strokeColor = customFontStrokeColor
+        strokeColor = customFontStrokeColor,
+        liquidBlur = customGlassBlur,
+        liquidDensity = customGlassDensity,
+        liquidRefraction = customGlassRefraction,
+        liquidHighlight = customGlassHighlight
     )
 
 /** 异步加载卡片背景位图（带内存缓存：命中缓存时首帧即有图，避免 null→图片 闪烁），路径为空或加载失败返回 null */
@@ -317,11 +329,12 @@ fun resolveEffectiveFontEffect(
         } else EffectiveFontEffect()
 
         NumberFontEffect.GLASS -> if (isCustomBg) {
-            // 玻璃渲染效果已移除（设置面板不再提供），存量数据按自动反色显示
+            // 液态玻璃（HyperOS 4 风格）：全卡文字保持自动反色，数字区域交给玻璃渲染层
             EffectiveFontEffect(
                 numberColor = autoColor,
                 cardTextColor = autoColor,
-                secondaryTextColor = autoColor?.copy(alpha = 0.92f)
+                secondaryTextColor = autoColor?.copy(alpha = 0.92f),
+                numberRender = spec
             )
         } else EffectiveFontEffect()
     }
@@ -539,6 +552,83 @@ private const val FLUTED_ADSL = """
     }
 """
 
+/**
+ * 缓存液态玻璃 AGSL shader 实例（编译一次）；API < 33 返回 null（降级为仅模糊）。
+ */
+@Composable
+internal fun rememberLiquidShader(): RuntimeShader? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
+    return remember {
+        runCatching { RuntimeShader(LIQUID_ADSL) }
+            .onFailure { android.util.Log.e("CardBackground", "液态玻璃 AGSL 编译失败", it) }
+            .getOrNull()
+    }
+}
+
+/**
+ * 液态玻璃渲染链：先磨砂模糊，再做噪声场折射位移 + 饱和度/亮度提升
+ * （createChainEffect(a, b) 中 b 先执行，对应 HTML backdrop-filter 的 blur → url(#lgGlass) 顺序）。
+ * blurPx <= 0 时仅保留 shader 处理；shader 为 null（API<33）时仅模糊。
+ */
+private fun liquidGlassEffect(shader: RuntimeShader?, blurPx: Float, distortPx: Float): RenderEffect? {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
+    val blurEffect = if (blurPx > 0f) {
+        RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP)
+    } else null
+    val shaderEffect = shader?.let {
+        it.setFloatUniform("distortPx", distortPx)
+        RenderEffect.createRuntimeShaderEffect(it, "content")
+    }
+    return when {
+        shaderEffect != null && blurEffect != null -> RenderEffect.createChainEffect(shaderEffect, blurEffect)
+        shaderEffect != null -> shaderEffect
+        blurEffect != null -> blurEffect
+        else -> null
+    }
+}
+
+/**
+ * AGSL 液态折射（含色散）：模仿 SVG feTurbulence→feDisplacementMap 的平滑噪声位移场——
+ * value noise（sin-hash + smoothstep 插值）两 octave 叠加出低频湍流，
+ * 双通道噪声驱动二维采样偏移（freq≈0.007，对应 HTML baseFrequency 0.006/0.009 的量级），
+ * R/B 通道用 ±10% 偏移量分别采样模拟色散；最后做 saturate(1.85)+brightness(1.06) 玻璃提纯。
+ * 输入/输出均为 premultiplied（对 a≈1 的背景做 rgb 线性混合不破坏预乘）。
+ */
+private const val LIQUID_ADSL = """
+    uniform shader content;
+    uniform float distortPx;
+
+    float hash(float2 p) {
+        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+    }
+    float vnoise(float2 p) {
+        float2 i = floor(p);
+        float2 f = fract(p);
+        float2 u = f * f * (3.0 - 2.0 * f);
+        float a = hash(i);
+        float b = hash(i + vec2(1.0, 0.0));
+        float c = hash(i + vec2(0.0, 1.0));
+        float d = hash(i + vec2(1.0, 1.0));
+        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
+    }
+    float fbm(float2 p) {
+        return vnoise(p) * 0.65 + vnoise(p * 2.7 + 19.19) * 0.35;
+    }
+
+    half4 main(float2 coord) {
+        float n1 = fbm(coord * 0.007);
+        float n2 = fbm(coord * 0.007 + vec2(37.7, 17.3));
+        float2 offset = (vec2(n1, n2) - 0.5) * 2.0 * distortPx;
+        half4 r = content.eval(coord + offset * 1.10);
+        half4 g = content.eval(coord + offset);
+        half4 b = content.eval(coord + offset * 0.90);
+        half4 c = half4(r.r, g.g, b.b, g.a);
+        float lum = dot(c.rgb, half3(0.2126, 0.7152, 0.0722));
+        c.rgb = mix(half3(lum), c.rgb, half3(1.85)) * 1.06;
+        return c;
+    }
+"""
+
 /** 竖纹层：按柱面透镜光照模型采样生成平滑明暗（漫反射 + 镜面高光 + 槽缝阴影），对应 HTML .ridges */
 @Composable
 private fun RidgesOverlay(spacingPx: Float) {
@@ -680,8 +770,10 @@ fun parseGlassTextTheme(theme: String): GlassTextTheme =
 fun parseGlassStrokeColor(hex: String): Color? =
     hex.takeIf { it.isNotEmpty() }?.let { parseHexColorSafe(it) }
 
-/** 玻璃字文字内容渲染模式：MASK=正常填充（仅作 mask alpha）、STROKE=外轮廓描边、SHADOW=深色投影 */
-enum class GlassTextMode { MASK, STROKE, SHADOW }
+/** 玻璃字文字内容渲染模式：MASK=正常填充（仅作 mask alpha）、STROKE=外轮廓描边、SHADOW=深色投影；
+ * DIGIT_MASK=仅数字正常填充作 mask（其余文字全透明，液态玻璃效果专用）、
+ * DIGIT_HOLLOW=仅数字透明镂空（其余文字正常渲染，数字区域透出玻璃层） */
+enum class GlassTextMode { MASK, STROKE, SHADOW, DIGIT_MASK, DIGIT_HOLLOW }
 
 /** 玻璃字描边模式的文字样式：描边色 + Stroke 外轮廓（阴影独立为单独图层，不在此叠加） */
 fun glassStrokeTextStyle(base: TextStyle, strokeColor: Color, strokeWidthPx: Float): TextStyle =
@@ -802,6 +894,169 @@ fun GlassTextOverlay(
             ) {
                 textContent(GlassTextMode.SHADOW)
             }
+        }
+    }
+}
+
+/**
+ * 液态玻璃数字层（HyperOS 4 风格，仅作用于数字，配合 [GlassTextMode.DIGIT_MASK]/[GlassTextMode.DIGIT_HOLLOW]）：
+ * ① 数字层录制为 mask（不上屏）
+ * ② 玻璃层：背景先模糊再经 AGSL 噪声折射 + 饱和度/亮度提升 → 玻璃底色 tint（浓度）渐变 →
+ *    顶部/底部内高光 + 径向光斑 + 135° 斜向光泽 → 按数字 alpha（BlendMode.DstIn）裁切
+ * ③ 可见文字层：数字透明镂空（透出玻璃），标题/日期/"天"正常渲染
+ *
+ * @param liquidBlur 模糊强度（0..24dp）
+ * @param liquidDensity 玻璃浓度（0..0.6，玻璃底色 tint alpha）
+ * @param liquidRefraction 折射强度（0..1，渲染端换算为最大位移 0..90dp）
+ * @param liquidHighlight 高光强度（0..1）
+ * @param backdrop 背景内容（玻璃层内绘制一份并处理；底层清晰背景由调用方绘制）
+ * @param textContent 文字内容；[GlassTextMode.DIGIT_MASK] 仅数字填充作 mask、
+ *   [GlassTextMode.DIGIT_HOLLOW] 仅数字透明镂空
+ */
+@Composable
+fun LiquidGlassNumberOverlay(
+    liquidBlur: Float,
+    liquidDensity: Float,
+    liquidRefraction: Float,
+    liquidHighlight: Float,
+    modifier: Modifier = Modifier,
+    backdrop: @Composable () -> Unit,
+    textContent: @Composable (mode: GlassTextMode) -> Unit
+) {
+    val density = LocalDensity.current
+    val blurPx = with(density) { liquidBlur.coerceIn(0f, 24f).dp.toPx() }
+    // 折射强度 0..1 → 最大位移 0..90dp（默认 0.3 ≈ HTML feDisplacementMap scale=28px 的观感）
+    val distortPx = with(density) { (liquidRefraction.coerceIn(0f, 1f) * 90f).dp.toPx() }
+    val shader = rememberLiquidShader()
+
+    // RenderEffect 按参数缓存：graphicsLayer 每次重组赋新对象会触发 Skia 重建图层产生一帧空白（闪烁）
+    val glassRenderEffect = remember(shader, blurPx, distortPx) {
+        liquidGlassEffect(shader, blurPx, distortPx)?.asComposeRenderEffect()
+    }
+
+    // 玻璃底色 tint：固定冷调蓝白，浓度=liquidDensity（对应 HTML --tint/--alpha 的 140deg 三段渐变）
+    val tint = Color(0xFFDCE9F6)
+    val tintAlpha = liquidDensity.coerceIn(0f, 0.6f)
+    val spec = liquidHighlight.coerceIn(0f, 1f)
+    val textLayer = rememberGraphicsLayer()
+
+    Box(modifier) {
+        // ① 数字 mask 录制层：仅录制内容到 graphicsLayer，不绘制到屏幕
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .drawWithContent {
+                    textLayer.record { this@drawWithContent.drawContent() }
+                }
+        ) {
+            textContent(GlassTextMode.DIGIT_MASK)
+        }
+
+        // ② 玻璃层：折射模糊背景 + tint + 高光，整体被数字 alpha 裁切 —— 内部处理、字形边缘锐利
+        Box(
+            modifier = Modifier
+                .matchParentSize()
+                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .drawWithContent {
+                    drawContent()
+                    textLayer.blendMode = BlendMode.DstIn
+                    drawLayer(textLayer)
+                }
+        ) {
+            // 折射模糊背景：整体放大避免模糊边缘的透明收缩露馅
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer {
+                        scaleX = 1.12f
+                        scaleY = 1.12f
+                        renderEffect = glassRenderEffect
+                    }
+            ) {
+                backdrop()
+            }
+            // 玻璃底色 tint：140° 三段渐变（alpha+0.12 → alpha*0.45 → alpha+0.04）
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        val angle = 140f * (PI.toFloat() / 180f)
+                        val dir = Offset(sin(angle), cos(angle))
+                        drawRect(
+                            Brush.linearGradient(
+                                0f to tint.copy(alpha = (tintAlpha + 0.12f).coerceAtMost(1f)),
+                                0.48f to tint.copy(alpha = tintAlpha * 0.45f),
+                                1f to tint.copy(alpha = (tintAlpha + 0.04f).coerceAtMost(1f)),
+                                start = Offset.Zero,
+                                end = dir * max(size.width, size.height)
+                            )
+                        )
+                    }
+            )
+            // 顶部内高光（HTML inset 0 1px white(spec*0.95)）：上缘 6% 内渐隐
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        drawRect(
+                            Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = spec * 0.95f),
+                                0.06f to Color.Transparent
+                            )
+                        )
+                    }
+            )
+            // 底部内高光（HTML inset 0 -1px white(spec*0.30)）
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        drawRect(
+                            Brush.verticalGradient(
+                                0.94f to Color.Transparent,
+                                1f to Color.White.copy(alpha = spec * 0.30f)
+                            )
+                        )
+                    }
+            )
+            // 径向环境光斑（HTML radial-gradient 90% 70% at 50% -10%，mix-blend screen）
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        drawRect(
+                            Brush.radialGradient(
+                                0f to Color.White.copy(alpha = spec * 0.50f),
+                                0.58f to Color.Transparent,
+                                center = Offset(size.width * 0.5f, -size.height * 0.1f),
+                                radius = max(size.width, size.height) * 0.9f
+                            )
+                        )
+                    }
+            )
+            // 135° 边缘透镜光泽（HTML ::after 135deg 渐变：spec*1.1 → 0.08 → 0.06 → 0.75）
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        val dir = Offset(1f, 1f)
+                        drawRect(
+                            Brush.linearGradient(
+                                0f to Color.White.copy(alpha = (spec * 1.1f).coerceAtMost(1f)),
+                                0.32f to Color.White.copy(alpha = spec * 0.08f),
+                                0.62f to Color.White.copy(alpha = spec * 0.06f),
+                                1f to Color.White.copy(alpha = spec * 0.75f),
+                                start = Offset.Zero,
+                                end = dir * max(size.width, size.height)
+                            )
+                        )
+                    }
+            )
+        }
+
+        // ③ 可见文字层：数字透明镂空（透出玻璃），其余文字正常渲染
+        Box(modifier = Modifier.matchParentSize()) {
+            textContent(GlassTextMode.DIGIT_HOLLOW)
         }
     }
 }
