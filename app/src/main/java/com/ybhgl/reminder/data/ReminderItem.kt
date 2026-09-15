@@ -109,7 +109,9 @@ data class ReminderItem(
     /** 玻璃字是否描边（外轮廓描边，默认关闭） */
     val customFontStrokeEnabled: Boolean = false,
     /** 玻璃字描边颜色（hex），空 = 按模板默认（暗模板亮描边 / 亮模板暗描边） */
-    val customFontStrokeColor: String = ""
+    val customFontStrokeColor: String = "",
+    /** 数字字重（100..900，700=默认粗体），仅作用于卡片数字文字 */
+    val customFontWeight: Float = 700f
 )
 
 @Serializer(forClass = LocalDate::class)

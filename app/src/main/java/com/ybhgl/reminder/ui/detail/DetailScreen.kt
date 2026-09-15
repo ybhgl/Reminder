@@ -763,7 +763,7 @@ private fun DayCountRow(
     val isGlassOverlay = glassMode == GlassTextMode.STROKE || glassMode == GlassTextMode.SHADOW
     val numberStyle = MaterialTheme.typography.displayLarge.copy(
         fontSize = 140.sp,
-        fontWeight = FontWeight.Bold,
+        fontWeight = visuals.numberFontWeight,
         letterSpacing = (-1).sp,
         color = visuals.numberColor,
         fontFamily = visuals.fontFamily,

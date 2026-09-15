@@ -698,6 +698,17 @@ private fun FontSection(
         }
         SectionGap()
 
+        // 数字字重：100-900 无极调节，仅作用于卡片数字（"天"字不受影响）；
+        // 拖动值量化为整数，保证存储值与显示一致（700 = 默认粗体，不触发个性化标记）
+        SliderRow(
+            title = "数字字重",
+            valueText = config.customFontWeight.roundToInt().toString(),
+            value = config.customFontWeight.coerceIn(100f, 900f),
+            valueRange = 100f..900f,
+            onValueChange = { onUpdate(config.copy(customFontWeight = it.roundToInt().toFloat())) }
+        )
+        SectionGap()
+
         // 字体效果 FilterChip 组
         Text(
             "字体效果",

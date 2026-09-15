@@ -67,6 +67,7 @@ import com.ybhgl.reminder.ui.detail.ReminderDetailCard
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import kotlinx.serialization.Serializable
 import kotlinx.serialization.json.Json
+import kotlin.math.roundToInt
 import java.time.LocalDate
 
 // ==================== 数据模型 ====================
@@ -113,7 +114,9 @@ data class PersonalizationConfig(
     /** 玻璃字描边开关（默认关闭） */
     val customFontStrokeEnabled: Boolean = false,
     /** 玻璃字描边颜色（hex），空 = 按模板默认 */
-    val customFontStrokeColor: String = ""
+    val customFontStrokeColor: String = "",
+    /** 数字字重（100..900，700=默认粗体），仅作用于卡片数字文字 */
+    val customFontWeight: Float = 700f
 )
 
 /** 重置为默认的个性化配置（含 isCustomized=false） */
@@ -127,6 +130,8 @@ fun PersonalizationConfig.isEffectivelyDefault(): Boolean =
     customHeaderColor.isEmpty() &&
         parseCardBackgroundType(cardBackgroundType) == CardBackgroundType.DEFAULT &&
         (customFont.isEmpty() || customFont == "Default") &&
+        // 无极滑块产生连续浮点值，按整数四舍五入判定：显示为 700 即视为默认粗体
+        customFontWeight.roundToInt() == 700 &&
         runCatching { NumberFontEffect.valueOf(customFontEffect) }
             .getOrDefault(NumberFontEffect.AUTO) == NumberFontEffect.AUTO
 
@@ -167,7 +172,8 @@ fun ReminderItem.toPersonalizationConfig(): PersonalizationConfig = Personalizat
     customFontGlassTheme = customFontGlassTheme,
     customFontShadowEnabled = customFontShadowEnabled,
     customFontStrokeEnabled = customFontStrokeEnabled,
-    customFontStrokeColor = customFontStrokeColor
+    customFontStrokeColor = customFontStrokeColor,
+    customFontWeight = customFontWeight
 )
 
 fun ReminderItem.withPersonalizationConfig(config: PersonalizationConfig): ReminderItem = copy(
@@ -195,7 +201,8 @@ fun ReminderItem.withPersonalizationConfig(config: PersonalizationConfig): Remin
     customFontGlassTheme = config.customFontGlassTheme,
     customFontShadowEnabled = config.customFontShadowEnabled,
     customFontStrokeEnabled = config.customFontStrokeEnabled,
-    customFontStrokeColor = config.customFontStrokeColor
+    customFontStrokeColor = config.customFontStrokeColor,
+    customFontWeight = config.customFontWeight
 )
 
 /** 从新建/编辑页 UiState 提取个性化配置 */
@@ -224,7 +231,8 @@ fun com.ybhgl.reminder.ui.add.ReminderUiState.toPersonalizationConfig(): Persona
     customFontGlassTheme = customFontGlassTheme,
     customFontShadowEnabled = customFontShadowEnabled,
     customFontStrokeEnabled = customFontStrokeEnabled,
-    customFontStrokeColor = customFontStrokeColor
+    customFontStrokeColor = customFontStrokeColor,
+    customFontWeight = customFontWeight
 )
 
 /** 应用个性化配置到新建/编辑页 UiState */
@@ -253,7 +261,8 @@ fun com.ybhgl.reminder.ui.add.ReminderUiState.withPersonalizationConfig(config: 
     customFontGlassTheme = config.customFontGlassTheme,
     customFontShadowEnabled = config.customFontShadowEnabled,
     customFontStrokeEnabled = config.customFontStrokeEnabled,
-    customFontStrokeColor = config.customFontStrokeColor
+    customFontStrokeColor = config.customFontStrokeColor,
+    customFontWeight = config.customFontWeight
 )
 
 /** 契约输入：初始配置 + 预览所需的提醒类型 + 是否展示背景设置 */
@@ -422,7 +431,8 @@ fun PersonalizationScreen(
             customFontGlassTheme = config.customFontGlassTheme,
             customFontShadowEnabled = config.customFontShadowEnabled,
             customFontStrokeEnabled = config.customFontStrokeEnabled,
-            customFontStrokeColor = config.customFontStrokeColor
+            customFontStrokeColor = config.customFontStrokeColor,
+            customFontWeight = config.customFontWeight
         )
     }
 

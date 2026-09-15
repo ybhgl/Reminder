@@ -4,6 +4,7 @@ package com.ybhgl.reminder
 
 import androidx.compose.ui.text.font.FontFamily
 import com.ybhgl.reminder.ui.add.toFontFamily
+import kotlin.math.roundToInt
 
 import com.google.accompanist.permissions.ExperimentalPermissionsApi
 import com.google.accompanist.permissions.rememberMultiplePermissionsState
@@ -942,6 +943,8 @@ data class ReminderCardVisuals(
     val numberColor: Color,
     val secondaryTextColor: Color,
     val fontFamily: FontFamily = FontFamily.Default,
+    /** 数字字重（仅作用于数字，"天"字不受影响），默认 700 = 粗体 */
+    val numberFontWeight: FontWeight = FontWeight.Bold,
     val backgroundSpec: CardBackgroundSpec? = null
 )
 
@@ -1169,6 +1172,11 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
         } else {
             finalVisuals.fontFamily
         },
+        numberFontWeight = if (reminder.isCustomized) {
+            FontWeight(reminder.customFontWeight.coerceIn(100f, 900f).roundToInt())
+        } else {
+            FontWeight.Bold
+        },
         backgroundSpec = backgroundSpec
     )
 }
@@ -1200,7 +1208,7 @@ private fun DayCountRow(
         horizontalArrangement = Arrangement.Center
     ) {
         val numberStyle = MaterialTheme.typography.displayLarge.copy(
-            fontWeight = FontWeight.Bold,
+            fontWeight = visuals.numberFontWeight,
             letterSpacing = (-1).sp,
             fontFamily = visuals.fontFamily,
             lineHeight = androidx.compose.ui.unit.TextUnit.Unspecified

@@ -82,7 +82,8 @@ data class ShareOptions(
     val customFontGlassTheme: String = "DARK",
     val customFontShadowEnabled: Boolean = false,
     val customFontStrokeEnabled: Boolean = false,
-    val customFontStrokeColor: String = ""
+    val customFontStrokeColor: String = "",
+    val customFontWeight: Float = 700f
 )
 
 /** 从分享会话配置提取个性化设置页所需的初始配置 */
@@ -111,7 +112,8 @@ fun ShareOptions.toPersonalizationConfig(): PersonalizationConfig = Personalizat
     customFontGlassTheme = customFontGlassTheme,
     customFontShadowEnabled = customFontShadowEnabled,
     customFontStrokeEnabled = customFontStrokeEnabled,
-    customFontStrokeColor = customFontStrokeColor
+    customFontStrokeColor = customFontStrokeColor,
+    customFontWeight = customFontWeight
 )
 
 class ShareViewModel(
@@ -160,7 +162,8 @@ class ShareViewModel(
                     customFontGlassTheme = it.customFontGlassTheme,
                     customFontShadowEnabled = it.customFontShadowEnabled,
                     customFontStrokeEnabled = it.customFontStrokeEnabled,
-                    customFontStrokeColor = it.customFontStrokeColor
+                    customFontStrokeColor = it.customFontStrokeColor,
+                    customFontWeight = it.customFontWeight
                 )
             }
             _reminder.value = item
@@ -196,7 +199,8 @@ class ShareViewModel(
             customFontGlassTheme = options.customFontGlassTheme,
             customFontShadowEnabled = options.customFontShadowEnabled,
             customFontStrokeEnabled = options.customFontStrokeEnabled,
-            customFontStrokeColor = options.customFontStrokeColor
+            customFontStrokeColor = options.customFontStrokeColor,
+            customFontWeight = options.customFontWeight
         )
     }
 
@@ -232,7 +236,8 @@ class ShareViewModel(
                 customFontGlassTheme = config.customFontGlassTheme,
                 customFontShadowEnabled = config.customFontShadowEnabled,
                 customFontStrokeEnabled = config.customFontStrokeEnabled,
-                customFontStrokeColor = config.customFontStrokeColor
+                customFontStrokeColor = config.customFontStrokeColor,
+                customFontWeight = config.customFontWeight
             )
         }
     }
