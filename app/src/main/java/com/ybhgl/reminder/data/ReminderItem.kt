@@ -111,7 +111,15 @@ data class ReminderItem(
     /** 玻璃字描边颜色（hex），空 = 按模板默认（暗模板亮描边 / 亮模板暗描边） */
     val customFontStrokeColor: String = "",
     /** 数字字重（100..900，700=默认粗体），仅作用于卡片数字文字 */
-    val customFontWeight: Float = 700f
+    val customFontWeight: Float = 700f,
+    /** 玻璃效果（GLASS）模糊强度（0..24dp），仅作用于数字 */
+    val customGlassBlur: Float = 12f,
+    /** 玻璃效果玻璃浓度（0..0.6，玻璃底色 tint alpha） */
+    val customGlassDensity: Float = 0.13f,
+    /** 玻璃效果折射强度（0..1 归一存储，渲染端换算为位移量） */
+    val customGlassRefraction: Float = 0.3f,
+    /** 玻璃效果高光强度（0..1） */
+    val customGlassHighlight: Float = 0.6f
 )
 
 @Serializer(forClass = LocalDate::class)
