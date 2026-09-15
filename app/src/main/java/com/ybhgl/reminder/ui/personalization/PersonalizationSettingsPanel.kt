@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -603,7 +604,8 @@ private val FONT_FILE_MIME_TYPES = arrayOf(
 private val FONT_EFFECT_META = listOf(
     Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "跟随背景自动选择黑/白字体"),
     Triple(NumberFontEffect.SOLID, Icons.Filled.FormatColorFill, "自定义字体颜色及透明度"),
-    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "文字区域高斯模糊")
+    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "文字区域高斯模糊"),
+    Triple(NumberFontEffect.GLASS, Icons.Filled.WaterDrop, "数字区域液态玻璃折射，仅作用于天数")
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -733,6 +735,8 @@ private fun FontSection(
                             when (effect) {
                                 NumberFontEffect.AUTO -> "默认"
                                 NumberFontEffect.SOLID -> "纯色"
+                                NumberFontEffect.BLUR -> "模糊"
+                                NumberFontEffect.GLASS -> "玻璃"
                                 else -> "模糊"
                             },
                             style = MaterialTheme.typography.bodyMedium
@@ -896,6 +900,47 @@ private fun FontSection(
                         }
                     }
                 }
+            }
+        }
+
+        // 玻璃（液态玻璃）：仅数字生效的 HyperOS 4 风格折射，4 个参数滑块
+        LinkedPanel(visible = currentEffect == NumberFontEffect.GLASS && isCustomBackground) {
+            // 面板无联动子项，但仍保持裸 Column + SectionGap 的间距内化约定
+            Column {
+                SliderRow(
+                    title = "模糊强度",
+                    valueText = "${config.customGlassBlur.roundToInt()}",
+                    value = config.customGlassBlur,
+                    valueRange = 0f..24f,
+                    onValueChange = { onUpdate(config.copy(customGlassBlur = it)) }
+                )
+
+                SectionGap()
+                SliderRow(
+                    title = "玻璃浓度",
+                    valueText = String.format(java.util.Locale.US, "%.2f", config.customGlassDensity),
+                    value = config.customGlassDensity,
+                    valueRange = 0f..0.6f,
+                    onValueChange = { onUpdate(config.copy(customGlassDensity = it)) }
+                )
+
+                SectionGap()
+                SliderRow(
+                    title = "折射强度",
+                    valueText = "${(config.customGlassRefraction * 100).roundToInt()}%",
+                    value = config.customGlassRefraction,
+                    valueRange = 0f..1f,
+                    onValueChange = { onUpdate(config.copy(customGlassRefraction = it)) }
+                )
+
+                SectionGap()
+                SliderRow(
+                    title = "高光强度",
+                    valueText = "${(config.customGlassHighlight * 100).roundToInt()}%",
+                    value = config.customGlassHighlight,
+                    valueRange = 0f..1f,
+                    onValueChange = { onUpdate(config.copy(customGlassHighlight = it)) }
+                )
             }
         }
     }
