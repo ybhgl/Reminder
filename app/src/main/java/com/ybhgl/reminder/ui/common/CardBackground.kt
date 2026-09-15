@@ -816,12 +816,16 @@ fun liquidGlassStrokeBrush(spec: Float): Brush = Brush.linearGradient(
     end = Offset.Infinite
 )
 
-/** 液态玻璃描边模式的文字样式：135° 渐变 Brush + Stroke 外轮廓（对应 HTML ::after 边缘透镜） */
+/**
+ * 液态玻璃描边模式的文字样式：135° 渐变 Brush + Stroke 外轮廓（对应 HTML ::after 边缘透镜）。
+ * [strokeWidthPx] 为期望的**外露**描边宽度：描边层位于玻璃层之下，Stroke 以轮廓为中心内外各半，
+ * 故实际线宽 ×2——内半被玻璃覆盖、外半完整露出，等效"仅外轮廓 + 目标宽度"的描边。
+ */
 fun liquidGlassStrokeTextStyle(base: TextStyle, brush: Brush, strokeWidthPx: Float): TextStyle =
     base.merge(
         TextStyle(
             brush = brush,
-            drawStyle = Stroke(width = strokeWidthPx, join = StrokeJoin.Round)
+            drawStyle = Stroke(width = strokeWidthPx * 2f, join = StrokeJoin.Round)
         )
     )
 
@@ -930,18 +934,19 @@ fun GlassTextOverlay(
 /**
  * 液态玻璃数字层（严格按 HTML 参考实现，仅作用于数字，配合 [GlassTextMode.DIGIT_MASK]/[GlassTextMode.DIGIT_HOLLOW]）：
  * ① 数字层录制为 mask（不上屏）
- * ② 玻璃层（对应 .glass 的 backdrop-filter + background，被数字 alpha DstIn 裁切）：
+ * ② ::after 边缘透镜描边（玻璃层之下）：数字以 135° 渐变 Brush 描边（[liquidGlassStrokeBrush]，
+ *    强度=高光强度，线宽=2×外露宽度）——描边线的内半被上方玻璃覆盖、只露字形外半完整宽度
+ * ③ 玻璃层（对应 .glass 的 backdrop-filter + background，被数字 alpha DstIn 裁切）：
  *    - 背景：blur(σ) → AGSL 折射位移 + saturate(1.85) + brightness(1.06)（CLAMP 补边，不做放大）
  *    - 玻璃底色：140° 三段 tint 渐变（HTML background linear-gradient）
  *    - ::before 高光遮罩：径向环境光斑（spec*0.50，at 50% -10%）+ 顶部线性光（spec*0.20），Screen 混合
- * ③ 可见文字层：数字透明镂空（透出玻璃），标题/日期/"天"正常渲染
- * ④ ::after 边缘透镜描边（最上层）：数字以 135° 渐变 Brush 描边（[liquidGlassStrokeBrush]，
- *    强度=高光强度），描边由调用方经 [GlassTextMode.DIGIT_STROKE] 的 modeStyle 应用
+ *    - 内部提亮：中心径向 Screen 光晕（spec*0.35），凸显玻璃质感与数字本身
+ * ④ 可见文字层：数字透明镂空（透出玻璃），标题/日期/"天"正常渲染
  *
  * @param liquidBlur 模糊强度（0..24dp）
  * @param liquidDensity 玻璃浓度（0..0.6，玻璃底色 tint alpha）
  * @param liquidRefraction 折射强度（0..1，换算为 feDisplacementMap scale 0..90dp）
- * @param liquidHighlight 高光强度（0..1，驱动 ::before 高光遮罩与 ::after 外围描边）
+ * @param liquidHighlight 高光强度（0..1，驱动 ::before 高光遮罩、内部提亮与 ::after 外围描边）
  * @param backdrop 背景内容（玻璃层内绘制一份并处理；底层清晰背景由调用方绘制）
  * @param textContent 文字内容；[GlassTextMode.DIGIT_MASK] 仅数字填充作 mask、
  *   [GlassTextMode.DIGIT_HOLLOW] 仅数字透明镂空、[GlassTextMode.DIGIT_STROKE] 仅数字渐变描边
@@ -985,7 +990,13 @@ fun LiquidGlassNumberOverlay(
             textContent(GlassTextMode.DIGIT_MASK)
         }
 
-        // ② 玻璃层：折射模糊背景 + tint + ::before 高光遮罩，整体被数字 alpha 裁切
+        // ② ::after 边缘透镜描边（玻璃层之下）：Stroke 以轮廓为中心内外各半（线宽已 ×2），
+        //    内半被上方玻璃覆盖、外半完整露出 → 等效仅外轮廓、且不侵入数字内部
+        Box(modifier = Modifier.matchParentSize()) {
+            textContent(GlassTextMode.DIGIT_STROKE)
+        }
+
+        // ③ 玻璃层：折射模糊背景 + tint + ::before 高光遮罩 + 内部提亮，整体被数字 alpha 裁切
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -1045,16 +1056,27 @@ fun LiquidGlassNumberOverlay(
                         )
                     }
             )
+            // 内部提亮：中心径向 Screen 光晕，凸显玻璃质感与数字本身（强度随高光强度）
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent {
+                        drawRect(
+                            Brush.radialGradient(
+                                0f to Color.White.copy(alpha = spec * 0.35f),
+                                0.70f to Color.Transparent,
+                                center = Offset(size.width * 0.5f, size.height * 0.35f),
+                                radius = max(size.width, size.height) * 0.75f
+                            ),
+                            blendMode = BlendMode.Screen
+                        )
+                    }
+            )
         }
 
-        // ③ 可见文字层：数字透明镂空（透出玻璃），其余文字正常渲染
+        // ④ 可见文字层：数字透明镂空（透出玻璃），其余文字正常渲染
         Box(modifier = Modifier.matchParentSize()) {
             textContent(GlassTextMode.DIGIT_HOLLOW)
-        }
-
-        // ④ ::after 边缘透镜描边（最上层）：数字 135° 渐变描边，样式由调用方 modeStyle 提供
-        Box(modifier = Modifier.matchParentSize()) {
-            textContent(GlassTextMode.DIGIT_STROKE)
         }
     }
 }
