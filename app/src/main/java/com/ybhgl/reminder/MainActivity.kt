@@ -224,6 +224,7 @@ import com.ybhgl.reminder.ui.common.CardBackgroundType
 import com.ybhgl.reminder.ui.common.NumberEffectSpec
 import com.ybhgl.reminder.ui.common.NumberFontEffect
 import com.ybhgl.reminder.ui.common.GlassTextOverlay
+import com.ybhgl.reminder.ui.common.LiquidGlassNumberOverlay
 import com.ybhgl.reminder.ui.common.GlassTextMode
 import com.ybhgl.reminder.ui.common.GlassTextTheme
 import com.ybhgl.reminder.ui.common.GlassStrokeWidth
@@ -1224,7 +1225,12 @@ private fun DayCountRow(
             modifier = Modifier
                 .weight(1f, fill = false)
                 .alignByBaseline(),
-            color = if (isGlassOverlay) Color.Unspecified else visuals.numberColor,
+            color = when {
+                isGlassOverlay -> Color.Unspecified
+                // 液态玻璃可见层：数字透明镂空，透出下方玻璃（显式 Transparent，勿用 Unspecified 防回落主题色）
+                glassMode == GlassTextMode.DIGIT_HOLLOW -> Color.Transparent
+                else -> visuals.numberColor
+            },
             checkHeight = false
         )
         Spacer(modifier = Modifier.width(spacing))
@@ -1236,7 +1242,12 @@ private fun DayCountRow(
         Text(
             text = suffixText,
             style = styledSuffixStyle,
-            color = if (isGlassOverlay) Color.Unspecified else visuals.secondaryTextColor,
+            color = when {
+                isGlassOverlay -> Color.Unspecified
+                // 液态玻璃 mask 层：仅数字参与裁切，"天"字透明
+                glassMode == GlassTextMode.DIGIT_MASK -> Color.Transparent
+                else -> visuals.secondaryTextColor
+            },
             modifier = Modifier.alignByBaseline()
         )
     }
@@ -2310,6 +2321,10 @@ private fun ReminderSummaryCard(
     // 层级顺序对齐 SVG 玻璃字：清晰背景（下方）→ 模糊背景按文字 alpha 裁切 → 描边文字
     val glassActive = numberRenderSpec
         ?.takeIf { it.effect == NumberFontEffect.BLUR } != null && backgroundSpec != null
+    // 液态玻璃效果（GLASS）：仅数字区域折射玻璃（API<31 无 RenderEffect，降级为普通反色渲染）
+    val liquidActive = numberRenderSpec
+        ?.takeIf { it.effect == NumberFontEffect.GLASS } != null && backgroundSpec != null &&
+        Build.VERSION.SDK_INT >= Build.VERSION_CODES.S
     val glassStrokeColorParsed = parseGlassStrokeColor(numberRenderSpec?.strokeColor ?: "")
     val glassStrokeResolved = glassStrokeColorParsed
         ?: if (parseGlassTextTheme(numberRenderSpec?.glassTheme ?: "DARK") == GlassTextTheme.LIGHT) {
@@ -2379,9 +2394,15 @@ private fun ReminderSummaryCard(
                         GlassTextMode.STROKE -> glassStrokeTextStyle(base, glassStrokeResolved, glassStrokeWidthPx)
                         GlassTextMode.SHADOW -> glassShadowTextStyle(base, glassShadowResolved)
                         GlassTextMode.MASK -> base
+                        // 液态玻璃两模式不需要描边/投影样式，仅按 modeColor 控制可见性
+                        GlassTextMode.DIGIT_MASK, GlassTextMode.DIGIT_HOLLOW -> base
                     }
-                    fun modeColor(c: Color): Color =
-                        if (mode == GlassTextMode.MASK) c else Color.Unspecified
+                    fun modeColor(c: Color): Color = when (mode) {
+                        GlassTextMode.MASK, GlassTextMode.DIGIT_HOLLOW -> c
+                        // 液态玻璃 mask 层：仅数字参与裁切，标题/日期全透明
+                        GlassTextMode.DIGIT_MASK -> Color.Transparent
+                        else -> Color.Unspecified
+                    }
 
                     Column(modifier = Modifier.fillMaxSize()) {
                     Box(
@@ -2472,6 +2493,23 @@ private fun ReminderSummaryCard(
                         theme = parseGlassTextTheme(spec.glassTheme),
                         strokeEnabled = spec.strokeEnabled,
                         shadowEnabled = spec.shadowEnabled,
+                        modifier = Modifier.matchParentSize(),
+                        backdrop = {
+                            CardBackgroundLayer(
+                                spec = backgroundSpec,
+                                bitmap = backgroundBitmap
+                            )
+                        },
+                        textContent = { mode -> CardTexts(mode) }
+                    )
+                } else if (liquidActive && backgroundSpec != null) {
+                    val spec = numberRenderSpec!!
+                    // 液态玻璃：仅数字区域玻璃化，其余文字正常渲染
+                    LiquidGlassNumberOverlay(
+                        liquidBlur = spec.liquidBlur,
+                        liquidDensity = spec.liquidDensity,
+                        liquidRefraction = spec.liquidRefraction,
+                        liquidHighlight = spec.liquidHighlight,
                         modifier = Modifier.matchParentSize(),
                         backdrop = {
                             CardBackgroundLayer(
