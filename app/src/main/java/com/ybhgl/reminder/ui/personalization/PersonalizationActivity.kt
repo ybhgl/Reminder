@@ -116,7 +116,15 @@ data class PersonalizationConfig(
     /** 玻璃字描边颜色（hex），空 = 按模板默认 */
     val customFontStrokeColor: String = "",
     /** 数字字重（100..900，700=默认粗体），仅作用于卡片数字文字 */
-    val customFontWeight: Float = 700f
+    val customFontWeight: Float = 700f,
+    /** 玻璃效果（GLASS）模糊强度（0..24dp），仅作用于数字 */
+    val customGlassBlur: Float = 12f,
+    /** 玻璃效果玻璃浓度（0..0.6，玻璃底色 tint alpha） */
+    val customGlassDensity: Float = 0.13f,
+    /** 玻璃效果折射强度（0..1 归一存储） */
+    val customGlassRefraction: Float = 0.3f,
+    /** 玻璃效果高光强度（0..1） */
+    val customGlassHighlight: Float = 0.6f
 )
 
 /** 重置为默认的个性化配置（含 isCustomized=false） */
@@ -173,7 +181,11 @@ fun ReminderItem.toPersonalizationConfig(): PersonalizationConfig = Personalizat
     customFontShadowEnabled = customFontShadowEnabled,
     customFontStrokeEnabled = customFontStrokeEnabled,
     customFontStrokeColor = customFontStrokeColor,
-    customFontWeight = customFontWeight
+    customFontWeight = customFontWeight,
+    customGlassBlur = customGlassBlur,
+    customGlassDensity = customGlassDensity,
+    customGlassRefraction = customGlassRefraction,
+    customGlassHighlight = customGlassHighlight
 )
 
 fun ReminderItem.withPersonalizationConfig(config: PersonalizationConfig): ReminderItem = copy(
@@ -202,7 +214,11 @@ fun ReminderItem.withPersonalizationConfig(config: PersonalizationConfig): Remin
     customFontShadowEnabled = config.customFontShadowEnabled,
     customFontStrokeEnabled = config.customFontStrokeEnabled,
     customFontStrokeColor = config.customFontStrokeColor,
-    customFontWeight = config.customFontWeight
+    customFontWeight = config.customFontWeight,
+    customGlassBlur = config.customGlassBlur,
+    customGlassDensity = config.customGlassDensity,
+    customGlassRefraction = config.customGlassRefraction,
+    customGlassHighlight = config.customGlassHighlight
 )
 
 /** 从新建/编辑页 UiState 提取个性化配置 */
@@ -232,7 +248,11 @@ fun com.ybhgl.reminder.ui.add.ReminderUiState.toPersonalizationConfig(): Persona
     customFontShadowEnabled = customFontShadowEnabled,
     customFontStrokeEnabled = customFontStrokeEnabled,
     customFontStrokeColor = customFontStrokeColor,
-    customFontWeight = customFontWeight
+    customFontWeight = customFontWeight,
+    customGlassBlur = customGlassBlur,
+    customGlassDensity = customGlassDensity,
+    customGlassRefraction = customGlassRefraction,
+    customGlassHighlight = customGlassHighlight
 )
 
 /** 应用个性化配置到新建/编辑页 UiState */
@@ -262,7 +282,11 @@ fun com.ybhgl.reminder.ui.add.ReminderUiState.withPersonalizationConfig(config: 
     customFontShadowEnabled = config.customFontShadowEnabled,
     customFontStrokeEnabled = config.customFontStrokeEnabled,
     customFontStrokeColor = config.customFontStrokeColor,
-    customFontWeight = config.customFontWeight
+    customFontWeight = config.customFontWeight,
+    customGlassBlur = config.customGlassBlur,
+    customGlassDensity = config.customGlassDensity,
+    customGlassRefraction = config.customGlassRefraction,
+    customGlassHighlight = config.customGlassHighlight
 )
 
 /** 契约输入：初始配置 + 预览所需的提醒类型 + 是否展示背景设置 */
@@ -432,7 +456,11 @@ fun PersonalizationScreen(
             customFontShadowEnabled = config.customFontShadowEnabled,
             customFontStrokeEnabled = config.customFontStrokeEnabled,
             customFontStrokeColor = config.customFontStrokeColor,
-            customFontWeight = config.customFontWeight
+            customFontWeight = config.customFontWeight,
+            customGlassBlur = config.customGlassBlur,
+            customGlassDensity = config.customGlassDensity,
+            customGlassRefraction = config.customGlassRefraction,
+            customGlassHighlight = config.customGlassHighlight
         )
     }
 

@@ -255,7 +255,11 @@ data class ReminderUiState(
     val customFontShadowEnabled: Boolean = false,
     val customFontStrokeEnabled: Boolean = false,
     val customFontStrokeColor: String = "",
-    val customFontWeight: Float = 700f
+    val customFontWeight: Float = 700f,
+    val customGlassBlur: Float = 12f,
+    val customGlassDensity: Float = 0.13f,
+    val customGlassRefraction: Float = 0.3f,
+    val customGlassHighlight: Float = 0.6f
 )
 
 fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
@@ -294,7 +298,11 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     customFontShadowEnabled = customFontShadowEnabled,
     customFontStrokeEnabled = customFontStrokeEnabled,
     customFontStrokeColor = customFontStrokeColor,
-    customFontWeight = customFontWeight
+    customFontWeight = customFontWeight,
+    customGlassBlur = customGlassBlur,
+    customGlassDensity = customGlassDensity,
+    customGlassRefraction = customGlassRefraction,
+    customGlassHighlight = customGlassHighlight
 )
 
 fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
@@ -333,5 +341,9 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     customFontShadowEnabled = customFontShadowEnabled,
     customFontStrokeEnabled = customFontStrokeEnabled,
     customFontStrokeColor = customFontStrokeColor,
-    customFontWeight = customFontWeight
+    customFontWeight = customFontWeight,
+    customGlassBlur = customGlassBlur,
+    customGlassDensity = customGlassDensity,
+    customGlassRefraction = customGlassRefraction,
+    customGlassHighlight = customGlassHighlight
 )
