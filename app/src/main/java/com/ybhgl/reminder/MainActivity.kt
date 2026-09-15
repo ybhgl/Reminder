@@ -228,6 +228,9 @@ import com.ybhgl.reminder.ui.common.LiquidGlassNumberOverlay
 import com.ybhgl.reminder.ui.common.GlassTextMode
 import com.ybhgl.reminder.ui.common.GlassTextTheme
 import com.ybhgl.reminder.ui.common.GlassStrokeWidth
+import com.ybhgl.reminder.ui.common.LiquidGlassStrokeWidth
+import com.ybhgl.reminder.ui.common.liquidGlassStrokeBrush
+import com.ybhgl.reminder.ui.common.liquidGlassStrokeTextStyle
 import com.ybhgl.reminder.ui.common.glassShadowColor
 import com.ybhgl.reminder.ui.common.glassShadowTextStyle
 import com.ybhgl.reminder.ui.common.glassStrokeTextStyle
@@ -1191,7 +1194,8 @@ private fun DayCountRow(
     modifier: Modifier = Modifier,
     glassMode: GlassTextMode? = null,
     glassStrokeColor: Color = Color.White,
-    glassShadowColor: Color = Color.Black
+    glassShadowColor: Color = Color.Black,
+    liquidStrokeBrush: Brush? = null
 ) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
@@ -1199,6 +1203,7 @@ private fun DayCountRow(
     val suffixStyle = MaterialTheme.typography.bodyLarge
     val spacing = 6.dp
     val strokePx = with(LocalDensity.current) { GlassStrokeWidth.toPx() }
+    val liquidStrokePx = with(LocalDensity.current) { LiquidGlassStrokeWidth.toPx() }
     // 仅 STROKE/SHADOW 属于玻璃覆盖层模式；MASK（正常渲染）必须走常规颜色，
     // 否则颜色参数被置 Unspecified 会让"天"字回落主题默认色（深色模式下锁死白色）
     val isGlassOverlay = glassMode == GlassTextMode.STROKE || glassMode == GlassTextMode.SHADOW
@@ -1217,6 +1222,11 @@ private fun DayCountRow(
         val styledNumberStyle = when (glassMode) {
             GlassTextMode.STROKE -> glassStrokeTextStyle(numberStyle, glassStrokeColor, strokePx)
             GlassTextMode.SHADOW -> glassShadowTextStyle(numberStyle, glassShadowColor)
+            // 液态玻璃 ::after：数字以 135° 渐变 Brush 描边（brush 优先于 color 渲染）
+            GlassTextMode.DIGIT_STROKE ->
+                if (liquidStrokeBrush != null) {
+                    liquidGlassStrokeTextStyle(numberStyle, liquidStrokeBrush, liquidStrokePx)
+                } else numberStyle
             else -> numberStyle
         }
         AutoResizeText(
@@ -1244,8 +1254,8 @@ private fun DayCountRow(
             style = styledSuffixStyle,
             color = when {
                 isGlassOverlay -> Color.Unspecified
-                // 液态玻璃 mask 层：仅数字参与裁切，"天"字透明
-                glassMode == GlassTextMode.DIGIT_MASK -> Color.Transparent
+                // 液态玻璃 mask/描边层：仅数字参与，"天"字透明
+                glassMode == GlassTextMode.DIGIT_MASK || glassMode == GlassTextMode.DIGIT_STROKE -> Color.Transparent
                 else -> visuals.secondaryTextColor
             },
             modifier = Modifier.alignByBaseline()
@@ -2334,6 +2344,13 @@ private fun ReminderSummaryCard(
         }
     val glassShadowResolved = glassShadowColor(parseGlassTextTheme(numberRenderSpec?.glassTheme ?: "DARK"))
     val glassStrokeWidthPx = with(LocalDensity.current) { GlassStrokeWidth.toPx() }
+    // 液态玻璃 ::after 边缘透镜：135° 渐变描边 Brush（强度=高光强度）+ 1.4dp 描边宽度；
+    // Brush 必须 remember：样式内 Brush 身份参与 Text 测量 key，每帧新建会反复重启测量
+    val liquidHighlight = numberRenderSpec?.liquidHighlight
+    val liquidStrokeBrush = remember(liquidActive, liquidHighlight) {
+        if (liquidActive) liquidGlassStrokeBrush(liquidHighlight ?: 0f) else null
+    }
+    val liquidStrokeWidthPx = with(LocalDensity.current) { LiquidGlassStrokeWidth.toPx() }
 
     Card(
         modifier = modifier
@@ -2394,13 +2411,13 @@ private fun ReminderSummaryCard(
                         GlassTextMode.STROKE -> glassStrokeTextStyle(base, glassStrokeResolved, glassStrokeWidthPx)
                         GlassTextMode.SHADOW -> glassShadowTextStyle(base, glassShadowResolved)
                         GlassTextMode.MASK -> base
-                        // 液态玻璃两模式不需要描边/投影样式，仅按 modeColor 控制可见性
-                        GlassTextMode.DIGIT_MASK, GlassTextMode.DIGIT_HOLLOW -> base
+                        // 液态玻璃三模式：描边样式仅在 DayCountRow 的数字上应用，标题/日期只做透明
+                        GlassTextMode.DIGIT_MASK, GlassTextMode.DIGIT_HOLLOW, GlassTextMode.DIGIT_STROKE -> base
                     }
                     fun modeColor(c: Color): Color = when (mode) {
                         GlassTextMode.MASK, GlassTextMode.DIGIT_HOLLOW -> c
-                        // 液态玻璃 mask 层：仅数字参与裁切，标题/日期全透明
-                        GlassTextMode.DIGIT_MASK -> Color.Transparent
+                        // 液态玻璃 mask/描边层：仅数字参与，标题/日期全透明
+                        GlassTextMode.DIGIT_MASK, GlassTextMode.DIGIT_STROKE -> Color.Transparent
                         else -> Color.Unspecified
                     }
 
@@ -2443,7 +2460,8 @@ private fun ReminderSummaryCard(
                             isCountUp = reminder.type == ReminderType.COUNT_UP,
                             glassMode = mode,
                             glassStrokeColor = glassStrokeResolved,
-                            glassShadowColor = glassShadowResolved
+                            glassShadowColor = glassShadowResolved,
+                            liquidStrokeBrush = liquidStrokeBrush
                         )
                     }
                     // 自定义卡片背景下隐藏底栏分割线，保持背景视觉完整

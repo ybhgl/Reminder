@@ -588,18 +588,19 @@ private fun liquidGlassEffect(shader: RuntimeShader?, blurPx: Float, distortPx: 
 }
 
 /**
- * AGSL 液态折射（含色散）：模仿 SVG feTurbulence→feDisplacementMap 的平滑噪声位移场——
- * value noise（sin-hash + smoothstep 插值）两 octave 叠加出低频湍流，
- * 双通道噪声驱动二维采样偏移（freq≈0.007，对应 HTML baseFrequency 0.006/0.009 的量级），
- * R/B 通道用 ±10% 偏移量分别采样模拟色散；最后做 saturate(1.85)+brightness(1.06) 玻璃提纯。
- * 输入/输出均为 premultiplied（对 a≈1 的背景做 rgb 线性混合不破坏预乘）。
+ * AGSL 液态折射（含色散）：严格对齐 SVG 滤镜链 feTurbulence→feGaussianBlur→feDisplacementMap——
+ * value noise 双 octave 叠加（baseFrequency 0.006/0.009 各向异性、seed 17，对应 feTurbulence 参数），
+ * 双通道噪声直接驱动采样偏移 offset = (noise-0.5)*distortPx（distortPx 即 feDisplacementMap 的
+ * scale，默认 0.3*90dp ≈ HTML scale=28px 的观感），R/B 通道 ±10% 偏移模拟色散；
+ * 最后做 saturate(1.85)+brightness(1.06)（对应 backdrop-filter 的 saturate/brightness，
+ * 与位移可交换序）。输入/输出均为 premultiplied（对 a≈1 的背景做 rgb 线性混合不破坏预乘）。
  */
 private const val LIQUID_ADSL = """
     uniform shader content;
     uniform float distortPx;
 
     float hash(float2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453);
+        return fract(sin(dot(p, vec2(127.1, 311.7) + 17.0)) * 43758.5453);
     }
     float vnoise(float2 p) {
         float2 i = floor(p);
@@ -612,13 +613,14 @@ private const val LIQUID_ADSL = """
         return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
     }
     float fbm(float2 p) {
-        return vnoise(p) * 0.65 + vnoise(p * 2.7 + 19.19) * 0.35;
+        // numOctaves=2：第二 octave 频率 ×2、幅度减半，归一化后 2/3 + 1/3
+        return vnoise(p) * 0.667 + vnoise(p * 2.0 + 43.7) * 0.333;
     }
 
     half4 main(float2 coord) {
-        float n1 = fbm(coord * 0.007);
-        float n2 = fbm(coord * 0.007 + vec2(37.7, 17.3));
-        float2 offset = (vec2(n1, n2) - 0.5) * 2.0 * distortPx;
+        float n1 = fbm(coord * vec2(0.006, 0.009));
+        float n2 = fbm(coord * vec2(0.006, 0.009) + vec2(37.7, 17.3));
+        float2 offset = (vec2(n1, n2) - 0.5) * distortPx;
         half4 r = content.eval(coord + offset * 1.10);
         half4 g = content.eval(coord + offset);
         half4 b = content.eval(coord + offset * 0.90);
@@ -772,8 +774,9 @@ fun parseGlassStrokeColor(hex: String): Color? =
 
 /** 玻璃字文字内容渲染模式：MASK=正常填充（仅作 mask alpha）、STROKE=外轮廓描边、SHADOW=深色投影；
  * DIGIT_MASK=仅数字正常填充作 mask（其余文字全透明，液态玻璃效果专用）、
- * DIGIT_HOLLOW=仅数字透明镂空（其余文字正常渲染，数字区域透出玻璃层） */
-enum class GlassTextMode { MASK, STROKE, SHADOW, DIGIT_MASK, DIGIT_HOLLOW }
+ * DIGIT_HOLLOW=仅数字透明镂空（其余文字正常渲染，数字区域透出玻璃层）、
+ * DIGIT_STROKE=仅数字以渐变 Brush 描边（HTML ::after 边缘透镜，其余文字全透明） */
+enum class GlassTextMode { MASK, STROKE, SHADOW, DIGIT_MASK, DIGIT_HOLLOW, DIGIT_STROKE }
 
 /** 玻璃字描边模式的文字样式：描边色 + Stroke 外轮廓（阴影独立为单独图层，不在此叠加） */
 fun glassStrokeTextStyle(base: TextStyle, strokeColor: Color, strokeWidthPx: Float): TextStyle =
@@ -795,6 +798,32 @@ fun glassShadowColor(theme: GlassTextTheme): Color = when (theme) {
 
 /** 玻璃字描边宽度（外露的轮廓线，线宽内半被玻璃层覆盖、只露外半 → 等效外描边） */
 val GlassStrokeWidth = 2.0.dp
+
+/** 液态玻璃边缘透镜描边宽度（HTML ::after 的 padding: 1.4px） */
+val LiquidGlassStrokeWidth = 1.4.dp
+
+/**
+ * 液态玻璃 ::after 边缘透镜描边的 135° 白色渐变 Brush：
+ * rgba(255,255,255, spec*1.1) → spec*0.08 → spec*0.06 → spec*0.75（对应 HTML 四段色标），
+ * 高光强度 [spec] 直接驱动描边明暗。
+ */
+fun liquidGlassStrokeBrush(spec: Float): Brush = Brush.linearGradient(
+    0f to Color.White.copy(alpha = (spec * 1.1f).coerceIn(0f, 1f)),
+    0.32f to Color.White.copy(alpha = spec * 0.08f),
+    0.62f to Color.White.copy(alpha = spec * 0.06f),
+    1f to Color.White.copy(alpha = spec * 0.75f),
+    start = Offset.Zero,
+    end = Offset.Infinite
+)
+
+/** 液态玻璃描边模式的文字样式：135° 渐变 Brush + Stroke 外轮廓（对应 HTML ::after 边缘透镜） */
+fun liquidGlassStrokeTextStyle(base: TextStyle, brush: Brush, strokeWidthPx: Float): TextStyle =
+    base.merge(
+        TextStyle(
+            brush = brush,
+            drawStyle = Stroke(width = strokeWidthPx, join = StrokeJoin.Round)
+        )
+    )
 
 /**
  * 玻璃字效果层（复刻 SVG 玻璃字的渲染顺序）：
@@ -899,19 +928,23 @@ fun GlassTextOverlay(
 }
 
 /**
- * 液态玻璃数字层（HyperOS 4 风格，仅作用于数字，配合 [GlassTextMode.DIGIT_MASK]/[GlassTextMode.DIGIT_HOLLOW]）：
+ * 液态玻璃数字层（严格按 HTML 参考实现，仅作用于数字，配合 [GlassTextMode.DIGIT_MASK]/[GlassTextMode.DIGIT_HOLLOW]）：
  * ① 数字层录制为 mask（不上屏）
- * ② 玻璃层：背景先模糊再经 AGSL 噪声折射 + 饱和度/亮度提升 → 玻璃底色 tint（浓度）渐变 →
- *    顶部/底部内高光 + 径向光斑 + 135° 斜向光泽 → 按数字 alpha（BlendMode.DstIn）裁切
+ * ② 玻璃层（对应 .glass 的 backdrop-filter + background，被数字 alpha DstIn 裁切）：
+ *    - 背景：blur(σ) → AGSL 折射位移 + saturate(1.85) + brightness(1.06)（CLAMP 补边，不做放大）
+ *    - 玻璃底色：140° 三段 tint 渐变（HTML background linear-gradient）
+ *    - ::before 高光遮罩：径向环境光斑（spec*0.50，at 50% -10%）+ 顶部线性光（spec*0.20），Screen 混合
  * ③ 可见文字层：数字透明镂空（透出玻璃），标题/日期/"天"正常渲染
+ * ④ ::after 边缘透镜描边（最上层）：数字以 135° 渐变 Brush 描边（[liquidGlassStrokeBrush]，
+ *    强度=高光强度），描边由调用方经 [GlassTextMode.DIGIT_STROKE] 的 modeStyle 应用
  *
  * @param liquidBlur 模糊强度（0..24dp）
  * @param liquidDensity 玻璃浓度（0..0.6，玻璃底色 tint alpha）
- * @param liquidRefraction 折射强度（0..1，渲染端换算为最大位移 0..90dp）
- * @param liquidHighlight 高光强度（0..1）
+ * @param liquidRefraction 折射强度（0..1，换算为 feDisplacementMap scale 0..90dp）
+ * @param liquidHighlight 高光强度（0..1，驱动 ::before 高光遮罩与 ::after 外围描边）
  * @param backdrop 背景内容（玻璃层内绘制一份并处理；底层清晰背景由调用方绘制）
  * @param textContent 文字内容；[GlassTextMode.DIGIT_MASK] 仅数字填充作 mask、
- *   [GlassTextMode.DIGIT_HOLLOW] 仅数字透明镂空
+ *   [GlassTextMode.DIGIT_HOLLOW] 仅数字透明镂空、[GlassTextMode.DIGIT_STROKE] 仅数字渐变描边
  */
 @Composable
 fun LiquidGlassNumberOverlay(
@@ -925,7 +958,7 @@ fun LiquidGlassNumberOverlay(
 ) {
     val density = LocalDensity.current
     val blurPx = with(density) { liquidBlur.coerceIn(0f, 24f).dp.toPx() }
-    // 折射强度 0..1 → 最大位移 0..90dp（默认 0.3 ≈ HTML feDisplacementMap scale=28px 的观感）
+    // 折射强度 0..1 → feDisplacementMap scale 0..90dp（默认 0.3 ≈ HTML scale=28px 的观感）
     val distortPx = with(density) { (liquidRefraction.coerceIn(0f, 1f) * 90f).dp.toPx() }
     val shader = rememberLiquidShader()
 
@@ -934,8 +967,8 @@ fun LiquidGlassNumberOverlay(
         liquidGlassEffect(shader, blurPx, distortPx)?.asComposeRenderEffect()
     }
 
-    // 玻璃底色 tint：固定冷调蓝白，浓度=liquidDensity（对应 HTML --tint/--alpha 的 140deg 三段渐变）
-    val tint = Color(0xFFDCE9F6)
+    // 玻璃底色 tint：HTML 默认玻璃色调 #C8E4FF，浓度=liquidDensity（140° 三段渐变）
+    val tint = Color(0xFFC8E4FF)
     val tintAlpha = liquidDensity.coerceIn(0f, 0.6f)
     val spec = liquidHighlight.coerceIn(0f, 1f)
     val textLayer = rememberGraphicsLayer()
@@ -952,7 +985,7 @@ fun LiquidGlassNumberOverlay(
             textContent(GlassTextMode.DIGIT_MASK)
         }
 
-        // ② 玻璃层：折射模糊背景 + tint + 高光，整体被数字 alpha 裁切 —— 内部处理、字形边缘锐利
+        // ② 玻璃层：折射模糊背景 + tint + ::before 高光遮罩，整体被数字 alpha 裁切
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -963,19 +996,15 @@ fun LiquidGlassNumberOverlay(
                     drawLayer(textLayer)
                 }
         ) {
-            // 折射模糊背景：整体放大避免模糊边缘的透明收缩露馅
+            // backdrop-filter：blur → 折射位移 + saturate + brightness（CLAMP 补齐模糊/位移的边缘采样）
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .graphicsLayer {
-                        scaleX = 1.12f
-                        scaleY = 1.12f
-                        renderEffect = glassRenderEffect
-                    }
+                    .graphicsLayer { renderEffect = glassRenderEffect }
             ) {
                 backdrop()
             }
-            // 玻璃底色 tint：140° 三段渐变（alpha+0.12 → alpha*0.45 → alpha+0.04）
+            // 玻璃底色 tint：140° 三段渐变（alpha+0.12 → alpha*0.45@48% → alpha+0.04）
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -993,33 +1022,7 @@ fun LiquidGlassNumberOverlay(
                         )
                     }
             )
-            // 顶部内高光（HTML inset 0 1px white(spec*0.95)）：上缘 6% 内渐隐
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .drawWithContent {
-                        drawRect(
-                            Brush.verticalGradient(
-                                0f to Color.White.copy(alpha = spec * 0.95f),
-                                0.06f to Color.Transparent
-                            )
-                        )
-                    }
-            )
-            // 底部内高光（HTML inset 0 -1px white(spec*0.30)）
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .drawWithContent {
-                        drawRect(
-                            Brush.verticalGradient(
-                                0.94f to Color.Transparent,
-                                1f to Color.White.copy(alpha = spec * 0.30f)
-                            )
-                        )
-                    }
-            )
-            // 径向环境光斑（HTML radial-gradient 90% 70% at 50% -10%，mix-blend screen）
+            // ::before 高光遮罩：径向光斑 + 顶部线性光，Screen 混合（强度=高光强度）
             Box(
                 modifier = Modifier
                     .matchParentSize()
@@ -1030,25 +1033,15 @@ fun LiquidGlassNumberOverlay(
                                 0.58f to Color.Transparent,
                                 center = Offset(size.width * 0.5f, -size.height * 0.1f),
                                 radius = max(size.width, size.height) * 0.9f
-                            )
+                            ),
+                            blendMode = BlendMode.Screen
                         )
-                    }
-            )
-            // 135° 边缘透镜光泽（HTML ::after 135deg 渐变：spec*1.1 → 0.08 → 0.06 → 0.75）
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .drawWithContent {
-                        val dir = Offset(1f, 1f)
                         drawRect(
-                            Brush.linearGradient(
-                                0f to Color.White.copy(alpha = (spec * 1.1f).coerceAtMost(1f)),
-                                0.32f to Color.White.copy(alpha = spec * 0.08f),
-                                0.62f to Color.White.copy(alpha = spec * 0.06f),
-                                1f to Color.White.copy(alpha = spec * 0.75f),
-                                start = Offset.Zero,
-                                end = dir * max(size.width, size.height)
-                            )
+                            Brush.verticalGradient(
+                                0f to Color.White.copy(alpha = spec * 0.20f),
+                                0.42f to Color.Transparent
+                            ),
+                            blendMode = BlendMode.Screen
                         )
                     }
             )
@@ -1057,6 +1050,11 @@ fun LiquidGlassNumberOverlay(
         // ③ 可见文字层：数字透明镂空（透出玻璃），其余文字正常渲染
         Box(modifier = Modifier.matchParentSize()) {
             textContent(GlassTextMode.DIGIT_HOLLOW)
+        }
+
+        // ④ ::after 边缘透镜描边（最上层）：数字 135° 渐变描边，样式由调用方 modeStyle 提供
+        Box(modifier = Modifier.matchParentSize()) {
+            textContent(GlassTextMode.DIGIT_STROKE)
         }
     }
 }
