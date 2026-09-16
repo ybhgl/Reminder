@@ -15,3 +15,16 @@
 local.properties
 app/release
 keystore.properties
+project_memory.md
+out.txt
+size.txt
+build/
+/handover/
+/plans/
+/.kilo/
+/.kilocode/
+/.kotlin/
+/.trae/
+/.vscode/
+/.zcode/
+/.idea/studiobot.xml
