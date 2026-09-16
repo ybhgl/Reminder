@@ -34,6 +34,7 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.FormatColorFill
 import androidx.compose.material.icons.filled.Palette
 import androidx.compose.material.icons.filled.UploadFile
+import androidx.compose.material.icons.filled.WaterDrop
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
@@ -603,7 +604,8 @@ private val FONT_FILE_MIME_TYPES = arrayOf(
 private val FONT_EFFECT_META = listOf(
     Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "跟随背景自动选择黑/白字体"),
     Triple(NumberFontEffect.SOLID, Icons.Filled.FormatColorFill, "自定义字体颜色及透明度"),
-    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "文字区域高斯模糊")
+    Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "文字区域高斯模糊"),
+    Triple(NumberFontEffect.GLASS, Icons.Filled.WaterDrop, "数字字体液态玻璃效果")
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -733,7 +735,9 @@ private fun FontSection(
                             when (effect) {
                                 NumberFontEffect.AUTO -> "默认"
                                 NumberFontEffect.SOLID -> "纯色"
-                                else -> "模糊"
+                                NumberFontEffect.MIXED -> "反色"
+                                NumberFontEffect.BLUR -> "模糊"
+                                NumberFontEffect.GLASS -> "液态玻璃"
                             },
                             style = MaterialTheme.typography.bodyMedium
                         )
@@ -818,84 +822,35 @@ private fun FontSection(
                 )
 
                 SectionGap()
-                // 明暗模板
-                Text(
-                    "模糊颜色",
-                    style = MaterialTheme.typography.bodyMedium,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                GlassAppearanceBlock(
+                    config = config,
+                    themeLabel = "模糊颜色",
+                    onShowStrokeColorPicker = onShowStrokeColorPicker,
+                    onUpdate = onUpdate
                 )
-                SectionGap()
-                val themeOptions = listOf("DARK" to "暗色", "LIGHT" to "亮色")
-                SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-                    themeOptions.forEachIndexed { index, (value, label) ->
-                        SegmentedButton(
-                            selected = config.customFontGlassTheme == value,
-                            onClick = { onUpdate(config.copy(customFontGlassTheme = value)) },
-                            shape = SegmentedButtonDefaults.itemShape(index, themeOptions.size),
-                            icon = {},
-                            label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelLarge) }
-                        )
-                    }
-                }
+            }
+        }
 
-                SectionGap()
-                // 投影：独立的文字投影图层（描边上方）
-                SwitchCardRow(
-                    title = "投影",
-                    subtitle = "文字投影增加立体感",
-                    checked = config.customFontShadowEnabled,
-                    onCheckedChange = { onUpdate(config.copy(customFontShadowEnabled = it)) }
+        LinkedPanel(visible = currentEffect == NumberFontEffect.GLASS && isCustomBackground) {
+            // 环带厚度（6%）与高光强度（90%）为固定参数不暴露；
+            // 折射强度最低 0.1（为 0 时无折射流动感）
+            Column {
+                SliderRow(
+                    title = "模糊程度",
+                    valueText = "${config.customGlassBlur.roundToInt()}",
+                    value = config.customGlassBlur,
+                    valueRange = 0f..24f,
+                    onValueChange = { onUpdate(config.copy(customGlassBlur = it)) }
                 )
 
                 SectionGap()
-                // 清晰描边：与描边颜色行同款背景卡片，成组展示
-                SwitchCardRow(
-                    title = "描边",
-                    subtitle = "字体外圈描边",
-                    checked = config.customFontStrokeEnabled,
-                    onCheckedChange = { onUpdate(config.copy(customFontStrokeEnabled = it)) }
+                SliderRow(
+                    title = "折射强度",
+                    valueText = "${(config.customGlassRefraction * 100).roundToInt()}%",
+                    value = config.customGlassRefraction.coerceIn(0.1f, 1f),
+                    valueRange = 0.1f..1f,
+                    onValueChange = { onUpdate(config.copy(customGlassRefraction = it)) }
                 )
-
-                // 描边颜色：联动展开，间距内化
-                LinkedPanel(visible = config.customFontStrokeEnabled) {
-                    Row(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .clip(RoundedCornerShape(12.dp))
-                            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
-                            .padding(12.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                        horizontalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        // 未自定义时预览模板默认描边色（随玻璃模板联动切换）
-                        val defaultStrokeColor = if (config.customFontGlassTheme == "LIGHT") {
-                            Color(0xFF0A1418)
-                        } else {
-                            Color(0xFFF2FBFF)
-                        }
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(parseHexSafe(config.customFontStrokeColor, defaultStrokeColor))
-                                .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
-                        )
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text("描边颜色", style = MaterialTheme.typography.bodyMedium)
-                            Text(
-                                // 未选择时展示模板默认描边色的 hex 值
-                                config.customFontStrokeColor.ifEmpty {
-                                    if (config.customFontGlassTheme == "LIGHT") "#0A1418" else "#F2FBFF"
-                                }.uppercase(),
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        OutlinedButton(onClick = onShowStrokeColorPicker, shape = RoundedCornerShape(12.dp)) {
-                            Text("选择颜色")
-                        }
-                    }
-                }
             }
         }
     }
@@ -911,6 +866,99 @@ private fun FontSection(
             dismissText = "取消",
             destructive = true
         )
+    }
+}
+
+/**
+ * 玻璃类效果（BLUR/GLASS）共用的外观设置块：明暗模板 + 投影 + 清晰描边（含联动描边颜色行）。
+ * 内含联动项，容器禁用 spacedBy，间距用 SectionGap 手动管理。
+ */
+@Composable
+private fun GlassAppearanceBlock(
+    config: PersonalizationConfig,
+    themeLabel: String,
+    onShowStrokeColorPicker: () -> Unit,
+    onUpdate: (PersonalizationConfig) -> Unit
+) {
+    Column {
+        // 明暗模板
+        Text(
+            themeLabel,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onSurfaceVariant
+        )
+        SectionGap()
+        val themeOptions = listOf("DARK" to "暗色", "LIGHT" to "亮色")
+        SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+            themeOptions.forEachIndexed { index, (value, label) ->
+                SegmentedButton(
+                    selected = config.customFontGlassTheme == value,
+                    onClick = { onUpdate(config.copy(customFontGlassTheme = value)) },
+                    shape = SegmentedButtonDefaults.itemShape(index, themeOptions.size),
+                    icon = {},
+                    label = { Text(label, maxLines = 1, style = MaterialTheme.typography.labelLarge) }
+                )
+            }
+        }
+
+        SectionGap()
+        // 投影：独立的文字投影图层（描边上方）
+        SwitchCardRow(
+            title = "投影",
+            subtitle = "文字投影增加立体感",
+            checked = config.customFontShadowEnabled,
+            onCheckedChange = { onUpdate(config.copy(customFontShadowEnabled = it)) }
+        )
+
+        SectionGap()
+        // 清晰描边：与描边颜色行同款背景卡片，成组展示
+        SwitchCardRow(
+            title = "描边",
+            subtitle = "字体外圈描边",
+            checked = config.customFontStrokeEnabled,
+            onCheckedChange = { onUpdate(config.copy(customFontStrokeEnabled = it)) }
+        )
+
+        // 描边颜色：联动展开，间距内化
+        LinkedPanel(visible = config.customFontStrokeEnabled) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .padding(12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                // 未自定义时预览模板默认描边色（随玻璃模板联动切换）
+                val defaultStrokeColor = if (config.customFontGlassTheme == "LIGHT") {
+                    Color(0xFF0A1418)
+                } else {
+                    Color(0xFFF2FBFF)
+                }
+                Box(
+                    modifier = Modifier
+                        .size(32.dp)
+                        .clip(CircleShape)
+                        .background(parseHexSafe(config.customFontStrokeColor, defaultStrokeColor))
+                        .border(1.dp, MaterialTheme.colorScheme.outline.copy(alpha = 0.3f), CircleShape)
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text("描边颜色", style = MaterialTheme.typography.bodyMedium)
+                    Text(
+                        // 未选择时展示模板默认描边色的 hex 值
+                        config.customFontStrokeColor.ifEmpty {
+                            if (config.customFontGlassTheme == "LIGHT") "#0A1418" else "#F2FBFF"
+                        }.uppercase(),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                OutlinedButton(onClick = onShowStrokeColorPicker, shape = RoundedCornerShape(12.dp)) {
+                    Text("选择颜色")
+                }
+            }
+        }
     }
 }
 
