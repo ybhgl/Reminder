@@ -1202,6 +1202,9 @@ private fun DayCountRow(
     // 仅 STROKE/SHADOW 属于玻璃覆盖层模式；MASK（正常渲染）必须走常规颜色，
     // 否则颜色参数被置 Unspecified 会让"天"字回落主题默认色（深色模式下锁死白色）
     val isGlassOverlay = glassMode == GlassTextMode.STROKE || glassMode == GlassTextMode.SHADOW
+    // HIDE_NUMBERS：液态玻璃底层——数字完全透明（玻璃是数字的唯一呈现），
+    // 否则底层文字会从圆角玻璃收缩边缘露出白边
+    val hideNumbers = glassMode == GlassTextMode.HIDE_NUMBERS
     Row(
         modifier = modifier
             .fillMaxWidth(),
@@ -1225,7 +1228,11 @@ private fun DayCountRow(
             modifier = Modifier
                 .weight(1f, fill = false)
                 .alignByBaseline(),
-            color = if (isGlassOverlay) Color.Unspecified else visuals.numberColor,
+            color = when {
+                isGlassOverlay -> Color.Unspecified
+                hideNumbers -> Color.Transparent
+                else -> visuals.numberColor
+            },
             checkHeight = false
         )
         Spacer(modifier = Modifier.width(spacing))
@@ -1239,8 +1246,9 @@ private fun DayCountRow(
             style = styledSuffixStyle,
             color = when {
                 isGlassOverlay -> Color.Unspecified
-                // 液态玻璃仅数字生效：单位字在 mask 中透明
-                glassMode == GlassTextMode.NUMBERS_ONLY -> Color.Transparent
+                // 液态玻璃仅数字生效：单位字透明（mask 占位 / 底层隐藏）
+                glassMode == GlassTextMode.NUMBERS_ONLY || glassMode == GlassTextMode.HIDE_NUMBERS ->
+                    Color.Transparent
                 else -> visuals.secondaryTextColor
             },
             modifier = Modifier.alignByBaseline()
@@ -2385,10 +2393,10 @@ private fun ReminderSummaryCard(
                     fun modeStyle(base: TextStyle): TextStyle = when (mode) {
                             GlassTextMode.STROKE -> glassStrokeTextStyle(base, glassStrokeResolved, glassStrokeWidthPx)
                             GlassTextMode.SHADOW -> glassShadowTextStyle(base, glassShadowResolved)
-                            GlassTextMode.MASK, GlassTextMode.NUMBERS_ONLY -> base
+                            GlassTextMode.MASK, GlassTextMode.NUMBERS_ONLY, GlassTextMode.HIDE_NUMBERS -> base
                         }
                         fun modeColor(c: Color): Color = when (mode) {
-                            GlassTextMode.MASK -> c
+                            GlassTextMode.MASK, GlassTextMode.HIDE_NUMBERS -> c
                             // 液态玻璃仅数字生效：其余文字在 mask 中透明占位（保证排版对齐）
                             GlassTextMode.NUMBERS_ONLY -> Color.Transparent
                             else -> Color.Unspecified
@@ -2494,8 +2502,8 @@ private fun ReminderSummaryCard(
                     )
                 } else if (liquidGlassActive && backgroundSpec != null) {
                     val spec = numberRenderSpec!!
-                    // 底层：全部文字正常渲染（液态玻璃仅数字生效）
-                    CardTexts(GlassTextMode.MASK)
+                    // 底层：数字完全透明（玻璃是数字的唯一呈现，避免白边），其余文字正常渲染
+                    CardTexts(GlassTextMode.HIDE_NUMBERS)
                     // 玻璃层：仅数字 mask（其余文字在 mask 中透明占位）
                     LiquidGlassTextOverlay(
                         blur = spec.liquidBlur,

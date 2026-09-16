@@ -695,8 +695,10 @@ fun parseGlassStrokeColor(hex: String): Color? =
     hex.takeIf { it.isNotEmpty() }?.let { parseHexColorSafe(it) }
 
 /** 玻璃字文字内容渲染模式：MASK=正常填充（仅作 mask alpha）、STROKE=外轮廓描边、
- * SHADOW=深色投影、NUMBERS_ONLY=仅数字可见（其余文字透明占位，液态玻璃仅数字生效用） */
-enum class GlassTextMode { MASK, STROKE, SHADOW, NUMBERS_ONLY }
+ * SHADOW=深色投影、NUMBERS_ONLY=仅数字可见（其余文字透明占位，液态玻璃 mask 用）、
+ * HIDE_NUMBERS=仅数字透明（其余文字正常，液态玻璃底层用——玻璃完全替代数字像素，
+ * 避免底层文字从圆角玻璃收缩边缘露出白边） */
+enum class GlassTextMode { MASK, STROKE, SHADOW, NUMBERS_ONLY, HIDE_NUMBERS }
 
 /** 玻璃字描边模式的文字样式：描边色 + Stroke 外轮廓（阴影独立为单独图层，不在此叠加） */
 fun glassStrokeTextStyle(base: TextStyle, strokeColor: Color, strokeWidthPx: Float): TextStyle =

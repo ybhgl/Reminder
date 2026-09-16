@@ -64,14 +64,6 @@ private const val LIQUID_GLASS_LENS_ADSL = """
         if (m < 0.01) {
             return half4(0.0);
         }
-        float sd = (0.5 - m) * refractionHeightPx * 2.0;
-        // edgeT：0=深内部 → 1=字形边缘
-        float edgeT = clamp(1.0 - (-sd) / refractionHeightPx, 0.0, 1.0);
-
-        // 形状 alpha：高斯场在 0.5 处阈值化——尖角天然圆化（圆角半径≈模糊σ），
-        // smoothstep 带宽≈2px 提供亚像素抗锯齿边缘
-        float aa = 1.6 / max(refractionHeightPx, 1.0);
-        float shapeAlpha = smoothstep(0.5 - aa, 0.5 + aa, m);
 
         // 外法线：场梯度指向字内（m 内大外小），取负 = 指向字外；
         // 叠加指向层中心的径向分量增强纵深
@@ -80,6 +72,19 @@ private const val LIQUID_GLASS_LENS_ADSL = """
             content.eval(coord + float2(e, 0.0)).a - content.eval(coord - float2(e, 0.0)).a,
             content.eval(coord + float2(0.0, e)).a - content.eval(coord - float2(0.0, e)).a
         );
+
+        // 形状 alpha：高斯场 0.5 阈值化（尖角天然圆化）；
+        // AA 带宽按局部梯度归一（fieldGrad 为 ±1.5px 中心差分 ≈ 3×斜率，
+        // 0.7×gradMag ≈ 恒定 4px 过渡带），与场模糊 σ 无关——弯曲处同样平滑无锯齿；
+        // 深内部梯度→0、aa→0，m=1 时 smoothstep 恒为 1
+        float gradMag = length(fieldGrad);
+        float aa = min(0.7 * gradMag, 0.5);
+        float shapeAlpha = smoothstep(0.5 - aa, 0.5 + aa, m);
+
+        float sd = (0.5 - m) * refractionHeightPx * 2.0;
+        // edgeT：0=深内部 → 1=字形边缘
+        float edgeT = clamp(1.0 - (-sd) / refractionHeightPx, 0.0, 1.0);
+
         float2 centered = coord - size * 0.5;
         float2 normal = normalize(-fieldGrad + 0.35 * normalize(centered + float2(0.0001)));
         float2 light = float2(cos(lightAngle), sin(lightAngle));
