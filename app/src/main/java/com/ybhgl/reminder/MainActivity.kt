@@ -2520,6 +2520,7 @@ private fun ReminderSummaryCard(
                     LiquidGlassTextOverlay(
                         blur = spec.liquidBlur,
                         refraction = spec.liquidRefraction,
+                        fontWeight = visuals.numberFontWeight,
                         modifier = Modifier.matchParentSize(),
                         backdrop = {
                             CardBackgroundLayer(

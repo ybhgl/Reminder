@@ -21,6 +21,7 @@ import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.rememberGraphicsLayer
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
@@ -136,6 +137,8 @@ private fun rememberLiquidGlassShader(): RuntimeShader? {
  *
  * @param blur 流动纹理磨砂模糊半径（dp，0..24）
  * @param refraction 流动折射强度（0..1，映射采样位移比例）
+ * @param fontWeight 数字字重（与 mask 实际渲染字重一致）：距离场 σ 随字重收缩，
+ *   防止细笔画经高斯模糊后场峰值低于 0.5 阈值导致字形消失
  * @param backdrop 背景内容（玻璃层内折射/模糊采样；底层清晰背景由调用方绘制）
  * @param textContent 数字内容（应以 [GlassTextMode.NUMBERS_ONLY] 渲染：数字正常填充、
  *   其余文字透明占位，保证 mask 与底层排版对齐）
@@ -145,6 +148,7 @@ fun LiquidGlassTextOverlay(
     blur: Float,
     refraction: Float,
     modifier: Modifier = Modifier,
+    fontWeight: FontWeight = FontWeight.Bold,
     backdrop: @Composable () -> Unit,
     textContent: @Composable () -> Unit
 ) {
@@ -160,8 +164,11 @@ fun LiquidGlassTextOverlay(
     val refractionHeightPx = thickness.coerceIn(0f, 1f) * 0.5f * minDimensionPx
     // 折射强度（0.1..1，下限防止历史存储的 0 值使效果退化）→ 流动采样最大位移（负值 = 向字内采样）
     val refractionAmountPx = -refraction.coerceIn(0.1f, 1f) * 0.3f * minDimensionPx
-    // 距离场模糊半径 = 倒角带宽的一半（高斯过渡带宽 ≈ 2σ，对齐倒角带）
-    val fieldSigmaPx = (refractionHeightPx * 0.5f).coerceAtLeast(1f)
+    // 距离场模糊半径 = 倒角带宽的一半（高斯过渡带宽 ≈ 2σ，对齐倒角带）；
+    // σ 必须随字重收缩：细字重笔画窄，σ 过大时高斯场峰值低于 0.5 阈值（阈值化后整条笔画消失），
+    // 峰值 ≥ 0.5 要求 σ ≲ 0.74×笔画宽度，故按字重线性缩放（下限 0.15 防止 σ 退化过锐）
+    val weightScale = (fontWeight.weight / 700f).coerceIn(0.15f, 1f)
+    val fieldSigmaPx = (refractionHeightPx * 0.5f * weightScale).coerceAtLeast(1f)
     val frostSigma = with(density) { blur.coerceIn(0f, 24f).dp }
     val highlightIntensity = highlight.coerceIn(0f, 1f)
 

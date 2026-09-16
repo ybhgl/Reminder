@@ -1194,6 +1194,7 @@ fun ReminderDetailCard(
                         com.ybhgl.reminder.ui.common.LiquidGlassTextOverlay(
                             blur = spec.liquidBlur,
                             refraction = spec.liquidRefraction,
+                            fontWeight = visuals.numberFontWeight,
                             modifier = Modifier.matchParentSize(),
                             backdrop = {
                                 com.ybhgl.reminder.ui.common.CardBackgroundLayer(
