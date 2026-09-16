@@ -93,7 +93,15 @@ data class NumberEffectSpec(
     /** BLUR 玻璃字描边开关 */
     val strokeEnabled: Boolean = true,
     /** BLUR 玻璃字描边颜色（hex），空 = 模板默认 */
-    val strokeColor: String = ""
+    val strokeColor: String = "",
+    /** 液态玻璃（GLASS）模糊度（0..24dp，磨砂雾面） */
+    val liquidBlur: Float = 12f,
+    /** 液态玻璃环带厚度（0..1，映射折射环带宽度比例） */
+    val liquidThickness: Float = 0.13f,
+    /** 液态玻璃折射强度（0..1，映射边缘采样位移比例） */
+    val liquidRefraction: Float = 0.3f,
+    /** 液态玻璃高光强度（0..1） */
+    val liquidHighlight: Float = 0.6f
 )
 
 /** 卡片背景配置（渲染层使用的聚合参数） */
@@ -160,7 +168,11 @@ val ReminderItem.numberEffectSpec: NumberEffectSpec
         glassTheme = customFontGlassTheme,
         shadowEnabled = customFontShadowEnabled,
         strokeEnabled = customFontStrokeEnabled,
-        strokeColor = customFontStrokeColor
+        strokeColor = customFontStrokeColor,
+        liquidBlur = customGlassBlur,
+        liquidThickness = customGlassDensity,
+        liquidRefraction = customGlassRefraction,
+        liquidHighlight = customGlassHighlight
     )
 
 /** 异步加载卡片背景位图（带内存缓存：命中缓存时首帧即有图，避免 null→图片 闪烁），路径为空或加载失败返回 null */
@@ -317,11 +329,13 @@ fun resolveEffectiveFontEffect(
         } else EffectiveFontEffect()
 
         NumberFontEffect.GLASS -> if (isCustomBg) {
-            // 玻璃渲染效果已移除（设置面板不再提供），存量数据按自动反色显示
+            // 液态玻璃（LiquidGlassTextOverlay）：与 BLUR 相同的参数下发链路，
+            // 液态参数随 spec（liquidBlur/liquidThickness/liquidRefraction/liquidHighlight）传递
             EffectiveFontEffect(
                 numberColor = autoColor,
                 cardTextColor = autoColor,
-                secondaryTextColor = autoColor?.copy(alpha = 0.92f)
+                secondaryTextColor = autoColor?.copy(alpha = 0.92f),
+                numberRender = spec
             )
         } else EffectiveFontEffect()
     }
@@ -680,8 +694,9 @@ fun parseGlassTextTheme(theme: String): GlassTextTheme =
 fun parseGlassStrokeColor(hex: String): Color? =
     hex.takeIf { it.isNotEmpty() }?.let { parseHexColorSafe(it) }
 
-/** 玻璃字文字内容渲染模式：MASK=正常填充（仅作 mask alpha）、STROKE=外轮廓描边、SHADOW=深色投影 */
-enum class GlassTextMode { MASK, STROKE, SHADOW }
+/** 玻璃字文字内容渲染模式：MASK=正常填充（仅作 mask alpha）、STROKE=外轮廓描边、
+ * SHADOW=深色投影、NUMBERS_ONLY=仅数字可见（其余文字透明占位，液态玻璃仅数字生效用） */
+enum class GlassTextMode { MASK, STROKE, SHADOW, NUMBERS_ONLY }
 
 /** 玻璃字描边模式的文字样式：描边色 + Stroke 外轮廓（阴影独立为单独图层，不在此叠加） */
 fun glassStrokeTextStyle(base: TextStyle, strokeColor: Color, strokeWidthPx: Float): TextStyle =

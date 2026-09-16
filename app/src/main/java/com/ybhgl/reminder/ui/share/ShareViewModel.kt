@@ -83,7 +83,11 @@ data class ShareOptions(
     val customFontShadowEnabled: Boolean = false,
     val customFontStrokeEnabled: Boolean = false,
     val customFontStrokeColor: String = "",
-    val customFontWeight: Float = 700f
+    val customFontWeight: Float = 700f,
+    val customGlassBlur: Float = 12f,
+    val customGlassDensity: Float = 0.13f,
+    val customGlassRefraction: Float = 0.3f,
+    val customGlassHighlight: Float = 0.6f
 )
 
 /** 从分享会话配置提取个性化设置页所需的初始配置 */
@@ -113,7 +117,11 @@ fun ShareOptions.toPersonalizationConfig(): PersonalizationConfig = Personalizat
     customFontShadowEnabled = customFontShadowEnabled,
     customFontStrokeEnabled = customFontStrokeEnabled,
     customFontStrokeColor = customFontStrokeColor,
-    customFontWeight = customFontWeight
+    customFontWeight = customFontWeight,
+    customGlassBlur = customGlassBlur,
+    customGlassDensity = customGlassDensity,
+    customGlassRefraction = customGlassRefraction,
+    customGlassHighlight = customGlassHighlight
 )
 
 class ShareViewModel(
@@ -163,7 +171,11 @@ class ShareViewModel(
                     customFontShadowEnabled = it.customFontShadowEnabled,
                     customFontStrokeEnabled = it.customFontStrokeEnabled,
                     customFontStrokeColor = it.customFontStrokeColor,
-                    customFontWeight = it.customFontWeight
+                    customFontWeight = it.customFontWeight,
+                    customGlassBlur = it.customGlassBlur,
+                    customGlassDensity = it.customGlassDensity,
+                    customGlassRefraction = it.customGlassRefraction,
+                    customGlassHighlight = it.customGlassHighlight
                 )
             }
             _reminder.value = item
@@ -200,7 +212,11 @@ class ShareViewModel(
             customFontShadowEnabled = options.customFontShadowEnabled,
             customFontStrokeEnabled = options.customFontStrokeEnabled,
             customFontStrokeColor = options.customFontStrokeColor,
-            customFontWeight = options.customFontWeight
+            customFontWeight = options.customFontWeight,
+            customGlassBlur = options.customGlassBlur,
+            customGlassDensity = options.customGlassDensity,
+            customGlassRefraction = options.customGlassRefraction,
+            customGlassHighlight = options.customGlassHighlight
         )
     }
 
@@ -237,7 +253,11 @@ class ShareViewModel(
                 customFontShadowEnabled = config.customFontShadowEnabled,
                 customFontStrokeEnabled = config.customFontStrokeEnabled,
                 customFontStrokeColor = config.customFontStrokeColor,
-                customFontWeight = config.customFontWeight
+                customFontWeight = config.customFontWeight,
+                customGlassBlur = config.customGlassBlur,
+                customGlassDensity = config.customGlassDensity,
+                customGlassRefraction = config.customGlassRefraction,
+                customGlassHighlight = config.customGlassHighlight
             )
         }
     }
