@@ -1246,9 +1246,9 @@ private fun DayCountRow(
             style = styledSuffixStyle,
             color = when {
                 isGlassOverlay -> Color.Unspecified
-                // 液态玻璃仅数字生效：单位字透明（mask 占位 / 底层隐藏）
-                glassMode == GlassTextMode.NUMBERS_ONLY || glassMode == GlassTextMode.HIDE_NUMBERS ->
-                    Color.Transparent
+                // 仅 mask（NUMBERS_ONLY）中单位字透明；底层（HIDE_NUMBERS）只隐藏数字，
+                // "天"字必须正常渲染，否则会随数字一起消失
+                glassMode == GlassTextMode.NUMBERS_ONLY -> Color.Transparent
                 else -> visuals.secondaryTextColor
             },
             modifier = Modifier.alignByBaseline()
