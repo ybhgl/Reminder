@@ -559,75 +559,105 @@ private const val FLUTED_ADSL = """
 internal fun rememberLiquidShader(): RuntimeShader? {
     if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return null
     return remember {
-        runCatching { RuntimeShader(LIQUID_ADSL) }
+        runCatching { RuntimeShader(LIQUID_LENS_ADSL) }
             .onFailure { android.util.Log.e("CardBackground", "液态玻璃 AGSL 编译失败", it) }
             .getOrNull()
     }
 }
 
 /**
- * 液态玻璃渲染链：先磨砂模糊，再做噪声场折射位移 + 饱和度/亮度提升
- * （createChainEffect(a, b) 中 b 先执行，对应 HTML backdrop-filter 的 blur → url(#lgGlass) 顺序）。
- * blurPx <= 0 时仅保留 shader 处理；shader 为 null（API<33）时仅模糊。
+ * AGSL 液态透镜（对齐 Kyant0/AndroidLiquidGlass 的 RoundedRectRefraction + 色散 + 边缘光）：
+ * content 为合成流——背景（alpha 半透明化）+ 模糊数字 mask（Plus 叠入 alpha 通道，
+ * alpha = 0.5 + 0.5·blurA，blurA∈[0,1] 是单调的距离代理）——
+ * field01 = (a-0.5)·2 解码出模糊场，sd = (field01-0.5)·fieldScalePx（内负外正近似）：
+ * 深内部（-sd >= refractionHeightPx）背景直通不扭曲；
+ * 边缘环带内：d = circleMap(1 - (-sd)/refH) * refractionPx（circleMap = 1-sqrt(1-x²)，
+ * 边缘最强、向内收敛的圆弧透镜剖面），方向 = 场梯度（外法线，refractionPx 传负值向内采样）；
+ * 色散 = 7 抽头彩虹采样（通道权重归一）；rim 边缘光 = pow(|dot(normal, lightDir)|, 1)·rimSpec。
+ * 输入/输出均为 premultiplied。
  */
-private fun liquidGlassEffect(shader: RuntimeShader?, blurPx: Float, distortPx: Float): RenderEffect? {
-    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.S) return null
-    val blurEffect = if (blurPx > 0f) {
-        RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP)
-    } else null
-    val shaderEffect = shader?.let {
-        it.setFloatUniform("distortPx", distortPx)
-        RenderEffect.createRuntimeShaderEffect(it, "content")
-    }
-    return when {
-        shaderEffect != null && blurEffect != null -> RenderEffect.createChainEffect(shaderEffect, blurEffect)
-        shaderEffect != null -> shaderEffect
-        blurEffect != null -> blurEffect
-        else -> null
-    }
-}
-
-/**
- * AGSL 液态折射（含色散）：严格对齐 SVG 滤镜链 feTurbulence→feGaussianBlur→feDisplacementMap——
- * value noise 双 octave 叠加（baseFrequency 0.006/0.009 各向异性、seed 17，对应 feTurbulence 参数），
- * 双通道噪声直接驱动采样偏移 offset = (noise-0.5)*distortPx（distortPx 即 feDisplacementMap 的
- * scale，默认 0.3*90dp ≈ HTML scale=28px 的观感），R/B 通道 ±10% 偏移模拟色散；
- * 最后做 saturate(1.85)+brightness(1.06)（对应 backdrop-filter 的 saturate/brightness，
- * 与位移可交换序）。输入/输出均为 premultiplied（对 a≈1 的背景做 rgb 线性混合不破坏预乘）。
- */
-private const val LIQUID_ADSL = """
+private const val LIQUID_LENS_ADSL = """
     uniform shader content;
-    uniform float distortPx;
+    uniform float refractionPx;
+    uniform float refractionHeightPx;
+    uniform float fieldScalePx;
+    uniform float rimSpec;
+    uniform float lightAngle;
 
-    float hash(float2 p) {
-        return fract(sin(dot(p, vec2(127.1, 311.7) + 17.0)) * 43758.5453);
+    float circleMap(float x) {
+        return 1.0 - sqrt(1.0 - x * x);
     }
-    float vnoise(float2 p) {
-        float2 i = floor(p);
-        float2 f = fract(p);
-        float2 u = f * f * (3.0 - 2.0 * f);
-        float a = hash(i);
-        float b = hash(i + vec2(1.0, 0.0));
-        float c = hash(i + vec2(0.0, 1.0));
-        float d = hash(i + vec2(1.0, 1.0));
-        return mix(mix(a, b, u.x), mix(c, d, u.x), u.y);
-    }
-    float fbm(float2 p) {
-        // numOctaves=2：第二 octave 频率 ×2、幅度减半，归一化后 2/3 + 1/3
-        return vnoise(p) * 0.667 + vnoise(p * 2.0 + 43.7) * 0.333;
+
+    // 解码 premultiplied 采样为直色（合成流 a < 1，除法还原；a=0 保护）
+    half4 unpack(half4 c) {
+        return half4(c.a > 0.0 ? c.rgb / c.a : half3(0.0), 1.0);
     }
 
     half4 main(float2 coord) {
-        float n1 = fbm(coord * vec2(0.006, 0.009));
-        float n2 = fbm(coord * vec2(0.006, 0.009) + vec2(37.7, 17.3));
-        float2 offset = (vec2(n1, n2) - 0.5) * distortPx;
-        half4 r = content.eval(coord + offset * 1.10);
-        half4 g = content.eval(coord + offset);
-        half4 b = content.eval(coord + offset * 0.90);
-        half4 c = half4(r.r, g.g, b.b, g.a);
-        float lum = dot(c.rgb, half3(0.2126, 0.7152, 0.0722));
-        c.rgb = mix(half3(lum), c.rgb, half3(1.85)) * 1.06;
-        return c;
+        float field01 = (content.eval(coord).a - 0.5) * 2.0;
+        float sd = (field01 - 0.5) * fieldScalePx;
+        if (-sd >= refractionHeightPx) {
+            return unpack(content.eval(coord));
+        }
+
+        // 外法线：距离场 ±1.5px 邻域差分（场增大方向 = 外）
+        float e = 1.5;
+        float2 grad = float2(
+            content.eval(coord + float2(e, 0.0)).a - content.eval(coord - float2(e, 0.0)).a,
+            content.eval(coord + float2(0.0, e)).a - content.eval(coord - float2(0.0, e)).a
+        );
+        float2 normal = normalize(grad + float2(0.0001));
+
+        float x = 1.0 - (-sd) / refractionHeightPx;
+        float d = circleMap(x) * refractionPx;
+        float2 refractedCoord = coord + d * normal;
+
+        // 7 抽头彩虹色散：强度随环带位置（边缘最强），通道权重归一
+        float dispersionIntensity = x;
+        float2 disp = d * normal * dispersionIntensity;
+
+        half4 color = half4(0.0);
+        half4 tap0 = unpack(content.eval(refractedCoord + disp));
+        color.r += tap0.r / 3.5;
+        half4 tap1 = unpack(content.eval(refractedCoord + disp * (2.0 / 3.0)));
+        color.r += tap1.r / 3.5;
+        color.g += tap1.g / 7.0;
+        half4 tap2 = unpack(content.eval(refractedCoord + disp * (1.0 / 3.0)));
+        color.r += tap2.r / 3.5;
+        color.g += tap2.g / 3.5;
+        half4 tap3 = unpack(content.eval(refractedCoord));
+        color.g += tap3.g / 3.5;
+        half4 tap4 = unpack(content.eval(refractedCoord - disp * (1.0 / 3.0)));
+        color.g += tap4.g / 3.5;
+        color.b += tap4.b / 3.0;
+        half4 tap5 = unpack(content.eval(refractedCoord - disp * (2.0 / 3.0)));
+        color.b += tap5.b / 3.0;
+        half4 tap6 = unpack(content.eval(refractedCoord - disp));
+        color.r += tap6.r / 7.0;
+        color.b += tap6.b / 3.0;
+
+        // rim 边缘光：法线与光源夹角的 Fresnel 式高光（叠加白光）
+        float2 lightDir = float2(cos(lightAngle), sin(lightAngle));
+        float rim = pow(abs(dot(normal, lightDir)), 1.0) * rimSpec;
+        color.rgb += rim;
+
+        return half4(color.rgb, 1.0);
+    }
+"""
+
+/**
+ * 通道预处理：alphaScale 缩放 alpha（并同缩 premultiplied rgb 保持直色不变）；
+ * zeroRgb > 0.5 时清空 rgb（用于距离场层，只留 alpha 场供 Plus 叠加）。
+ */
+private const val LIQUID_PREP_ADSL = """
+    uniform shader content;
+    uniform float alphaScale;
+    uniform float zeroRgb;
+
+    half4 main(float2 coord) {
+        half4 c = content.eval(coord);
+        half3 rgb = zeroRgb > 0.5 ? half3(0.0) : c.rgb * alphaScale;
+        return half4(rgb, c.a * alphaScale);
     }
 """
 
@@ -936,8 +966,9 @@ fun GlassTextOverlay(
  * ① 数字层录制为 mask（不上屏）
  * ② ::after 边缘透镜描边（玻璃层之下）：数字以 135° 渐变 Brush 描边（[liquidGlassStrokeBrush]，
  *    强度=高光强度，线宽=2×外露宽度）——描边线的内半被上方玻璃覆盖、只露字形外半完整宽度
- * ③ 玻璃层（对应 .glass 的 backdrop-filter + background，被数字 alpha DstIn 裁切）：
- *    - 背景：blur(σ) → AGSL 折射位移 + saturate(1.85) + brightness(1.06)（CLAMP 补边，不做放大）
+ * ③ 玻璃层（被数字 alpha DstIn 裁切；对齐 Kyant0/AndroidLiquidGlass 的 lens 算法）：
+ *    - 折射层：blur(σ) → LIQUID_LENS_ADSL（content=背景；field=数字字形距离场，
+ *      深内部直通、边缘环带 circleMap 折射 + 7-tap 色散 + rim 边缘光）
  *    - 玻璃底色：140° 三段 tint 渐变（HTML background linear-gradient）
  *    - ::before 高光遮罩：径向环境光斑（spec*0.50，at 50% -10%）+ 顶部线性光（spec*0.20），Screen 混合
  *    - 内部提亮：中心径向 Screen 光晕（spec*0.35），凸显玻璃质感与数字本身
@@ -945,8 +976,8 @@ fun GlassTextOverlay(
  *
  * @param liquidBlur 模糊强度（0..24dp）
  * @param liquidDensity 玻璃浓度（0..0.6，玻璃底色 tint alpha）
- * @param liquidRefraction 折射强度（0..1，换算为 feDisplacementMap scale 0..90dp）
- * @param liquidHighlight 高光强度（0..1，驱动 ::before 高光遮罩、内部提亮与 ::after 外围描边）
+ * @param liquidRefraction 折射强度（0..1，映射 rim 位移 0..24dp 与环带宽 6..14dp）
+ * @param liquidHighlight 高光强度（0..1，驱动 rim 边缘光、::before 高光遮罩、内部提亮与 ::after 外围描边）
  * @param backdrop 背景内容（玻璃层内绘制一份并处理；底层清晰背景由调用方绘制）
  * @param textContent 文字内容；[GlassTextMode.DIGIT_MASK] 仅数字填充作 mask、
  *   [GlassTextMode.DIGIT_HOLLOW] 仅数字透明镂空、[GlassTextMode.DIGIT_STROKE] 仅数字渐变描边
@@ -963,20 +994,60 @@ fun LiquidGlassNumberOverlay(
 ) {
     val density = LocalDensity.current
     val blurPx = with(density) { liquidBlur.coerceIn(0f, 24f).dp.toPx() }
-    // 折射强度 0..1 → feDisplacementMap scale 0..90dp（默认 0.3 ≈ HTML scale=28px 的观感）
-    val distortPx = with(density) { (liquidRefraction.coerceIn(0f, 1f) * 90f).dp.toPx() }
+    // 折射强度：refractionAmount 0..24dp（shader 端传负值，同 Kyant0 向内采样）、环带宽 6..14dp
+    val refraction = liquidRefraction.coerceIn(0f, 1f)
+    val refractionPx = with(density) { (refraction * 24f).dp.toPx() }
+    val refractionHeightPx = with(density) { (6f + 8f * refraction).dp.toPx() }
+    // 距离场代理：mask 高斯模糊半径与解码斜率（直线边缘 blurA=Φ(sd/σ)，sd≈(blurA-0.5)·2.5σ）
+    val maskBlurPx = refractionHeightPx * 1.6f
+    val fieldScalePx = maskBlurPx * 2.5f
     val shader = rememberLiquidShader()
-
-    // RenderEffect 按参数缓存：graphicsLayer 每次重组赋新对象会触发 Skia 重建图层产生一帧空白（闪烁）
-    val glassRenderEffect = remember(shader, blurPx, distortPx) {
-        liquidGlassEffect(shader, blurPx, distortPx)?.asComposeRenderEffect()
-    }
-
-    // 玻璃底色 tint：HTML 默认玻璃色调 #C8E4FF，浓度=liquidDensity（140° 三段渐变）
+    val spec = liquidHighlight.coerceIn(0f, 1f)
     val tint = Color(0xFFC8E4FF)
     val tintAlpha = liquidDensity.coerceIn(0f, 0.6f)
-    val spec = liquidHighlight.coerceIn(0f, 1f)
     val textLayer = rememberGraphicsLayer()
+
+    // RenderEffect 按参数缓存：graphicsLayer 每次重组赋新对象会触发 Skia 重建图层产生一帧空白（闪烁）
+    // 背景层：blur → alpha 半透明化（给距离场腾出 alpha 空间，premultiplied rgb 同缩保直色不变）
+    val backdropPrepEffect = remember(shader, blurPx) {
+        if (shader == null) return@remember null
+        val prep = RuntimeShader(LIQUID_PREP_ADSL).apply {
+            setFloatUniform("alphaScale", 0.5f)
+            setFloatUniform("zeroRgb", 0f)
+        }
+        val prepEffect = RenderEffect.createRuntimeShaderEffect(prep, "content")
+        if (blurPx > 0f) {
+            RenderEffect.createChainEffect(prepEffect, RenderEffect.createBlurEffect(blurPx, blurPx, Shader.TileMode.CLAMP))
+        } else {
+            prepEffect
+        }?.asComposeRenderEffect()
+    }
+    // 距离场层：模糊 mask 清空 rgb、alpha 减半，供 Plus 叠加进合成流的 alpha 通道
+    val maskFieldEffect = remember(shader, maskBlurPx) {
+        if (shader == null) return@remember null
+        val prep = RuntimeShader(LIQUID_PREP_ADSL).apply {
+            setFloatUniform("alphaScale", 0.5f)
+            setFloatUniform("zeroRgb", 1f)
+        }
+        val prepEffect = RenderEffect.createRuntimeShaderEffect(prep, "content")
+        if (maskBlurPx > 0f) {
+            RenderEffect.createChainEffect(prepEffect, RenderEffect.createBlurEffect(maskBlurPx, maskBlurPx, Shader.TileMode.CLAMP))
+        } else {
+            prepEffect
+        }?.asComposeRenderEffect()
+    }
+    // lens shader：从合成流的 alpha 通道解码距离场做边缘折射（API<33 时 shader=null → 降级）
+    val lensEffect = remember(shader, refractionPx, refractionHeightPx, fieldScalePx, spec) {
+        shader?.apply {
+            setFloatUniform("refractionPx", -refractionPx)
+            setFloatUniform("refractionHeightPx", refractionHeightPx)
+            setFloatUniform("fieldScalePx", fieldScalePx)
+            setFloatUniform("rimSpec", spec)
+            setFloatUniform("lightAngle", 45f * (PI.toFloat() / 180f))
+        }?.let {
+            RenderEffect.createRuntimeShaderEffect(it, "content")
+        }?.asComposeRenderEffect()
+    }
 
     Box(modifier) {
         // ① 数字 mask 录制层：仅录制内容到 graphicsLayer，不绘制到屏幕
@@ -1007,13 +1078,36 @@ fun LiquidGlassNumberOverlay(
                     drawLayer(textLayer)
                 }
         ) {
-            // backdrop-filter：blur → 折射位移 + saturate + brightness（CLAMP 补齐模糊/位移的边缘采样）
-            Box(
-                modifier = Modifier
-                    .matchParentSize()
-                    .graphicsLayer { renderEffect = glassRenderEffect }
-            ) {
-                backdrop()
+            if (shader != null) {
+                // 折射层（仅背景参与）：blur → alpha 半透明化
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer { renderEffect = backdropPrepEffect }
+                ) {
+                    backdrop()
+                }
+                // 距离场层：模糊数字 mask（rgb=0）以 Plus 叠入合成流的 alpha 通道，
+                // lens shader 从 alpha 解码 sd 驱动折射；mask 来自 ① 的录制层（同帧先后有效）
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .graphicsLayer {
+                            compositingStrategy = CompositingStrategy.Offscreen
+                            blendMode = BlendMode.Plus
+                            renderEffect = maskFieldEffect
+                        }
+                        .drawWithContent { drawLayer(textLayer) }
+                )
+            } else {
+                // API<33 降级：仅模糊背景
+                Box(
+                    modifier = Modifier
+                        .matchParentSize()
+                        .then(if (blurPx > 0f) Modifier.blur(liquidBlur.coerceIn(0f, 24f).dp) else Modifier)
+                ) {
+                    backdrop()
+                }
             }
             // 玻璃底色 tint：140° 三段渐变（alpha+0.12 → alpha*0.45@48% → alpha+0.04）
             Box(
