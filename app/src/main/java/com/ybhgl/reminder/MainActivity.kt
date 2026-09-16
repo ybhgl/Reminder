@@ -2499,9 +2499,7 @@ private fun ReminderSummaryCard(
                     // 玻璃层：仅数字 mask（其余文字在 mask 中透明占位）
                     LiquidGlassTextOverlay(
                         blur = spec.liquidBlur,
-                        thickness = spec.liquidThickness,
                         refraction = spec.liquidRefraction,
-                        highlight = spec.liquidHighlight,
                         modifier = Modifier.matchParentSize(),
                         backdrop = {
                             CardBackgroundLayer(

@@ -15,7 +15,6 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
-import androidx.compose.ui.graphics.CompositingStrategy
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.layer.drawLayer
@@ -62,12 +61,17 @@ private const val LIQUID_GLASS_LENS_ADSL = """
     half4 main(float2 coord) {
         // 距离场：alpha = 背景alpha × 高斯mask，边缘≈0.5、字内→1、字外→0
         float m = content.eval(coord).a;
-        if (m < 0.004) {
+        if (m < 0.01) {
             return half4(0.0);
         }
         float sd = (0.5 - m) * refractionHeightPx * 2.0;
         // edgeT：0=深内部 → 1=字形边缘
         float edgeT = clamp(1.0 - (-sd) / refractionHeightPx, 0.0, 1.0);
+
+        // 形状 alpha：高斯场在 0.5 处阈值化——尖角天然圆化（圆角半径≈模糊σ），
+        // smoothstep 带宽≈2px 提供亚像素抗锯齿边缘
+        float aa = 1.6 / max(refractionHeightPx, 1.0);
+        float shapeAlpha = smoothstep(0.5 - aa, 0.5 + aa, m);
 
         // 外法线：场梯度指向字内（m 内大外小），取负 = 指向字外；
         // 叠加指向层中心的径向分量增强纵深
@@ -99,7 +103,7 @@ private const val LIQUID_GLASS_LENS_ADSL = """
         col += half3(rim * max(lit, 0.0) * highlightIntensity);
         col += half3(rim * abs(lit) * 0.30 * highlightIntensity);
 
-        float alpha = 0.85;
+        float alpha = 0.85 * shapeAlpha;
         return half4(col * alpha, alpha);
     }
 """
@@ -117,17 +121,15 @@ private fun rememberLiquidGlassShader(): RuntimeShader? {
 
 /**
  * 液态玻璃数字效果层（仅作用于数字字形，其余文字由调用方在底层正常渲染）：
- * ① 数字 mask 录制（[GlassTextMode.NUMBERS_ONLY]，不上屏）——模糊后作距离场、
- *    锐利版最终 DstIn 裁切
- * ② 玻璃层：[磨砂模糊背景 → DstIn 距离场] 合成流 → lens shader（玻璃体着色）
- *    → 锐利数字 mask DstIn 裁切
+ * ① 数字 mask 录制（[GlassTextMode.NUMBERS_ONLY]，不上屏）——模糊后作距离场
+ * ② 玻璃层：[磨砂模糊背景 → DstIn 距离场] 合成流 → lens shader
+ *    shader 内部完成边缘处理：高斯场阈值化（尖角天然圆化）+ smoothstep 抗锯齿
  *
+ * 环带厚度（6%）与高光强度（90%）为固定参数，不对外暴露。
  * API < 33 时 shader 不可用，降级为磨砂玻璃（仅模糊）。
  *
  * @param blur 流动纹理磨砂模糊半径（dp，0..24）
- * @param thickness 边缘倒角带宽（0..1，映射层短边比例）
  * @param refraction 流动折射强度（0..1，映射采样位移比例）
- * @param highlight 边缘高光强度（0..1）
  * @param backdrop 背景内容（玻璃层内折射/模糊采样；底层清晰背景由调用方绘制）
  * @param textContent 数字内容（应以 [GlassTextMode.NUMBERS_ONLY] 渲染：数字正常填充、
  *   其余文字透明占位，保证 mask 与底层排版对齐）
@@ -135,9 +137,7 @@ private fun rememberLiquidGlassShader(): RuntimeShader? {
 @Composable
 fun LiquidGlassTextOverlay(
     blur: Float,
-    thickness: Float,
     refraction: Float,
-    highlight: Float,
     modifier: Modifier = Modifier,
     backdrop: @Composable () -> Unit,
     textContent: @Composable () -> Unit
@@ -147,14 +147,17 @@ fun LiquidGlassTextOverlay(
     var layerSize by remember { mutableStateOf(IntSize.Zero) }
 
     val minDimensionPx = min(layerSize.width, layerSize.height).toFloat()
-    // 倒角带宽（0..1）→ 边缘处理带宽度像素（层短边的 0..50%，默认 0.13 ≈ 6.5%）
+    // 固定参数：环带厚度 6%、高光强度 90%
+    val thickness = 0.06f
+    val highlight = 0.9f
+    // 倒角带宽 → 边缘处理带宽度像素（层短边的 0..50%）
     val refractionHeightPx = thickness.coerceIn(0f, 1f) * 0.5f * minDimensionPx
-    // 折射强度（0..1）→ 流动采样最大位移（负值 = 向字内采样）
-    val refractionAmountPx = -refraction.coerceIn(0f, 1f) * 0.3f * minDimensionPx
+    // 折射强度（0.1..1，下限防止历史存储的 0 值使效果退化）→ 流动采样最大位移（负值 = 向字内采样）
+    val refractionAmountPx = -refraction.coerceIn(0.1f, 1f) * 0.3f * minDimensionPx
     // 距离场模糊半径 = 倒角带宽的一半（高斯过渡带宽 ≈ 2σ，对齐倒角带）
     val fieldSigmaPx = (refractionHeightPx * 0.5f).coerceAtLeast(1f)
     val frostSigma = with(density) { blur.coerceIn(0f, 24f).dp }
-    val highlightIntensity = highlight.coerceIn(0f, 1f) * 0.9f
+    val highlightIntensity = highlight.coerceIn(0f, 1f)
 
     // lens RenderEffect 按参数缓存（graphicsLayer 每帧换新对象会触发 Skia 重建图层闪烁）
     val lensEffect = remember(lensShader, refractionHeightPx, refractionAmountPx, highlightIntensity, layerSize) {
@@ -197,20 +200,10 @@ fun LiquidGlassTextOverlay(
         }
     }
 
-    val textLayer = rememberGraphicsLayer()
     val fieldLayer = rememberGraphicsLayer()
 
     Box(modifier.onSizeChanged { layerSize = it }) {
-        // ① 数字 mask 录制：仅录制不上屏
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .drawWithContent { textLayer.record { this@drawWithContent.drawContent() } }
-        ) {
-            textContent()
-        }
-
-        // ② 距离场录制：同内容（颜色无关，绘制时 rgb 置零）
+        // ① 数字 mask 录制：仅录制不上屏（模糊后作距离场，shader 内阈值化成形状）
         Box(
             modifier = Modifier
                 .matchParentSize()
@@ -219,42 +212,30 @@ fun LiquidGlassTextOverlay(
             textContent()
         }
 
-        // ③ 玻璃层：合成流（磨砂背景 × DstIn 距离场）→ lens shader → 锐利 mask 裁切
+        // ② 玻璃层：合成流（磨砂背景 × DstIn 距离场）→ lens shader（含边缘圆化与抗锯齿）
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+                .graphicsLayer { renderEffect = lensEffect }
                 .drawWithContent {
                     drawContent()
-                    textLayer.blendMode = BlendMode.DstIn
-                    drawLayer(textLayer)
+                    // 距离场乘入背景 alpha（DstIn）：a = 背景alpha × 高斯mask、rgb = 背景色 × 同系数
+                    fieldLayer.renderEffect = fieldEffect
+                    fieldLayer.blendMode = BlendMode.DstIn
+                    drawLayer(fieldLayer)
                 }
         ) {
-            // 合成流层：renderEffect（lens）作用于整层合成结果
+            // 磨砂背景：整体放大避免模糊边缘的透明收缩露馅
             Box(
                 modifier = Modifier
                     .matchParentSize()
-                    .graphicsLayer { renderEffect = lensEffect }
-                    .drawWithContent {
-                        drawContent()
-                        // 距离场乘入背景 alpha（DstIn）：a = 背景alpha × 高斯mask、rgb = 背景色 × 同系数
-                        fieldLayer.renderEffect = fieldEffect
-                        fieldLayer.blendMode = BlendMode.DstIn
-                        drawLayer(fieldLayer)
+                    .graphicsLayer {
+                        scaleX = 1.12f
+                        scaleY = 1.12f
                     }
+                    .then(if (frostSigma.value > 0f) Modifier.blur(frostSigma) else Modifier)
             ) {
-                // 磨砂背景：整体放大避免模糊边缘的透明收缩露馅
-                Box(
-                    modifier = Modifier
-                        .matchParentSize()
-                        .graphicsLayer {
-                            scaleX = 1.12f
-                            scaleY = 1.12f
-                        }
-                        .then(if (frostSigma.value > 0f) Modifier.blur(frostSigma) else Modifier)
-                ) {
-                    backdrop()
-                }
+                backdrop()
             }
         }
     }

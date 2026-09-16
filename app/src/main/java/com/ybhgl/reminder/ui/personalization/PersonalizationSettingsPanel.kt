@@ -605,7 +605,7 @@ private val FONT_EFFECT_META = listOf(
     Triple(NumberFontEffect.AUTO, Icons.Filled.BrightnessAuto, "跟随背景自动选择黑/白字体"),
     Triple(NumberFontEffect.SOLID, Icons.Filled.FormatColorFill, "自定义字体颜色及透明度"),
     Triple(NumberFontEffect.BLUR, Icons.Filled.BlurOn, "文字区域高斯模糊"),
-    Triple(NumberFontEffect.GLASS, Icons.Filled.WaterDrop, "文字区域液态玻璃折射")
+    Triple(NumberFontEffect.GLASS, Icons.Filled.WaterDrop, "数字字体液态玻璃效果")
 )
 
 @OptIn(ExperimentalLayoutApi::class)
@@ -832,7 +832,8 @@ private fun FontSection(
         }
 
         LinkedPanel(visible = currentEffect == NumberFontEffect.GLASS && isCustomBackground) {
-            // 面板内含联动项（描边颜色行），禁用 spacedBy，间距用 SectionGap 手动管理
+            // 环带厚度（6%）与高光强度（90%）为固定参数不暴露；
+            // 折射强度最低 0.1（为 0 时无折射流动感）
             Column {
                 SliderRow(
                     title = "模糊程度",
@@ -846,27 +847,9 @@ private fun FontSection(
                 SliderRow(
                     title = "折射强度",
                     valueText = "${(config.customGlassRefraction * 100).roundToInt()}%",
-                    value = config.customGlassRefraction,
-                    valueRange = 0f..1f,
+                    value = config.customGlassRefraction.coerceIn(0.1f, 1f),
+                    valueRange = 0.1f..1f,
                     onValueChange = { onUpdate(config.copy(customGlassRefraction = it)) }
-                )
-
-                SectionGap()
-                SliderRow(
-                    title = "环带厚度",
-                    valueText = "${(config.customGlassDensity * 100).roundToInt()}%",
-                    value = config.customGlassDensity,
-                    valueRange = 0f..1f,
-                    onValueChange = { onUpdate(config.copy(customGlassDensity = it)) }
-                )
-
-                SectionGap()
-                SliderRow(
-                    title = "高光强度",
-                    valueText = "${(config.customGlassHighlight * 100).roundToInt()}%",
-                    value = config.customGlassHighlight,
-                    valueRange = 0f..1f,
-                    onValueChange = { onUpdate(config.copy(customGlassHighlight = it)) }
                 )
             }
         }
