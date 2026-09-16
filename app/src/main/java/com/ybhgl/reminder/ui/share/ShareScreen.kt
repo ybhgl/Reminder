@@ -154,9 +154,11 @@ fun ShareScreen(
         customImageUri = options.customImageUri
     )
 
-    // 跟随卡片：底图直接显示卡片的背景图片/颜色（纯图纯色，不套分享侧效果参数），
+    // 跟随卡片：底图直接显示卡片的背景图片/颜色（不跟随卡片自身的效果参数），
     // 卡片背景由下方个性化面板实时修改，此处由 State 顶层推导实时跟随
     val followCardActive = options.backgroundType == ShareBackgroundType.FOLLOW_CARD
+    // 跟随卡片且卡片背景为图片时，底图显示图片调节面板（模糊/光栅玻璃），效果独立于卡片自身配置
+    val followCardImageActive = followCardActive && options.cardBackgroundType == "IMAGE"
     val followCardBitmap = rememberCardBackgroundBitmap(
         imagePath = if (followCardActive && options.cardBackgroundType == "IMAGE") {
             options.cardBackgroundImagePath
@@ -420,10 +422,10 @@ fun ShareScreen(
                             backgroundType = effectiveBackgroundType,
                             backgroundColor = effectiveBackgroundColor.toComposeColor(),
                             backgroundBitmap = if (followCardActive) followCardBitmap else backgroundBitmap,
-                            // 跟随卡片为纯图纯色展示，禁用分享侧图片效果参数
-                            backgroundBlurRadius = if (followCardActive) 0f else options.backgroundBlurRadius,
-                            backgroundGlassEnabled = if (followCardActive) false else options.backgroundGlassEnabled,
-                            backgroundGlassFrosted = if (followCardActive) false else options.backgroundGlassFrosted,
+                            // 底图效果参数（模糊/光栅玻璃）为分享侧独立配置：IMAGE 与跟随卡片(卡片图片)共用
+                            backgroundBlurRadius = options.backgroundBlurRadius,
+                            backgroundGlassEnabled = options.backgroundGlassEnabled,
+                            backgroundGlassFrosted = options.backgroundGlassFrosted,
                             backgroundGlassDensity = options.backgroundGlassDensity,
                             backgroundGlassRefraction = options.backgroundGlassRefraction,
                             backgroundGlassTransparency = options.backgroundGlassTransparency,
@@ -440,6 +442,8 @@ fun ShareScreen(
                         backgroundType = options.backgroundType,
                         followCardAvailable = options.cardBackgroundType == "IMAGE" ||
                                 options.cardBackgroundType == "COLOR",
+                        showImageEffects = options.backgroundType == ShareBackgroundType.IMAGE ||
+                                followCardImageActive,
                         backgroundColorHex = options.backgroundColor,
                         backgroundBlurRadius = options.backgroundBlurRadius,
                         backgroundGlassEnabled = options.backgroundGlassEnabled,
@@ -579,6 +583,8 @@ private fun ShareBackgroundSection(
     backgroundType: ShareBackgroundType,
     /** 跟随卡片是否可选：仅当卡片背景为图片/颜色时为 true */
     followCardAvailable: Boolean,
+    /** 图片效果面板（模糊/光栅玻璃）是否显示：图片模式或跟随卡片(卡片背景为图片) */
+    showImageEffects: Boolean,
     backgroundColorHex: String,
     backgroundBlurRadius: Float,
     backgroundGlassEnabled: Boolean,
@@ -664,7 +670,8 @@ private fun ShareBackgroundSection(
         }
 
         // 图片背景效果：与卡片背景设置一致（模糊 / 光栅玻璃 / 磨砂 / 密度 / 折射度 / 透明度）
-        SettingsLinkedVisibility(visible = backgroundType == ShareBackgroundType.IMAGE) {
+        // 图片模式与跟随卡片(卡片背景为图片)时显示，效果仅作用于分享底图
+        SettingsLinkedVisibility(visible = showImageEffects) {
             Column(modifier = Modifier.padding(top = 12.dp)) {
                 SliderRow(
                     title = "图片模糊",
