@@ -95,20 +95,21 @@ private const val LIQUID_GLASS_LENS_ADSL = """
         float2 refractedCoord = coord + d * normal;
         half3 flow = unpack(content.eval(refractedCoord)).rgb;
 
-        // 玻璃体：中性磨砂底色 + 流动纹理混入
-        half3 col = glassColor + (flow - glassColor) * 0.42;
+        // 玻璃体：中性磨砂底色 + 流动纹理混入（低比例，避免复杂背景把玻璃体拖暗）
+        half3 col = glassColor + (flow - glassColor) * 0.30;
 
-        // 立体感：受光面提亮、背光面压暗
-        col *= 1.0 + lit * 0.16;
+        // 立体感：非对称光照——受光面提亮，背光面仅轻微压暗
+        //（对称压暗会让左上角等背光边缘在复杂背景上难以辨认）
+        col *= 1.0 + max(lit, 0.0) * 0.10 - min(lit, 0.0) * 0.05;
 
-        // 边缘倒角：近边缘背光侧内阴影压暗，最外缘受光侧亮 rim（对侧弱化补光）
+        // 边缘倒角：近边缘背光侧轻内阴影，最外缘受光侧亮 rim（对侧弱化补光）
         float innerShadow = smoothstep(0.45, 0.95, edgeT) * max(-lit, 0.0);
-        col *= 1.0 - innerShadow * 0.30;
+        col *= 1.0 - innerShadow * 0.15;
         float rim = smoothstep(0.70, 0.98, edgeT);
         col += half3(rim * max(lit, 0.0) * highlightIntensity);
-        col += half3(rim * abs(lit) * 0.30 * highlightIntensity);
+        col += half3(rim * abs(lit) * 0.35 * highlightIntensity);
 
-        float alpha = 0.85 * shapeAlpha;
+        float alpha = 0.92 * shapeAlpha;
         return half4(col * alpha, alpha);
     }
 """
@@ -176,8 +177,8 @@ fun LiquidGlassTextOverlay(
             lensShader.setFloatUniform("refractionAmountPx", refractionAmountPx)
             lensShader.setFloatUniform("highlightIntensity", highlightIntensity)
             lensShader.setFloatUniform("lightAngle", (45f * PI / 180f).toFloat())
-            // 中性磨砂玻璃底色（微冷灰，参照液态玻璃质感）
-            lensShader.setFloatUniform("glassColor", 0.74f, 0.79f, 0.81f)
+            // 中性磨砂玻璃底色（亮灰微冷，保证复杂背景上的可读性）
+            lensShader.setFloatUniform("glassColor", 0.84f, 0.88f, 0.90f)
             RenderEffect.createRuntimeShaderEffect(lensShader, "content").asComposeRenderEffect()
         }
     }
