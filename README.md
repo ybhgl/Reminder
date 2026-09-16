@@ -56,7 +56,9 @@ Reminder 的实现受益于以下上游项目与开源组件，感谢所有贡�
 - [Capturable](https://github.com/PatilShreyas/Capturable)：Compose 界面截图分享；
 - [compose-m3-picker](https://github.com/Seo-4d696b75/compose-m3-picker)：Material 3 风格滚轮选择器；
 - [HyperNotification](https://github.com/xzakota/HyperNotification)：小米超级岛通知适配；
-- [Shizuku](https://github.com/RikkaApps/Shizuku-API)：高级系统通知能力支持。
+- [InstallerX Revived](https://github.com/wxxsfxyzm/InstallerX-Revived)：小米超级岛通知实现参考；
+- [Shizuku](https://github.com/RikkaApps/Shizuku-API)：高级系统通知能力支持；
+- [AndroidLiquidGlass](https://github.com/Kyant0/AndroidLiquidGlass)：Compose 液态玻璃效果支持。
 
 ## 许可证与第三方声明
 
