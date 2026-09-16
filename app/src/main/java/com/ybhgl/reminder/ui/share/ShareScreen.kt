@@ -35,6 +35,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.CreditCard
 import androidx.compose.material.icons.filled.Home
 import androidx.compose.material.icons.filled.Image
 import androidx.compose.material.icons.filled.Palette
@@ -106,6 +107,7 @@ import com.ybhgl.reminder.ui.common.CardBackgroundType
 import com.ybhgl.reminder.ui.common.CollapsingPreviewItem
 import com.ybhgl.reminder.ui.common.ImageCropDialog
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
+import com.ybhgl.reminder.ui.common.rememberCardBackgroundBitmap
 import com.ybhgl.reminder.ui.detail.ReminderDetailCard
 import com.ybhgl.reminder.ui.personalization.PersonalizationSettingsPanel
 import com.ybhgl.reminder.ui.personalization.SectionCard
@@ -151,6 +153,30 @@ fun ShareScreen(
         backgroundType = options.backgroundType,
         customImageUri = options.customImageUri
     )
+
+    // 跟随卡片：底图直接显示卡片的背景图片/颜色（纯图纯色，不套分享侧效果参数），
+    // 卡片背景由下方个性化面板实时修改，此处由 State 顶层推导实时跟随
+    val followCardActive = options.backgroundType == ShareBackgroundType.FOLLOW_CARD
+    val followCardBitmap = rememberCardBackgroundBitmap(
+        imagePath = if (followCardActive && options.cardBackgroundType == "IMAGE") {
+            options.cardBackgroundImagePath
+        } else {
+            ""
+        }
+    )
+    // 渲染归一化：FOLLOW_CARD 按卡片背景类型映射为 IMAGE/COLOR（异常情况回退 DEFAULT），
+    // ShareableReminderImage 无需感知该模式，LOGO 亮度反色逻辑自动生效
+    val effectiveBackgroundType = when {
+        followCardActive && options.cardBackgroundType == "IMAGE" -> ShareBackgroundType.IMAGE
+        followCardActive && options.cardBackgroundType == "COLOR" -> ShareBackgroundType.COLOR
+        followCardActive -> ShareBackgroundType.DEFAULT
+        else -> options.backgroundType
+    }
+    val effectiveBackgroundColor = if (followCardActive) {
+        options.cardBackgroundColor
+    } else {
+        options.backgroundColor
+    }
 
     fun normalize(bitmap: Bitmap): Bitmap {
         if (bitmap.width == SHARE_OUTPUT_WIDTH_PX) return bitmap
@@ -391,12 +417,13 @@ fun ShareScreen(
                         ShareableReminderImage(
                             reminderItem = previewItem,
                             useLunar = useLunar,
-                            backgroundType = options.backgroundType,
-                            backgroundColor = options.backgroundColor.toComposeColor(),
-                            backgroundBitmap = backgroundBitmap,
-                            backgroundBlurRadius = options.backgroundBlurRadius,
-                            backgroundGlassEnabled = options.backgroundGlassEnabled,
-                            backgroundGlassFrosted = options.backgroundGlassFrosted,
+                            backgroundType = effectiveBackgroundType,
+                            backgroundColor = effectiveBackgroundColor.toComposeColor(),
+                            backgroundBitmap = if (followCardActive) followCardBitmap else backgroundBitmap,
+                            // 跟随卡片为纯图纯色展示，禁用分享侧图片效果参数
+                            backgroundBlurRadius = if (followCardActive) 0f else options.backgroundBlurRadius,
+                            backgroundGlassEnabled = if (followCardActive) false else options.backgroundGlassEnabled,
+                            backgroundGlassFrosted = if (followCardActive) false else options.backgroundGlassFrosted,
                             backgroundGlassDensity = options.backgroundGlassDensity,
                             backgroundGlassRefraction = options.backgroundGlassRefraction,
                             backgroundGlassTransparency = options.backgroundGlassTransparency,
@@ -411,6 +438,8 @@ fun ShareScreen(
                 SectionCard(title = "背景") {
                     ShareBackgroundSection(
                         backgroundType = options.backgroundType,
+                        followCardAvailable = options.cardBackgroundType == "IMAGE" ||
+                                options.cardBackgroundType == "COLOR",
                         backgroundColorHex = options.backgroundColor,
                         backgroundBlurRadius = options.backgroundBlurRadius,
                         backgroundGlassEnabled = options.backgroundGlassEnabled,
@@ -548,6 +577,8 @@ private fun SharePreviewContainer(
 @Composable
 private fun ShareBackgroundSection(
     backgroundType: ShareBackgroundType,
+    /** 跟随卡片是否可选：仅当卡片背景为图片/颜色时为 true */
+    followCardAvailable: Boolean,
     backgroundColorHex: String,
     backgroundBlurRadius: Float,
     backgroundGlassEnabled: Boolean,
@@ -610,6 +641,20 @@ private fun ShareBackgroundSection(
                 leadingIcon = {
                     Icon(
                         imageVector = Icons.Default.Palette,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp)
+                    )
+                },
+                shape = RoundedCornerShape(12.dp)
+            )
+            FilterChip(
+                selected = backgroundType == ShareBackgroundType.FOLLOW_CARD,
+                onClick = { onBackgroundTypeChange(ShareBackgroundType.FOLLOW_CARD) },
+                enabled = followCardAvailable,
+                label = { Text("跟随卡片", style = MaterialTheme.typography.bodyMedium) },
+                leadingIcon = {
+                    Icon(
+                        imageVector = Icons.Default.CreditCard,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp)
                     )

@@ -32,8 +32,8 @@ import kotlinx.coroutines.flow.update
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 
-/** 导出图片的背景类型：默认内置图 / 自定义图片 / 自定义颜色 */
-enum class ShareBackgroundType { DEFAULT, IMAGE, COLOR }
+/** 导出图片的背景类型：默认内置图 / 自定义图片 / 自定义颜色 / 跟随卡片背景 */
+enum class ShareBackgroundType { DEFAULT, IMAGE, COLOR, FOLLOW_CARD }
 
 /**
  * 分享/导出图片的自定义配置。
@@ -224,6 +224,7 @@ class ShareViewModel(
      * 套用内嵌个性化面板回传的配置（仅本次分享会话内生效，不写入数据库）。
      * isCustomized 按"是否等效默认"即时推导；其余字段原样保留，
      * 不做按背景类型的清空归一化——分享会话内切换背景类型不丢失已导入的图片。
+     * 若"跟随卡片"底图选中期间卡片背景被改回 DEFAULT，自动回退底图为 DEFAULT。
      */
     fun updatePersonalization(config: PersonalizationConfig) {
         _shareOptions.update {
@@ -257,7 +258,16 @@ class ShareViewModel(
                 customGlassBlur = config.customGlassBlur,
                 customGlassDensity = config.customGlassDensity,
                 customGlassRefraction = config.customGlassRefraction,
-                customGlassHighlight = config.customGlassHighlight
+                customGlassHighlight = config.customGlassHighlight,
+                backgroundType = if (
+                    it.backgroundType == ShareBackgroundType.FOLLOW_CARD &&
+                    config.cardBackgroundType != "IMAGE" &&
+                    config.cardBackgroundType != "COLOR"
+                ) {
+                    ShareBackgroundType.DEFAULT
+                } else {
+                    it.backgroundType
+                }
             )
         }
     }
