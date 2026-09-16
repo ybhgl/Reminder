@@ -19,10 +19,8 @@ import com.ybhgl.reminder.ui.personalization.PersonalizationContract
 import com.ybhgl.reminder.ui.personalization.PersonalizationInput
 import com.ybhgl.reminder.util.FontManager
 
-// 7种不占用应用体积的高表现力系统内置 FontFamily 静态声明
+// 不占用应用体积的系统内置 FontFamily 静态声明（通用字体族直接使用 FontFamily.Serif 等常量）
 val SansSerifCondensed: FontFamily = FontFamily(Typeface.create("sans-serif-condensed", Typeface.NORMAL))
-val SansSerifBlack: FontFamily = FontFamily(Typeface.create("sans-serif-black", Typeface.NORMAL))
-val SansSerifLight: FontFamily = FontFamily(Typeface.create("sans-serif-light", Typeface.NORMAL))
 
 /**
  * 字体名解析为 FontFamily：内置字体走静态映射；
@@ -40,11 +38,18 @@ fun String.toFontFamily(context: Context? = null): FontFamily {
         "Monospace" -> FontFamily.Monospace
         "Cursive" -> FontFamily.Cursive
         "SansSerif-Condensed" -> SansSerifCondensed
-        "SansSerif-Black" -> SansSerifBlack
-        "SansSerif-Light" -> SansSerifLight
         else -> FontFamily.Default
     }
 }
+
+/**
+ * 内置字体是否支持字重调整：
+ * - 通用系统字体族（Default/SansSerif/Serif/Monospace/Cursive）有真实多字重变体，FontWeight 生效
+ * - SansSerif-Condensed 是单实例固定字重族，无可切换变体（Compose 无伪粗体/伪细体），
+ *   任何 FontWeight 请求渲染结果都相同
+ * 用户导入字体不适用此判定（走 FontManager.weightAxis 的 fvar 检测）
+ */
+fun String.supportsWeightAdjustment(): Boolean = this != "SansSerif-Condensed"
 
 fun String.toFontLabel(): String {
     return when (this) {
@@ -53,8 +58,6 @@ fun String.toFontLabel(): String {
         "Monospace" -> "极客等宽 (Monospace)"
         "Cursive" -> "灵动草书 (Cursive)"
         "SansSerif-Condensed" -> "极简紧凑 (Condensed)"
-        "SansSerif-Black" -> "时尚超粗 (Black)"
-        "SansSerif-Light" -> "艺术轻细 (Light)"
         else -> "系统默认 (Default)"
     }
 }

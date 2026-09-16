@@ -74,6 +74,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.ReminderType
+import com.ybhgl.reminder.ui.add.supportsWeightAdjustment
 import com.ybhgl.reminder.ui.add.toFontFamily
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.CardBackgroundType
@@ -590,8 +591,7 @@ private fun BackgroundSection(
 
 /** 内置字体选项（与数字渲染层共用同一套 FontFamily 映射） */
 private val FONT_OPTIONS = listOf(
-    "Default", "Serif", "Monospace", "Cursive",
-    "SansSerif-Condensed", "SansSerif-Black", "SansSerif-Light"
+    "Default", "Serif", "Monospace", "Cursive", "SansSerif-Condensed"
 )
 
 /** 用户导入字体可选 MIME：部分厂商文件管理器把 ttf/otf 标为 octet-stream，需兜底 */
@@ -700,10 +700,10 @@ private fun FontSection(
         }
         SectionGap()
 
-        // 数字字重控件按所选字体能力自动降级：
+        // 字体字重控件按所选字体能力自动降级：
         // - 可变导入字体（含 wght 轴）：滑杆范围钳制到轴实际 [min, max]，拖动即时生效
-        // - 静态导入字体：Compose 无伪粗体/伪细体，档位不改变渲染 → 隐藏控件并提示
-        // - 内置/系统字体：保持 100-900 全范围（系统字体族有真实多字重变体）
+        // - 静态导入字体 / 固定字重预设（Condensed/Black/Light）：无可用变体 → 隐藏控件并提示
+        // - 系统默认与可调预设：保持 100-900 全范围（系统字体族有真实多字重变体）
         val isCustomFontSelected = FontManager.fileNameOf(config.customFont) != null
         // 字重能力检测：同步执行（weightAxis 带缓存，导入/preload 阶段已提前解析），
         // remember 首帧即有结果，避免异步检测导致的控件闪烁
@@ -730,11 +730,19 @@ private fun FontSection(
                     )
                 }
             }
+            config.customFont.isNotEmpty() && !config.customFont.supportsWeightAdjustment() -> {
+                // 固定字重预设（极简紧凑/时尚超粗/艺术轻细）：单实例族无可切换变体，仅提示
+                Text(
+                    "当前字体不支持调整字重",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             else -> {
-                // 内置字体：100-900 无极调节，仅作用于卡片数字（"天"字不受影响）；
+                // 系统默认与可调预设：100-900 无极调节，仅作用于卡片数字（"天"字不受影响）；
                 // 拖动值量化为整数，保证存储值与显示一致（700 = 默认粗体，不触发个性化标记）
                 SliderRow(
-                    title = "数字字重",
+                    title = "字体字重",
                     valueText = config.customFontWeight.roundToInt().toString(),
                     value = config.customFontWeight.coerceIn(100f, 900f),
                     valueRange = 100f..900f,
