@@ -34,8 +34,11 @@ import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.SizeTransform
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import com.ybhgl.reminder.ReminderCardVisuals
@@ -1086,26 +1089,43 @@ fun ReminderDetailCard(
                             verticalArrangement = Arrangement.Center
                         ) {
                             val currentSegments = dayCountFormats[dayFormatIndex % dayCountFormats.size]
-                            AnimatedContent(
-                                targetState = currentSegments,
-                                transitionSpec = {
-                                    (slideInVertically { height -> height } + fadeIn()) togetherWith
-                                        (slideOutVertically { height -> -height } + fadeOut())
-                                },
-                                label = "DayFormatTransition"
-                            ) { segments ->
-                                DayCountRow(
-                                    segments = segments,
-                                    visuals = effectiveVisuals,
-                                    glassMode = mode,
-                                    glassStrokeColor = glassStrokeResolved,
-                                    glassShadowColor = glassShadowResolved,
-                                    onClick = if (enableDayFormatToggle && dayCountFormats.size > 1) {
-                                        { dayFormatIndex = (dayFormatIndex + 1) % dayCountFormats.size }
-                                    } else {
-                                        null
-                                    }
-                                )
+                            // 固定高度"跑马灯"窗口（与底部目标日切换动画同款观感）：
+                            // 外层 Box 占满中部区域且高度恒定，负责垂直居中与窗口裁切——
+                            // AnimatedContent 内部的对齐/尺寸动画只作用于自身包裹内容的
+                            // 动画盒（会被顶对齐到节点顶部），因此居中必须由外层 Box 完成；
+                            // 新旧内容同速上移且始终相距一个窗口高度，旧内容从窗口顶部
+                            // 边缘滑出、新内容从底部边缘滑入，任意格式互切方向统一向上
+                            var formatWindowPx by remember { mutableIntStateOf(0) }
+                            Box(
+                                modifier = Modifier
+                                    .fillMaxHeight()
+                                    .onSizeChanged { formatWindowPx = it.height }
+                                    .clipToBounds(),
+                                contentAlignment = Alignment.Center
+                            ) {
+                                AnimatedContent(
+                                    targetState = currentSegments,
+                                    transitionSpec = {
+                                        (slideInVertically { formatWindowPx } + fadeIn()) togetherWith
+                                            (slideOutVertically { -formatWindowPx } + fadeOut()) using
+                                            SizeTransform(clip = false)
+                                    },
+                                    contentAlignment = Alignment.Center,
+                                    label = "DayFormatTransition"
+                                ) { segments ->
+                                    DayCountRow(
+                                        segments = segments,
+                                        visuals = effectiveVisuals,
+                                        glassMode = mode,
+                                        glassStrokeColor = glassStrokeResolved,
+                                        glassShadowColor = glassShadowResolved,
+                                        onClick = if (enableDayFormatToggle && dayCountFormats.size > 1) {
+                                            { dayFormatIndex = (dayFormatIndex + 1) % dayCountFormats.size }
+                                        } else {
+                                            null
+                                        }
+                                    )
+                                }
                             }
                         }
 
