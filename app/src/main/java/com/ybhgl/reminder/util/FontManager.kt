@@ -4,11 +4,16 @@ import android.content.Context
 import android.graphics.Typeface
 import android.net.Uri
 import android.provider.OpenableColumns
+import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.font.FontStyle
+import androidx.compose.ui.text.font.FontVariation
+import androidx.compose.ui.text.font.FontWeight
 import com.ybhgl.reminder.data.ReminderItem
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.RandomAccessFile
 import java.util.concurrent.ConcurrentHashMap
 
 /**
@@ -30,6 +35,24 @@ object FontManager {
 
     /** FontFamily 内存缓存：避免同一字体反复读盘解析 */
     private val familyCache = ConcurrentHashMap<String, FontFamily>()
+
+    /**
+     * 字重感知的 FontFamily 缓存（key = "文件名#字重"）：
+     * 可变字体每个目标字重各持有一个经 FontVariation 实例化的 Font
+     */
+    private val weightedFamilyCache = ConcurrentHashMap<String, FontFamily>()
+
+    /** wght 轴检测结果缓存（含"无轴"的 null 结果，用 HashMap 手动同步避免 ConcurrentHashMap 不存 null） */
+    private val weightAxisCache = HashMap<String, FontWeightAxis?>()
+
+    /**
+     * 字体的 wght 可变轴信息（来自 fvar 表），静态字体为 null。
+     * 可变字体可在 [min, max] 区间内任意实例化字重，默认实例字重为 [default]
+     */
+    data class FontWeightAxis(val min: Int, val default: Int, val max: Int) {
+        /** fvar 存在且 wght 轴范围有效（max > min）才视为支持字重调整 */
+        val isVariable: Boolean get() = max > min
+    }
 
     private fun fontsDir(context: Context): File =
         File(context.filesDir, DIR_NAME).apply { mkdirs() }
@@ -76,6 +99,8 @@ object FontManager {
                 return@withContext null
             }
             familyCache[target.name] = family
+            // 顺带预热 wght 轴检测，避免首次渲染/打开设置面板时再读盘
+            weightAxis(context, target.name)
             UserFont(target.name, displayName(target.name))
         } catch (_: Throwable) {
             null
@@ -86,6 +111,8 @@ object FontManager {
     suspend fun deleteFont(context: Context, fileName: String): Boolean = withContext(Dispatchers.IO) {
         if (fileName.isEmpty()) return@withContext false
         familyCache.remove(fileName)
+        weightedFamilyCache.keys.removeAll { it.startsWith("$fileName#") }
+        synchronized(weightAxisCache) { weightAxisCache.remove(fileName) }
         try {
             val file = File(fontsDir(context), fileName)
             !file.exists() || file.delete()
@@ -124,7 +151,10 @@ object FontManager {
                 val target = File(fontsDir(context), safeName)
                 if (target.exists()) continue
                 target.writeBytes(bytes)
+                // 清掉恢复前可能残留的"文件缺失→Default"缓存，让下次解析走真实文件
                 familyCache.remove(safeName)
+                weightedFamilyCache.keys.removeAll { it.startsWith("$safeName#") }
+                synchronized(weightAxisCache) { weightAxisCache.remove(safeName) }
             } catch (_: Throwable) {
             }
         }
@@ -144,11 +174,59 @@ object FontManager {
         }
     }
 
+    /**
+     * 按文件名 + 目标字重解析 FontFamily（带缓存，同步）：
+     * - 可变字体（含 wght 轴）：把字重钳制到轴范围内，用 `FontVariation` 在 wght 轴上实例化对应字重，
+     *   使 Compose 的 `FontWeight` 请求真正生效（单实例包装只会渲染默认字重）
+     * - 静态字体：忽略字重，回落默认实例（Compose 无伪粗体/伪细体，档位请求不改变渲染）
+     */
+    fun resolveFontFamily(context: Context, fileName: String, weight: Int): FontFamily {
+        if (fileName.isEmpty()) return FontFamily.Default
+        val axis = weightAxis(context, fileName)
+        if (axis == null || !axis.isVariable) return resolveFontFamily(context, fileName)
+        val clamped = weight.coerceIn(axis.min, axis.max)
+        return weightedFamilyCache.computeIfAbsent("$fileName#$clamped") {
+            try {
+                val file = File(fontsDir(context), fileName)
+                if (!file.exists()) return@computeIfAbsent FontFamily.Default
+                val fontWeight = FontWeight(clamped)
+                FontFamily(
+                    Font(
+                        file = file,
+                        weight = fontWeight,
+                        style = FontStyle.Normal,
+                        variationSettings = FontVariation.Settings(FontVariation.weight(clamped))
+                    )
+                )
+            } catch (_: Throwable) {
+                FontFamily.Default
+            }
+        }
+    }
+
+    /** 检测字体的 wght 可变轴（fvar 表解析，结果缓存）；静态字体或文件缺失返回 null */
+    fun weightAxis(context: Context, fileName: String): FontWeightAxis? {
+        if (fileName.isEmpty()) return null
+        synchronized(weightAxisCache) {
+            if (weightAxisCache.containsKey(fileName)) return weightAxisCache[fileName]
+            val axis = try {
+                parseWeightAxis(File(fontsDir(context), fileName))
+            } catch (_: Throwable) {
+                null
+            }
+            weightAxisCache[fileName] = axis
+            return axis
+        }
+    }
+
     /** 启动预热：把目录内全部字体提前解析进缓存，避免首次渲染时主线程读盘解析 */
     suspend fun preload(context: Context) = withContext(Dispatchers.IO) {
         try {
             fontsDir(context).listFiles()?.forEach { file ->
-                if (file.isFile) resolveFontFamily(context, file.name)
+                if (file.isFile) {
+                    resolveFontFamily(context, file.name)
+                    weightAxis(context, file.name)
+                }
             }
         } catch (_: Throwable) {
         }
@@ -221,4 +299,75 @@ object FontManager {
     } catch (_: Throwable) {
         false
     }
+
+    /**
+     * 解析 sfnt 字体（ttf/otf/ttc）的 fvar 表，提取 wght 可变轴范围；无 fvar 表或无 wght 轴返回 null。
+     * 只做表头级 seek 读取（表目录 + 轴记录），不加载字体数据体。
+     * 参考格式：fvar 头 16 字节（axesArrayOffset@4、axisCount@8、axisSize@10），
+     * 每条轴记录 20 字节（tag@0、minValue@4、defaultValue@8、maxValue@12，Fixed 16.16）
+     */
+    private fun parseWeightAxis(file: File): FontWeightAxis? {
+        if (!file.exists()) return null
+        RandomAccessFile(file, "r").use { raf ->
+            val head = ByteArray(12)
+            raf.readFully(head)
+            var numTables = readUShort(head, 4)
+            var dirOffset = 12L
+            // TTC（字体集合）：取第一个 face 的偏移，再解析该 face 自己的表目录
+            if (String(head, 0, 4, Charsets.US_ASCII) == "ttcf") {
+                raf.seek(12) // 跳过 ttcf 版本(4) + numFonts(4)
+                val firstFace = ByteArray(4)
+                raf.readFully(firstFace)
+                val faceOffset = readUInt(firstFace, 0)
+                raf.seek(faceOffset + 4) // 跳过 face sfnt 版本
+                val nt = ByteArray(2)
+                raf.readFully(nt)
+                numTables = readUShort(nt, 0)
+                dirOffset = faceOffset + 12L
+            }
+            val dir = ByteArray(numTables * 16)
+            raf.seek(dirOffset)
+            raf.readFully(dir)
+            var fvarOffset = -1L
+            for (i in 0 until numTables) {
+                val base = i * 16
+                if (String(dir, base, 4, Charsets.US_ASCII) == "fvar") {
+                    fvarOffset = readUInt(dir, base + 8).toLong()
+                    break
+                }
+            }
+            if (fvarOffset < 0) return null
+            val fvarHead = ByteArray(16)
+            raf.seek(fvarOffset)
+            raf.readFully(fvarHead)
+            // fvar 头布局：major@0 minor@2 axesArrayOffset@4 reserved@6 axisCount@8 axisSize@10
+            val axesArrayOffset = readUShort(fvarHead, 4)
+            val axisCount = readUShort(fvarHead, 8)
+            val axisSize = readUShort(fvarHead, 10)
+            if (axisCount <= 0 || axisSize < 20) return null
+            val axes = ByteArray(axisCount * axisSize)
+            raf.seek(fvarOffset + axesArrayOffset)
+            raf.readFully(axes)
+            for (i in 0 until axisCount) {
+                val base = i * axisSize
+                if (String(axes, base, 4, Charsets.US_ASCII) == "wght") {
+                    fun fixed(off: Int): Int = readInt(axes, base + off) / 65536
+                    return FontWeightAxis(fixed(4), fixed(8), fixed(12))
+                }
+            }
+            return null
+        }
+    }
+
+    /** 大端 uint16 */
+    private fun readUShort(b: ByteArray, off: Int): Int =
+        ((b[off].toInt() and 0xFF) shl 8) or (b[off + 1].toInt() and 0xFF)
+
+    /** 大端 int32（Fixed 16.16 的高低位读取共用） */
+    private fun readInt(b: ByteArray, off: Int): Int =
+        ((b[off].toInt() and 0xFF) shl 24) or ((b[off + 1].toInt() and 0xFF) shl 16) or
+            ((b[off + 2].toInt() and 0xFF) shl 8) or (b[off + 3].toInt() and 0xFF)
+
+    /** 大端 uint32 */
+    private fun readUInt(b: ByteArray, off: Int): Long = readInt(b, off).toLong() and 0xFFFFFFFFL
 }

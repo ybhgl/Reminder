@@ -700,15 +700,48 @@ private fun FontSection(
         }
         SectionGap()
 
-        // 数字字重：100-900 无极调节，仅作用于卡片数字（"天"字不受影响）；
-        // 拖动值量化为整数，保证存储值与显示一致（700 = 默认粗体，不触发个性化标记）
-        SliderRow(
-            title = "数字字重",
-            valueText = config.customFontWeight.roundToInt().toString(),
-            value = config.customFontWeight.coerceIn(100f, 900f),
-            valueRange = 100f..900f,
-            onValueChange = { onUpdate(config.copy(customFontWeight = it.roundToInt().toFloat())) }
-        )
+        // 数字字重控件按所选字体能力自动降级：
+        // - 可变导入字体（含 wght 轴）：滑杆范围钳制到轴实际 [min, max]，拖动即时生效
+        // - 静态导入字体：Compose 无伪粗体/伪细体，档位不改变渲染 → 隐藏控件并提示
+        // - 内置/系统字体：保持 100-900 全范围（系统字体族有真实多字重变体）
+        val isCustomFontSelected = FontManager.fileNameOf(config.customFont) != null
+        // 字重能力检测：同步执行（weightAxis 带缓存，导入/preload 阶段已提前解析），
+        // remember 首帧即有结果，避免异步检测导致的控件闪烁
+        val selectedFontAxis = remember(config.customFont) {
+            FontManager.fileNameOf(config.customFont)?.let { FontManager.weightAxis(context, it) }
+        }
+        when {
+            isCustomFontSelected -> {
+                if (selectedFontAxis != null && selectedFontAxis.isVariable) {
+                    // 可变字体：滑杆范围钳制到 wght 轴实际 [min, max]
+                    SliderRow(
+                        title = "字体字重",
+                        valueText = config.customFontWeight.roundToInt().toString(),
+                        value = config.customFontWeight.coerceIn(selectedFontAxis.min.toFloat(), selectedFontAxis.max.toFloat()),
+                        valueRange = selectedFontAxis.min.toFloat()..selectedFontAxis.max.toFloat(),
+                        onValueChange = { onUpdate(config.copy(customFontWeight = it.roundToInt().toFloat())) }
+                    )
+                } else {
+                    // 静态字体：Compose 无伪粗体/伪细体，档位不改变渲染，仅提示
+                    Text(
+                        "当前字体不支持调整字重",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+            else -> {
+                // 内置字体：100-900 无极调节，仅作用于卡片数字（"天"字不受影响）；
+                // 拖动值量化为整数，保证存储值与显示一致（700 = 默认粗体，不触发个性化标记）
+                SliderRow(
+                    title = "数字字重",
+                    valueText = config.customFontWeight.roundToInt().toString(),
+                    value = config.customFontWeight.coerceIn(100f, 900f),
+                    valueRange = 100f..900f,
+                    onValueChange = { onUpdate(config.copy(customFontWeight = it.roundToInt().toFloat())) }
+                )
+            }
+        }
         SectionGap()
 
         // 字体效果 FilterChip 组

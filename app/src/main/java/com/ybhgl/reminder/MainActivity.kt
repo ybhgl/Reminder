@@ -202,6 +202,7 @@ import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import com.ybhgl.reminder.util.CalendarUtil
+import com.ybhgl.reminder.util.FontManager
 import com.ybhgl.reminder.util.ReminderSectionData
 import com.ybhgl.reminder.util.buildReminderSections
 import com.ybhgl.reminder.data.viewModeFlow
@@ -1166,15 +1167,26 @@ private fun reminderCardVisuals(reminder: ReminderItem): ReminderCardVisuals {
         reminder.cardBackgroundSpec
     } else null
 
+    // 自定义导入字体（custom: 前缀）：可变字体按 wght 轴实例化目标字重（字重钳制到轴范围），
+    // 静态字体回落默认实例（Compose 无伪粗体/伪细体，字重请求不改变渲染）
+    val customFileName = if (reminder.isCustomized) FontManager.fileNameOf(reminder.customFont) else null
+    val axis = customFileName?.let { FontManager.weightAxis(context, it) }
+    val requestedWeight = reminder.customFontWeight.coerceIn(100f, 900f).roundToInt()
+    val effectiveWeight = axis?.takeIf { it.isVariable }
+        ?.let { requestedWeight.coerceIn(it.min, it.max) }
+        ?: requestedWeight
+
     return finalVisuals.copy(
-        fontFamily = if (reminder.isCustomized && reminder.customFont.isNotEmpty()) {
-            // 传入 context 以解析用户导入字体（custom: 前缀），字体文件缺失时回落系统默认
-            reminder.customFont.toFontFamily(context)
-        } else {
-            finalVisuals.fontFamily
+        fontFamily = when {
+            customFileName != null ->
+                FontManager.resolveFontFamily(context, customFileName, effectiveWeight)
+            // 内置字体名（Serif 等）：系统字体族自带真实多字重变体，FontWeight 直接生效
+            reminder.isCustomized && reminder.customFont.isNotEmpty() ->
+                reminder.customFont.toFontFamily(context)
+            else -> finalVisuals.fontFamily
         },
         numberFontWeight = if (reminder.isCustomized) {
-            FontWeight(reminder.customFontWeight.coerceIn(100f, 900f).roundToInt())
+            FontWeight(effectiveWeight)
         } else {
             FontWeight.Bold
         },
