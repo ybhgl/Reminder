@@ -976,57 +976,30 @@ internal fun reminderDisplayInfo(
 
     val (headerLabelSuffix, dayCount, referenceText) = when (reminder.type) {
         ReminderType.ANNUAL -> {
-            val endDate = reminder.endDate
-            if (endDate != null && !endDate.isBefore(reminder.date)) {
+            val stage = CalendarUtil.resolveIntervalStage(reminder, today)
+            if (stage != null) {
                 // 区间事件：还有x天 → 就是今天 → 第x天 → 已过x天；有重复则周期结束后进入下一周期"还有x天"
-                val includeStartDay = reminder.notificationConfig.includeStartDay
-                val periodOffset = ChronoUnit.DAYS.between(reminder.date, endDate)
-                val periodStart = CalendarUtil.calculateCurrentPeriodStart(reminder, today)
-                val periodEnd = periodStart.plusDays(periodOffset)
-                val intervalSubText = when {
-                    today.isBefore(periodStart) -> "共${periodOffset + 1}天"
-                    today == periodStart -> "共${periodOffset + 1}天"
-                    !today.isAfter(periodEnd) -> "共${periodOffset + 1}天 · 还剩${ChronoUnit.DAYS.between(today, periodEnd).toInt() + 1}天"
-                    reminder.repeatInfo != null -> "共${periodOffset + 1}天"
-                    else -> null
+                val (suffix, dayNumber, keyDate) = stage
+                val periodOffset = ChronoUnit.DAYS.between(reminder.date, reminder.endDate!!)
+                val formattedDate = if (useLunar) {
+                    if (shortFormat) CalendarUtil.formatLunarDateShort(keyDate) else CalendarUtil.formatLunarDate(keyDate)
+                } else {
+                    keyDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
                 }
-
-                val formatDate: (LocalDate) -> String = { d ->
-                    if (useLunar) {
-                        if (shortFormat) CalendarUtil.formatLunarDateShort(d) else CalendarUtil.formatLunarDate(d)
-                    } else {
-                        d.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
-                    }
-                }
-
-                val interval = when {
-                    today.isBefore(periodStart) -> {
-                        Triple("还有", ChronoUnit.DAYS.between(today, periodStart).toInt(), formatDate(periodStart))
-                    }
-                    today == periodStart -> Triple("就是", 0, formatDate(periodStart))
-                    !today.isAfter(periodEnd) -> {
-                        val dayNumber = ChronoUnit.DAYS.between(periodStart, today).toInt() +
-                            if (includeStartDay) 1 else 0
-                        Triple("第", dayNumber, formatDate(periodEnd))
-                    }
-                    reminder.repeatInfo != null -> {
-                        // 已越过本周期结束日：不显示"已过"，滚动到下一周期开始日
-                        val nextDate = CalendarUtil.calculateNextTargetDate(reminder, today) ?: periodStart
-                        Triple("还有", ChronoUnit.DAYS.between(today, nextDate).toInt().coerceAtLeast(0), formatDate(nextDate))
-                    }
-                    else -> {
-                        val daysPassed = ChronoUnit.DAYS.between(periodEnd, today).toInt().coerceAtLeast(0)
-                        Triple("已过", daysPassed, formatDate(periodEnd))
-                    }
+                val intervalSubText = when (suffix) {
+                    "第" -> "共${periodOffset + 1}天 · 还剩${ChronoUnit.DAYS.between(today, keyDate).toInt() + 1}天"
+                    "已过" -> null
+                    else -> "共${periodOffset + 1}天"
                 }
                 return ReminderDisplayInfo(
-                    headerTitle = buildHeaderTitle(reminder.title, interval.first),
-                    dayCount = interval.second,
-                    referenceText = interval.third,
+                    headerTitle = buildHeaderTitle(reminder.title, suffix),
+                    dayCount = dayNumber,
+                    referenceText = formattedDate,
                     visuals = visuals,
                     intervalSubText = intervalSubText
                 )
-            } else {
+            }
+
             val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
             if (nextDate == null) {
                 // This is a past, non-repeating event.
@@ -1054,7 +1027,6 @@ internal fun reminderDisplayInfo(
                 Triple("就是", 0, formattedDate)
             } else {
                 Triple("还有", daysRemaining.coerceAtLeast(0), formattedDate)
-            }
             }
         }
 

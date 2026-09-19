@@ -65,11 +65,22 @@ class ReminderReceiver : BroadcastReceiver() {
                     "ANNUAL", "BIRTHDAY" -> {
                         val days = ChronoUnit.DAYS.between(today, targetDate).toInt()
                         subtitle = if (days == 0) "就是今天" else "还有${days}天"
-                        // 本轮周期：上一个纪念日 → 下一个纪念日
-                        val cycleStart = targetDate.minusYears(1)
-                        val total = ChronoUnit.DAYS.between(cycleStart, targetDate).toInt()
-                        val elapsed = ChronoUnit.DAYS.between(cycleStart, today).toInt()
-                        if (total > 0) progress = NotificationProgress(elapsed, total)
+                        val endDate = intent.getStringExtra("REMINDER_END_DATE")
+                            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+                        if (reminderType == "ANNUAL" && endDate != null && !endDate.isBefore(startDate)) {
+                            // 区间事件：触发日=周期开始日，本轮周期 = 开始日 → 结束日
+                            val periodOffset = ChronoUnit.DAYS.between(startDate, endDate)
+                            val periodEnd = targetDate.plusDays(periodOffset)
+                            val total = ChronoUnit.DAYS.between(targetDate, periodEnd).toInt()
+                            val elapsed = ChronoUnit.DAYS.between(targetDate, today).toInt()
+                            if (total > 0) progress = NotificationProgress(elapsed, total)
+                        } else {
+                            // 本轮周期：上一个纪念日 → 下一个纪念日
+                            val cycleStart = targetDate.minusYears(1)
+                            val total = ChronoUnit.DAYS.between(cycleStart, targetDate).toInt()
+                            val elapsed = ChronoUnit.DAYS.between(cycleStart, today).toInt()
+                            if (total > 0) progress = NotificationProgress(elapsed, total)
+                        }
                     }
                     else -> {
                         val days = ChronoUnit.DAYS.between(today, targetDate).toInt()
