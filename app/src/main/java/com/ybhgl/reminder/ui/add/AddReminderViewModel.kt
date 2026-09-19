@@ -211,10 +211,15 @@ class AddReminderViewModel(
         reminderUiState = if (type == ReminderType.BIRTHDAY) {
             reminderUiState.copy(
                 type = type,
-                repeatInfo = RepeatInfo(interval = 1, unit = RepeatUnit.YEAR)
+                repeatInfo = RepeatInfo(interval = 1, unit = RepeatUnit.YEAR),
+                endDate = null
             )
         } else {
-            reminderUiState.copy(type = type)
+            // 仅倒数日支持结束日期，切走时清空避免脏值入库
+            reminderUiState.copy(
+                type = type,
+                endDate = if (type == ReminderType.ANNUAL) reminderUiState.endDate else null
+            )
         }
     }
 }
