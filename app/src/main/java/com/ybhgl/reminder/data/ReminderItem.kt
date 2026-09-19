@@ -63,6 +63,9 @@ data class ReminderItem(
     val title: String,
     @Serializable(with = LocalDateSerializer::class)
     val date: LocalDate,
+    /** 区间事件结束日期（仅倒数日使用；null=普通倒数日）。结束日当天仍属"进行中"，次日起才算"已过" */
+    @Serializable(with = LocalDateSerializer::class)
+    val endDate: LocalDate? = null,
     val type: ReminderType,
     val isLunar: Boolean,
     val tag: String,

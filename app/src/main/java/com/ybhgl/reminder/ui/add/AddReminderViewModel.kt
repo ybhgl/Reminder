@@ -167,6 +167,10 @@ class AddReminderViewModel(
         reminderUiState = reminderUiState.copy(repeatInfo = repeatInfo)
     }
 
+    fun onEndDateChange(endDate: LocalDate?) {
+        reminderUiState = reminderUiState.copy(endDate = endDate)
+    }
+
     fun onLunarChange(isLunar: Boolean) {
         reminderUiState = reminderUiState.copy(
             isLunar = isLunar
@@ -222,6 +226,7 @@ data class ReminderUiState(
     val id: Int = 0,
     val title: String = "",
     val date: LocalDate = LocalDate.now(),
+    val endDate: LocalDate? = null,
     val type: ReminderType = ReminderType.ANNUAL,
     val isLunar: Boolean = false,
     val tag: String = "",
@@ -266,6 +271,7 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     id = id,
     title = title,
     date = date,
+    endDate = endDate,
     type = type,
     isLunar = isLunar,
     tag = tag,
@@ -309,6 +315,7 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     id = id,
     title = title,
     date = date,
+    endDate = endDate,
     type = type,
     isLunar = isLunar,
     tag = tag,
