@@ -1179,25 +1179,40 @@ fun ReminderDetailCard(
                             contentAlignment = Alignment.Center
                         ) {
                             AnimatedContent(
-                                targetState = displayInfo.referenceText,
+                                targetState = displayInfo.referenceText to displayInfo.intervalSubText,
                                 transitionSpec = {
                                     (slideInVertically { height -> height } + fadeIn()) togetherWith
                                     (slideOutVertically { height -> -height } + fadeOut())
                                 },
                                 label = "DateTransition"
-                            ) { targetText ->
+                            ) { (targetText, intervalSubText) ->
                                 val dateStyle = TextStyle(fontSize = 18.sp, textAlign = TextAlign.Center)
                                 val footerText = if (reminderItem.type == ReminderType.COUNT_UP) {
                                     "自 ${targetText} 起"
                                 } else {
                                     "目标日: ${targetText}"
                                 }
-                                Text(
-                                    text = displayInfo.intervalSubText?.let { "$footerText · $it" } ?: footerText,
-                                    style = modeStyle(dateStyle),
-                                    color = modeColor(effectiveVisuals.secondaryTextColor),
-                                    modifier = Modifier.fillMaxWidth()
-                                )
+                                // 区间事件副文案独立成小字第二行，避免与目标日同行长文本换行
+                                Column(
+                                    modifier = Modifier.fillMaxWidth(),
+                                    horizontalAlignment = Alignment.CenterHorizontally,
+                                    verticalArrangement = Arrangement.spacedBy(2.dp)
+                                ) {
+                                    Text(
+                                        text = footerText,
+                                        style = modeStyle(dateStyle),
+                                        color = modeColor(effectiveVisuals.secondaryTextColor),
+                                        modifier = Modifier.fillMaxWidth()
+                                    )
+                                    if (intervalSubText != null) {
+                                        Text(
+                                            text = intervalSubText,
+                                            style = modeStyle(TextStyle(fontSize = 12.sp, textAlign = TextAlign.Center)),
+                                            color = modeColor(effectiveVisuals.secondaryTextColor),
+                                            modifier = Modifier.fillMaxWidth()
+                                        )
+                                    }
+                                }
                             }
                         }
                         }

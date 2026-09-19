@@ -271,17 +271,17 @@ fun AddReminderScreen(
                     TonalCardRow(
                         modifier = Modifier.padding(top = 16.dp),
                         icon = Icons.Default.EventAvailable,
-                        title = "结束日期",
-                        value = uiState.endDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "不设置",
-                        subtitle = if (uiState.endDate == null) "设置后可显示第x天/已过x天" else null,
+                        title = "结束时间",
+                        value = uiState.endDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "未设置",
                         showChevron = true,
+                        trailingBeforeChevron = true,
                         onClick = { showEndDatePicker = true },
                         trailing = if (uiState.endDate != null) {
                             {
                                 IconButton(onClick = { viewModel.onEndDateChange(null) }) {
                                     Icon(
                                         imageVector = Icons.Default.Close,
-                                        contentDescription = "清除结束日期"
+                                        contentDescription = "清除结束时间"
                                     )
                                 }
                             }

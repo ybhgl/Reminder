@@ -379,7 +379,9 @@ fun TonalCardRow(
     value: String? = null,
     showChevron: Boolean = false,
     onClick: (() -> Unit)? = null,
-    trailing: (@Composable () -> Unit)? = null
+    trailing: (@Composable () -> Unit)? = null,
+    /** true 时 trailing 渲染在箭头左侧（默认在箭头右侧），用于尾部带清除等操作按钮的入口卡 */
+    trailingBeforeChevron: Boolean = false
 ) {
     val colors = CardDefaults.cardColors(
         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
@@ -432,7 +434,7 @@ fun TonalCardRow(
                     textAlign = TextAlign.End
                 )
             }
-            if (showChevron) {
+            if (showChevron && !trailingBeforeChevron) {
                 Icon(
                     imageVector = Icons.Filled.ChevronRight,
                     contentDescription = null,
@@ -440,6 +442,13 @@ fun TonalCardRow(
                 )
             }
             trailing?.invoke()
+            if (showChevron && trailingBeforeChevron) {
+                Icon(
+                    imageVector = Icons.Filled.ChevronRight,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
         }
     }
     if (onClick != null) {
