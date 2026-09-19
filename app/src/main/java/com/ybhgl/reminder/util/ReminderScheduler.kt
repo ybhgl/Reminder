@@ -51,6 +51,7 @@ object ReminderScheduler {
                     putExtra("REMINDER_TYPE", item.type.name)
                     putExtra("REMINDER_START_DATE", item.date.toString())
                     putExtra("REMINDER_TARGET_DATE", targetDate.toString())
+                    item.endDate?.let { putExtra("REMINDER_END_DATE", it.toString()) }
                     putExtra("INCLUDE_START_DAY", item.notificationConfig.includeStartDay)
                     putExtra("REMINDER_NOTES", item.notes)
                 }
@@ -129,8 +130,18 @@ object ReminderScheduler {
                             "第${displayDays}天"
                         }
                         com.ybhgl.reminder.data.ReminderType.ANNUAL, com.ybhgl.reminder.data.ReminderType.BIRTHDAY -> {
-                            val days = ChronoUnit.DAYS.between(today, targetDate).toInt()
-                            if (days == 0) "就是今天" else "还有${days}天"
+                            val stage = CalendarUtil.resolveIntervalStage(item, today)
+                            when {
+                                // 区间事件：还有x天 → 就是今天 → 第x天 → 已过x天
+                                stage != null && stage.first == "就是" -> "就是今天"
+                                stage != null && stage.first == "第" -> "第${stage.second}天"
+                                stage != null && stage.first == "已过" -> "已过${stage.second}天"
+                                stage != null -> "还有${stage.second}天"
+                                else -> {
+                                    val days = ChronoUnit.DAYS.between(today, targetDate).toInt()
+                                    if (days == 0) "就是今天" else "还有${days}天"
+                                }
+                            }
                         }
                     }
                 } catch (e: Exception) {

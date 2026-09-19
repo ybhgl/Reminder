@@ -42,6 +42,8 @@ import androidx.compose.material.icons.automirrored.filled.Notes
 import androidx.compose.material.icons.filled.AutoAwesome
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.EventAvailable
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExposurePlus1
 import androidx.compose.material.icons.filled.Label
 import androidx.compose.material.icons.filled.Notifications
@@ -118,6 +120,7 @@ import com.ybhgl.reminder.util.CalendarUtil
 import com.ybhgl.reminder.util.CardBackgroundImageManager
 import kotlinx.coroutines.launch
 import java.time.Instant
+import java.time.LocalDate
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
@@ -132,6 +135,8 @@ fun AddReminderScreen(
 ) {
     val coroutineScope = rememberCoroutineScope()
     var showDatePicker by remember { mutableStateOf(false) }
+    var showEndDatePicker by remember { mutableStateOf(false) }
+    var invalidEndDate by remember { mutableStateOf<LocalDate?>(null) }
     var showNotesSheet by remember { mutableStateOf(false) }
     var showTagSheet by remember { mutableStateOf(false) }
     val uiState = viewModel.reminderUiState
@@ -261,8 +266,55 @@ fun AddReminderScreen(
                     )
                 }
 
-                // 包含起始日（仅正数日，随类型联动展开/收起）
-                SettingsLinkedVisibility(visible = uiState.type == ReminderType.COUNT_UP) {
+                // 3.5 结束日期（仅倒数日；设置后进入"还有x天→就是今天→第x天→已过x天"区间模式）
+                SettingsLinkedVisibility(visible = uiState.type == ReminderType.ANNUAL) {
+                    TonalCardRow(
+                        modifier = Modifier.padding(top = 16.dp),
+                        icon = Icons.Default.EventAvailable,
+                        title = "结束时间",
+                        subtitle = uiState.endDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "未设置",
+                        showChevron = true,
+                        trailingBeforeChevron = true,
+                        onClick = { showEndDatePicker = true },
+                        trailing = if (uiState.endDate != null) {
+                            {
+                                // 与箭头同规格的裸图标（24dp、同色），替代 IconButton 避免过大触摸盒造成宽间距
+                                Icon(
+                                    imageVector = Icons.Default.Close,
+                                    contentDescription = "清除结束时间",
+                                    tint = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.clickable {
+                                        viewModel.onEndDateChange(null)
+                                    }
+                                )
+                            }
+                        } else null
+                    )
+                }
+
+                if (showEndDatePicker) {
+                    UnifiedDatePickerDialog(
+                        initialDate = uiState.endDate ?: uiState.date,
+                        initialIsLunar = false,
+                        onDismissRequest = { showEndDatePicker = false },
+                        onConfirm = { newDate, _ ->
+                            if (newDate.isBefore(uiState.date)) {
+                                // 结束日期早于开始日期：不关闭弹窗逻辑外提示（记下日期待弹窗关闭后展示错误）
+                                showEndDatePicker = false
+                                invalidEndDate = newDate
+                            } else {
+                                viewModel.onEndDateChange(newDate)
+                                showEndDatePicker = false
+                            }
+                        }
+                    )
+                }
+
+                // 包含起始日（正数日，或设置了结束日期的倒数日；随类型/结束日期联动展开/收起）
+                SettingsLinkedVisibility(
+                    visible = uiState.type == ReminderType.COUNT_UP ||
+                        (uiState.type == ReminderType.ANNUAL && uiState.endDate != null)
+                ) {
                     TonalCardRow(
                         modifier = Modifier.padding(top = 16.dp),
                         icon = Icons.Default.ExposurePlus1,
@@ -499,6 +551,16 @@ fun AddReminderScreen(
                         onNavigateUp()
                     },
                     dismissText = "取消"
+                )
+            }
+
+            invalidEndDate?.let {
+                AppAlertDialog(
+                    onDismissRequest = { invalidEndDate = null },
+                    title = "日期无效",
+                    text = "结束日期（${it.format(DateTimeFormatter.ISO_LOCAL_DATE)}）不能早于开始日期",
+                    confirmText = "好的",
+                    onConfirm = { invalidEndDate = null }
                 )
             }
 

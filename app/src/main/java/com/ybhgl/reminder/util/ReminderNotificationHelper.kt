@@ -176,12 +176,12 @@ object ReminderNotificationHelper {
     }
 
     /**
-     * 超级岛专用天数文本精简："还有5天"→"5天"、"就是今天"→"今天"、"第10天"→"10天"，
-     * 其余文本原样返回（其他通知样式不受影响，仍显示完整文本）。
+     * 超级岛专用天数文本精简："还有5天"→"5天"、"就是今天"→"今天"、"第10天"→"10天"、
+     * "已过3天"→"3天"，其余文本原样返回（其他通知样式不受影响，仍显示完整文本）。
      */
     private fun compactIslandSubtitle(subtitle: String): String {
         if (subtitle == "就是今天") return "今天"
-        val match = Regex("^(?:还有|第)(\\d+)天$").find(subtitle) ?: return subtitle
+        val match = Regex("^(?:还有|第|已过)(\\d+)天$").find(subtitle) ?: return subtitle
         return "${match.groupValues[1]}天"
     }
 

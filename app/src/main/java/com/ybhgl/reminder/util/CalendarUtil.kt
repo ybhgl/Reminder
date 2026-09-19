@@ -5,6 +5,7 @@ import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.data.RepeatUnit
 import com.tyme.solar.SolarDay
 import java.time.LocalDate
+import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
 object CalendarUtil {
@@ -54,30 +55,107 @@ object CalendarUtil {
         }
 
         var currentDate = reminderItem.date
+        while (currentDate.isBefore(baseDate)) {
+            currentDate = advancePeriodStart(currentDate, repeatInfo, reminderItem.isLunar)
+        }
+        return currentDate
+    }
 
-        if (!reminderItem.isLunar) {
+    /**
+     * 区间事件（endDate != null）当前所处周期的开始日：<= baseDate 的最大周期开始日；
+     * baseDate 早于首个周期时返回原始开始日期。
+     * 周期长度按"结束日 - 开始日"的公历天数偏移换算，结束日 = 周期开始日 + offset。
+     */
+    fun calculateCurrentPeriodStart(reminderItem: ReminderItem, baseDate: LocalDate = LocalDate.now()): LocalDate {
+        val repeatInfo = reminderItem.repeatInfo ?: return reminderItem.date
+        var periodStart = reminderItem.date
+        var next = advancePeriodStart(periodStart, repeatInfo, reminderItem.isLunar)
+        while (!next.isAfter(baseDate)) {
+            periodStart = next
+            next = advancePeriodStart(periodStart, repeatInfo, reminderItem.isLunar)
+        }
+        return periodStart
+    }
+
+    /** 周期开始日向前滚动一步（农历年/月用农历规则，日/周按公历） */
+    private fun advancePeriodStart(currentDate: LocalDate, repeatInfo: com.ybhgl.reminder.data.RepeatInfo, isLunar: Boolean): LocalDate {
+        return if (!isLunar) {
             // Gregorian calculation
-            while (currentDate.isBefore(baseDate)) {
-                currentDate = when (repeatInfo.unit) {
-                    RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
-                    RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
-                    RepeatUnit.MONTH -> currentDate.plusMonths(repeatInfo.interval.toLong())
-                    RepeatUnit.YEAR -> currentDate.plusYears(repeatInfo.interval.toLong())
-                }
+            when (repeatInfo.unit) {
+                RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
+                RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
+                RepeatUnit.MONTH -> currentDate.plusMonths(repeatInfo.interval.toLong())
+                RepeatUnit.YEAR -> currentDate.plusYears(repeatInfo.interval.toLong())
             }
-            return currentDate
         } else {
             // Lunar calculation
-            while (currentDate.isBefore(baseDate)) {
-                currentDate = when (repeatInfo.unit) {
-                    RepeatUnit.YEAR -> getNextLunarYearDate(currentDate, repeatInfo.interval)
-                    RepeatUnit.MONTH -> getNextLunarMonthDate(currentDate, repeatInfo.interval)
-                    // Lunar day/week repeats are not standard, treat them as gregorian.
-                    RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
-                    RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
-                }
+            when (repeatInfo.unit) {
+                RepeatUnit.YEAR -> getNextLunarYearDate(currentDate, repeatInfo.interval)
+                RepeatUnit.MONTH -> getNextLunarMonthDate(currentDate, repeatInfo.interval)
+                // Lunar day/week repeats are not standard, treat them as gregorian.
+                RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
+                RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
             }
-            return currentDate
+        }
+    }
+
+    /**
+     * 下一个"关键日"（供 Widget 精选/列表排序使用，与展示文案的日期口径一致）：
+     * - 普通提醒（endDate == null 或非倒数日）：与 calculateNextTargetDate 等价；
+     * - 区间事件：未开始=周期开始日；进行中（含结束日当天）=结束日；已越过结束日时
+     *   有重复=下一周期开始日、无重复=null。
+     */
+    fun calculateNextKeyDate(reminderItem: ReminderItem, baseDate: LocalDate = LocalDate.now()): LocalDate? {
+        val endDate = reminderItem.endDate
+        if (reminderItem.type != ReminderType.ANNUAL || endDate == null || endDate.isBefore(reminderItem.date)) {
+            return calculateNextTargetDate(reminderItem, baseDate)
+        }
+        val periodOffset = ChronoUnit.DAYS.between(reminderItem.date, endDate)
+        val periodStart = calculateCurrentPeriodStart(reminderItem, baseDate)
+        val periodEnd = periodStart.plusDays(periodOffset)
+        return when {
+            !baseDate.isAfter(periodStart) -> periodStart
+            !baseDate.isAfter(periodEnd) -> periodEnd
+            reminderItem.repeatInfo != null -> calculateNextTargetDate(reminderItem, baseDate)
+            else -> null
+        }
+    }
+
+    /**
+     * 区间事件（ANNUAL + endDate）当前阶段，非区间事件返回 null。
+     * Triple(suffix, dayCount, keyDate)：
+     * - "还有"：未开始（keyDate=周期开始日）或已滚动到下一周期（keyDate=下一周期开始日）；
+     * - "就是"：周期开始日当天（dayCount=0）；
+     * - "第"：进行中（keyDate=结束日；"包含起始日"时起始日=第1天，否则起始日次日=第1天）；
+     * - "已过"：无重复且已越过结束日（keyDate=结束日，以结束日为锚点计数）。
+     */
+    fun resolveIntervalStage(reminderItem: ReminderItem, baseDate: LocalDate = LocalDate.now()): Triple<String, Int, LocalDate>? {
+        val endDate = reminderItem.endDate
+        if (reminderItem.type != ReminderType.ANNUAL || endDate == null || endDate.isBefore(reminderItem.date)) {
+            return null
+        }
+        val includeStartDay = reminderItem.notificationConfig.includeStartDay
+        val periodOffset = ChronoUnit.DAYS.between(reminderItem.date, endDate)
+        val periodStart = calculateCurrentPeriodStart(reminderItem, baseDate)
+        val periodEnd = periodStart.plusDays(periodOffset)
+        return when {
+            baseDate.isBefore(periodStart) ->
+                Triple("还有", ChronoUnit.DAYS.between(baseDate, periodStart).toInt(), periodStart)
+            baseDate == periodStart ->
+                Triple("就是", 0, periodStart)
+            !baseDate.isAfter(periodEnd) ->
+                Triple(
+                    "第",
+                    ChronoUnit.DAYS.between(periodStart, baseDate).toInt() + if (includeStartDay) 1 else 0,
+                    periodEnd
+                )
+            reminderItem.repeatInfo != null -> {
+                // 已越过本周期结束日：不显示"已过"，滚动到下一周期开始日
+                val nextDate = calculateNextTargetDate(reminderItem, baseDate) ?: periodStart
+                Triple("还有", ChronoUnit.DAYS.between(baseDate, nextDate).toInt().coerceAtLeast(0), nextDate)
+            }
+            else ->
+                Triple("已过", ChronoUnit.DAYS.between(periodEnd, baseDate).toInt().coerceAtLeast(0), periodEnd)
         }
     }
 

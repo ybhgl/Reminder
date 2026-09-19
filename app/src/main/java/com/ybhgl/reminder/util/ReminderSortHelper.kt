@@ -128,11 +128,12 @@ private fun reminderSortValue(reminder: ReminderItem): Int {
     val today = LocalDate.now()
     return when (reminder.type) {
         ReminderType.ANNUAL -> {
-            val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
-            if (nextDate != null) {
-                ChronoUnit.DAYS.between(today, nextDate).toInt()
+            // 区间事件按阶段关键日排序：未开始=开始日、进行中=结束日（快结束的排前）、
+            // 有重复=下一周期开始日；已过且无重复为 null → 殿后
+            val keyDate = CalendarUtil.calculateNextKeyDate(reminder, today)
+            if (keyDate != null) {
+                ChronoUnit.DAYS.between(today, keyDate).toInt()
             } else {
-                // For past, non-repeating events, sort them at the end.
                 Int.MAX_VALUE
             }
         }

@@ -960,7 +960,9 @@ data class ReminderDisplayInfo(
     val headerTitle: String,
     val dayCount: Int,
     val referenceText: String,
-    val visuals: ReminderCardVisuals
+    val visuals: ReminderCardVisuals,
+    /** 区间事件（endDate != null）附加信息，如"共10天 · 还剩3天"；非区间事件为 null */
+    val intervalSubText: String? = null
 )
 
 @Composable
@@ -974,6 +976,30 @@ internal fun reminderDisplayInfo(
 
     val (headerLabelSuffix, dayCount, referenceText) = when (reminder.type) {
         ReminderType.ANNUAL -> {
+            val stage = CalendarUtil.resolveIntervalStage(reminder, today)
+            if (stage != null) {
+                // 区间事件：还有x天 → 就是今天 → 第x天 → 已过x天；有重复则周期结束后进入下一周期"还有x天"
+                val (suffix, dayNumber, keyDate) = stage
+                val periodOffset = ChronoUnit.DAYS.between(reminder.date, reminder.endDate!!)
+                val formattedDate = if (useLunar) {
+                    if (shortFormat) CalendarUtil.formatLunarDateShort(keyDate) else CalendarUtil.formatLunarDate(keyDate)
+                } else {
+                    keyDate.format(DateTimeFormatter.ofPattern("yyyy-MM-dd EEEE", Locale.CHINA))
+                }
+                val intervalSubText = when (suffix) {
+                    "第" -> "共${periodOffset + 1}天 · 还剩${ChronoUnit.DAYS.between(today, keyDate).toInt() + 1}天"
+                    "已过" -> null
+                    else -> "共${periodOffset + 1}天"
+                }
+                return ReminderDisplayInfo(
+                    headerTitle = buildHeaderTitle(reminder.title, suffix),
+                    dayCount = dayNumber,
+                    referenceText = formattedDate,
+                    visuals = visuals,
+                    intervalSubText = intervalSubText
+                )
+            }
+
             val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
             if (nextDate == null) {
                 // This is a past, non-repeating event.

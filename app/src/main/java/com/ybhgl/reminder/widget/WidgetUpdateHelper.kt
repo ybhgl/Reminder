@@ -41,9 +41,10 @@ object WidgetUpdateHelper {
         val today = LocalDate.now()
         val upcoming = items.filter { it.type != ReminderType.COUNT_UP }
             .mapNotNull { item ->
-                val nextDate = CalendarUtil.calculateNextTargetDate(item)
-                if (nextDate != null) {
-                    item to ChronoUnit.DAYS.between(today, nextDate)
+                // 区间事件（endDate != null）按阶段取关键日：进行中=结束日，避免精选漏掉进行中的事件
+                val keyDate = CalendarUtil.calculateNextKeyDate(item, today)
+                if (keyDate != null) {
+                    item to ChronoUnit.DAYS.between(today, keyDate)
                 } else {
                     null
                 }
@@ -72,6 +73,19 @@ object WidgetUpdateHelper {
 
         when (reminder.type) {
             ReminderType.ANNUAL -> {
+                val stage = CalendarUtil.resolveIntervalStage(reminder, today)
+                if (stage != null) {
+                    // 区间事件：还有x天 → 就是今天 → 第x天 → 已过x天；有重复则周期结束后进入下一周期
+                    val (stageLabel, stageDays, keyDate) = stage
+                    label = stageLabel
+                    if (stageLabel == "就是") {
+                        days = "今"
+                        unit = ""
+                    } else {
+                        days = stageDays.toString()
+                    }
+                    dateString = if (reminder.isLunar) CalendarUtil.formatLunarDateShort(keyDate) else keyDate.toString()
+                } else {
                 val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
                 if (nextDate == null) {
                     val daysPassed = ChronoUnit.DAYS.between(reminder.date, today).toInt().coerceAtLeast(0)
@@ -89,6 +103,7 @@ object WidgetUpdateHelper {
                         days = daysRemaining.toString()
                     }
                     dateString = if (reminder.isLunar) CalendarUtil.formatLunarDateShort(nextDate) else nextDate.toString()
+                }
                 }
             }
 
