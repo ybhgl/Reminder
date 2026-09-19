@@ -259,7 +259,7 @@ object ReminderNotificationHelper {
                     imageTextInfoRight {
                         type = 3
                         textInfo {
-                            title =  info.title
+                            title = info.title
                         }
                     }
                 }
