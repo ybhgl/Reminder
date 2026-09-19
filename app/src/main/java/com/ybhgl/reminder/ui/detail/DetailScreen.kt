@@ -704,7 +704,37 @@ private fun monthsAndDaysBetween(anchor: LocalDate, target: LocalDate): Pair<Int
 private fun dayFormatAnchor(reminder: ReminderItem): Pair<LocalDate, LocalDate> {
     val today = LocalDate.now()
     return when (reminder.type) {
-        ReminderType.ANNUAL, ReminderType.BIRTHDAY -> {
+        ReminderType.ANNUAL -> {
+            // 区间事件按当前阶段选择锚点（口径与 reminderDisplayInfo 区间分支一致）
+            val endDate = reminder.endDate
+            if (endDate != null && !endDate.isBefore(reminder.date)) {
+                val periodOffset = ChronoUnit.DAYS.between(reminder.date, endDate)
+                val periodStart = CalendarUtil.calculateCurrentPeriodStart(reminder, today)
+                val periodEnd = periodStart.plusDays(periodOffset)
+                when {
+                    today.isBefore(periodStart) -> today to periodStart
+                    today == periodStart -> periodStart to today
+                    !today.isAfter(periodEnd) -> {
+                        // "包含起始日"时 dayCount 比 between 多 1，锚点前移一天保持换算口径一致
+                        val anchor = if (reminder.notificationConfig.includeStartDay) {
+                            periodStart.minusDays(1)
+                        } else {
+                            periodStart
+                        }
+                        anchor to today
+                    }
+                    reminder.repeatInfo != null -> {
+                        val nextDate = CalendarUtil.calculateNextTargetDate(reminder, today) ?: periodStart
+                        today to nextDate
+                    }
+                    else -> periodEnd to today
+                }
+            } else {
+                val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
+                if (nextDate == null) reminder.date to today else today to nextDate
+            }
+        }
+        ReminderType.BIRTHDAY -> {
             val nextDate = CalendarUtil.calculateNextTargetDate(reminder)
             if (nextDate == null) reminder.date to today else today to nextDate
         }
@@ -981,6 +1011,8 @@ fun ReminderDetailCard(
     val dayCountFormats = remember(
         reminderItem.id,
         reminderItem.date,
+        reminderItem.endDate,
+        reminderItem.repeatInfo,
         reminderItem.type,
         reminderItem.notificationConfig.includeStartDay,
         dayCountIsToday,
@@ -1155,12 +1187,13 @@ fun ReminderDetailCard(
                                 label = "DateTransition"
                             ) { targetText ->
                                 val dateStyle = TextStyle(fontSize = 18.sp, textAlign = TextAlign.Center)
+                                val footerText = if (reminderItem.type == ReminderType.COUNT_UP) {
+                                    "自 ${targetText} 起"
+                                } else {
+                                    "目标日: ${targetText}"
+                                }
                                 Text(
-                                    text = if (reminderItem.type == ReminderType.COUNT_UP) {
-                                        "自 ${targetText} 起"
-                                    } else {
-                                        "目标日: ${targetText}"
-                                    },
+                                    text = displayInfo.intervalSubText?.let { "$footerText · $it" } ?: footerText,
                                     style = modeStyle(dateStyle),
                                     color = modeColor(effectiveVisuals.secondaryTextColor),
                                     modifier = Modifier.fillMaxWidth()

@@ -54,30 +54,47 @@ object CalendarUtil {
         }
 
         var currentDate = reminderItem.date
+        while (currentDate.isBefore(baseDate)) {
+            currentDate = advancePeriodStart(currentDate, repeatInfo, reminderItem.isLunar)
+        }
+        return currentDate
+    }
 
-        if (!reminderItem.isLunar) {
+    /**
+     * 区间事件（endDate != null）当前所处周期的开始日：<= baseDate 的最大周期开始日；
+     * baseDate 早于首个周期时返回原始开始日期。
+     * 周期长度按"结束日 - 开始日"的公历天数偏移换算，结束日 = 周期开始日 + offset。
+     */
+    fun calculateCurrentPeriodStart(reminderItem: ReminderItem, baseDate: LocalDate = LocalDate.now()): LocalDate {
+        val repeatInfo = reminderItem.repeatInfo ?: return reminderItem.date
+        var periodStart = reminderItem.date
+        var next = advancePeriodStart(periodStart, repeatInfo, reminderItem.isLunar)
+        while (!next.isAfter(baseDate)) {
+            periodStart = next
+            next = advancePeriodStart(periodStart, repeatInfo, reminderItem.isLunar)
+        }
+        return periodStart
+    }
+
+    /** 周期开始日向前滚动一步（农历年/月用农历规则，日/周按公历） */
+    private fun advancePeriodStart(currentDate: LocalDate, repeatInfo: com.ybhgl.reminder.data.RepeatInfo, isLunar: Boolean): LocalDate {
+        return if (!isLunar) {
             // Gregorian calculation
-            while (currentDate.isBefore(baseDate)) {
-                currentDate = when (repeatInfo.unit) {
-                    RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
-                    RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
-                    RepeatUnit.MONTH -> currentDate.plusMonths(repeatInfo.interval.toLong())
-                    RepeatUnit.YEAR -> currentDate.plusYears(repeatInfo.interval.toLong())
-                }
+            when (repeatInfo.unit) {
+                RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
+                RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
+                RepeatUnit.MONTH -> currentDate.plusMonths(repeatInfo.interval.toLong())
+                RepeatUnit.YEAR -> currentDate.plusYears(repeatInfo.interval.toLong())
             }
-            return currentDate
         } else {
             // Lunar calculation
-            while (currentDate.isBefore(baseDate)) {
-                currentDate = when (repeatInfo.unit) {
-                    RepeatUnit.YEAR -> getNextLunarYearDate(currentDate, repeatInfo.interval)
-                    RepeatUnit.MONTH -> getNextLunarMonthDate(currentDate, repeatInfo.interval)
-                    // Lunar day/week repeats are not standard, treat them as gregorian.
-                    RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
-                    RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
-                }
+            when (repeatInfo.unit) {
+                RepeatUnit.YEAR -> getNextLunarYearDate(currentDate, repeatInfo.interval)
+                RepeatUnit.MONTH -> getNextLunarMonthDate(currentDate, repeatInfo.interval)
+                // Lunar day/week repeats are not standard, treat them as gregorian.
+                RepeatUnit.DAY -> currentDate.plusDays(repeatInfo.interval.toLong())
+                RepeatUnit.WEEK -> currentDate.plusWeeks(repeatInfo.interval.toLong())
             }
-            return currentDate
         }
     }
 
