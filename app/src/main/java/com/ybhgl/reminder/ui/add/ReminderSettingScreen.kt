@@ -13,6 +13,8 @@ import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Add
@@ -126,35 +128,31 @@ fun ReminderSettingScreen(
         ) {
             val topBarHeightDp = with(LocalDensity.current) { topBarState.topBarHeightPx.toDp() }
 
-            LazyColumn(
-                modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = 16.dp,
-                    end = 16.dp,
-                    top = 0.dp,
-                    bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
-                )
-            ) {
-                item {
-                    Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
-                }
-
-                item {
-                    TonalCardRow(
-                        icon = Icons.Default.Notifications,
-                        title = "开启提醒",
-                        trailing = {
-                            // 整卡可点击切换，Switch 仅作状态指示，避免双触发
-                            Switch(
-                                checked = uiState.config.isEnabled,
-                                onCheckedChange = null
-                            )
-                        },
-                        onClick = { viewModel.updateIsEnabled(!uiState.config.isEnabled) }
+            Column(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .verticalScroll(rememberScrollState())
+                    .padding(
+                        start = 16.dp,
+                        end = 16.dp,
+                        bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp
                     )
-                }
+            ) {
+                Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
 
-            item {
+                TonalCardRow(
+                    icon = Icons.Default.Notifications,
+                    title = "开启提醒",
+                    trailing = {
+                        // 整卡可点击切换，Switch 仅作状态指示，避免双触发
+                        Switch(
+                            checked = uiState.config.isEnabled,
+                            onCheckedChange = null
+                        )
+                    },
+                    onClick = { viewModel.updateIsEnabled(!uiState.config.isEnabled) }
+                )
+
                 SettingsLinkedVisibility(
                     visible = if (viewModel.isInitialized) uiState.config.isEnabled else null
                 ) {
@@ -232,7 +230,7 @@ fun ReminderSettingScreen(
                         val continuousOn = uiState.config.isContinuous && !isCountUp
 
                         // 连续提醒的单时间与多时间列表为互斥内容替换：
-                        // AnimatedContent 在单一槽位内双向过渡，展开/收起动画对称且不受 LazyColumn 空间回收影响
+                        // AnimatedContent 在单一槽位内双向过渡，展开/收起动画对称
                         AnimatedContent(
                             targetState = continuousOn,
                             transitionSpec = {
@@ -344,7 +342,6 @@ fun ReminderSettingScreen(
                     }
                 }
             }
-        }
 
         // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
         StatusBarScrim(
