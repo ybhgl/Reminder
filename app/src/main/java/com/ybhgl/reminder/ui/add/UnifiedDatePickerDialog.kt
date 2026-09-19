@@ -41,6 +41,10 @@ import kotlinx.collections.immutable.PersistentList
 import kotlinx.collections.immutable.toPersistentList
 import java.time.LocalDate
 
+// 支持的年份范围（tyme4kt 支持 1-9999 年，java.time 无限制）
+private const val MIN_YEAR = 1601
+private const val MAX_YEAR = 2999
+
 private val LUNAR_DAY_STRINGS = arrayOf(
     "初一", "初二", "初三", "初四", "初五",
     "初六", "初七", "初八", "初九", "初十",
@@ -97,7 +101,7 @@ fun UnifiedDatePickerDialog(
         if (supportFlexibleFilter) {
             list.add(DatePickerPickerOption("不限", null))
         }
-        list.addAll((1901..2100).map { DatePickerPickerOption("$it", it) })
+        list.addAll((MIN_YEAR..MAX_YEAR).map { DatePickerPickerOption("$it", it) })
         list.toPersistentList()
     }
     val initSolarYearIdx = remember {
@@ -197,13 +201,13 @@ fun UnifiedDatePickerDialog(
     var selectedMonthIndex by remember { mutableIntStateOf(0) }
     var activeDay by remember { mutableStateOf<Int?>(if (supportFlexibleFilter) initialFilter?.startDay else lunarInit.day) }
 
-    // Year options: 1901 - 2100, labeled as GanZhi(Year)
+    // Year options: 1601 - 2999, labeled as GanZhi(Year)
     val yearOptions = remember {
         val list = mutableListOf<DatePickerPickerOption<Int?>>()
         if (supportFlexibleFilter) {
             list.add(DatePickerPickerOption("不限", null))
         }
-        list.addAll((1901..2100).map { yr ->
+        list.addAll((MIN_YEAR..MAX_YEAR).map { yr ->
             val ganZhi = LunarYear.fromYear(yr).getSixtyCycle()
             DatePickerPickerOption("${ganZhi}(${yr})", yr)
         })
@@ -762,8 +766,8 @@ fun UnifiedDatePickerDialog(
                 return@remember "请输入完整的数字日期"
             }
 
-            if (yr !in 1901..2100) {
-                return@remember "年份范围需在 1901 - 2100 之间"
+            if (yr !in MIN_YEAR..MAX_YEAR) {
+                return@remember "年份范围需在 $MIN_YEAR - $MAX_YEAR 之间"
             }
 
             if (m !in 1..12) {
@@ -785,7 +789,7 @@ fun UnifiedDatePickerDialog(
 
         val isYearError = remember(yearInput, validationResult) {
             val yr = yearInput.toIntOrNull()
-            validationResult != null && (yr == null || yr !in 1901..2100)
+            validationResult != null && (yr == null || yr !in MIN_YEAR..MAX_YEAR)
         }
 
         val isMonthError = remember(monthInput, validationResult) {
@@ -1261,7 +1265,7 @@ fun FlexibleDateFilterDialog(
     // ==========================================
     // 基础合法性检验 (值范围)
     // ==========================================
-    val isStartYearValError = startYearInput.isNotEmpty() && (startYearInput.toIntOrNull() !in 1900..2100)
+    val isStartYearValError = startYearInput.isNotEmpty() && (startYearInput.toIntOrNull() !in MIN_YEAR..MAX_YEAR)
     val isStartMonthValError = startMonthInput.isNotEmpty() && (startMonthInput.toIntOrNull() !in 1..12)
     val maxStartDays = try {
         val y = startYearInput.toIntOrNull() ?: 2026
@@ -1272,7 +1276,7 @@ fun FlexibleDateFilterDialog(
     }
     val isStartDayValError = startDayInput.isNotEmpty() && (startDayInput.toIntOrNull() !in 1..maxStartDays)
 
-    val isEndYearValError = endYearInput.isNotEmpty() && (endYearInput.toIntOrNull() !in 1900..2100)
+    val isEndYearValError = endYearInput.isNotEmpty() && (endYearInput.toIntOrNull() !in MIN_YEAR..MAX_YEAR)
     val isEndMonthValError = endMonthInput.isNotEmpty() && (endMonthInput.toIntOrNull() !in 1..12)
     val maxEndDays = try {
         val y = endYearInput.toIntOrNull() ?: 2026
@@ -1375,7 +1379,7 @@ fun FlexibleDateFilterDialog(
     // ==========================================
     val errorText = when {
         isRangeOrderError -> orderErrorText
-        isStartYearValError || isEndYearValError -> "年份范围需在 1900 - 2100 之间"
+        isStartYearValError || isEndYearValError -> "年份范围需在 $MIN_YEAR - $MAX_YEAR 之间"
         isStartMonthValError || isEndMonthValError -> "月份范围需在 01 - 12 之间"
         isStartDayValError -> "开始日期天数超出该月最大范围"
         isEndDayValError -> "结束日期天数超出该月最大范围"
