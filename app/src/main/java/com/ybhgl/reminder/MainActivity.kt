@@ -39,6 +39,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -81,6 +87,8 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowBack
@@ -262,6 +270,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.activity.SystemBarStyle
 import androidx.compose.ui.graphics.toArgb
@@ -1405,6 +1414,7 @@ fun ReminderListScreen(
     )
 
     var viewMode by rememberSaveable { mutableStateOf(ReminderViewMode.CARD) }
+    var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var hasLoaded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var collapsedSections by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(setOf<String>()) }
@@ -1843,6 +1853,19 @@ fun ReminderListScreen(
                 }
             }
 
+            // FAB 扩展菜单遮罩：点击空白处收起菜单
+            if (fabMenuExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { fabMenuExpanded = false }
+                        )
+                )
+            }
+
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1858,20 +1881,33 @@ fun ReminderListScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val toggleIcon = if (viewMode == ReminderViewMode.CARD) Icons.AutoMirrored.Filled.ViewList else Icons.Default.ViewModule
+                        // 左侧 FAB：点击展开操作菜单（浮层见下方 FabExpandedMenu）
+                        val mainFabIconRotation by animateFloatAsState(
+                            targetValue = if (fabMenuExpanded) 135f else 0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "MainFabIconRotation"
+                        )
                         FloatingActionButton(
-                            onClick = {
-                                viewMode = if (viewMode == ReminderViewMode.CARD) ReminderViewMode.LIST else ReminderViewMode.CARD
-                            },
+                            onClick = { fabMenuExpanded = !fabMenuExpanded },
                             shape = CircleShape,
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(segmentedHeight)
                         ) {
-                            Icon(
-                                imageVector = toggleIcon,
-                                contentDescription = "切换视图"
-                            )
+                            Crossfade(
+                                targetState = fabMenuExpanded,
+                                animationSpec = tween(150),
+                                label = "MainFabIcon"
+                            ) { expanded ->
+                                Icon(
+                                    imageVector = if (expanded) Icons.Default.Close else Icons.Default.Category,
+                                    contentDescription = if (expanded) "收起菜单" else "更多操作",
+                                    modifier = Modifier.graphicsLayer { rotationZ = mainFabIconRotation }
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.width(16.dp))
 
@@ -1949,6 +1985,70 @@ fun ReminderListScreen(
                                 contentDescription = if (isSelectionMode) "删除选中提醒" else "添加提醒"
                             )
                         }
+                    }
+                }
+            }
+
+            // FAB 扩展菜单浮层：锚定左侧 FAB 上方，跟随底栏滚动位移
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationY = bottomBarOffsetPx },
+                contentAlignment = Alignment.BottomStart
+            ) {
+                AnimatedVisibility(
+                    visible = fabMenuExpanded && !isSelectionMode,
+                    enter = slideInVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) { it } + fadeIn() +
+                        scaleIn(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            initialScale = 0.8f
+                        ),
+                    exit = slideOutVertically { it } + fadeOut(animationSpec = tween(100)) +
+                        scaleOut(targetScale = 0.8f, animationSpec = tween(100)),
+                    label = "FabExpandedMenu",
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(
+                            start = 24.dp,
+                            bottom = segmentedBottomSpacing + segmentedHeight + 12.dp
+                        )
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        FabMenuItem(
+                            icon = Icons.Default.Calculate,
+                            label = "日期计算",
+                            onClick = {
+                                fabMenuExpanded = false
+                                navController.navigate(Routes.DATE_CALCULATOR)
+                            }
+                        )
+                        FabMenuItem(
+                            icon = if (viewMode == ReminderViewMode.CARD) {
+                                Icons.AutoMirrored.Filled.ViewList
+                            } else {
+                                Icons.Default.ViewModule
+                            },
+                            label = "切换视图",
+                            onClick = {
+                                viewMode = if (viewMode == ReminderViewMode.CARD) {
+                                    ReminderViewMode.LIST
+                                } else {
+                                    ReminderViewMode.CARD
+                                }
+                                fabMenuExpanded = false
+                            }
+                        )
                     }
                 }
             }
@@ -2038,6 +2138,42 @@ fun ReminderListScreen(
     }
 
 
+
+/**
+ * FAB 扩展菜单中的单个操作项：pill 形状的 secondaryContainer，含图标与文字标签。
+ */
+@Composable
+private fun FabMenuItem(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        tonalElevation = 3.dp,
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
 
 @Composable
 private fun ReminderListItem(
