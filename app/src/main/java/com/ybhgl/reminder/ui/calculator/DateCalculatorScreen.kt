@@ -24,6 +24,7 @@ import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,11 +38,17 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowLeft
 import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Add
+import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.SwapHoriz
+import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.FilterChipDefaults
 import androidx.compose.material3.Icon
@@ -54,10 +61,12 @@ import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -74,7 +83,13 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Dialog
+import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ybhgl.reminder.data.ReminderItem
+import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
+import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.util.CalendarUtil
@@ -106,10 +121,13 @@ private val weekDayFormatter: DateTimeFormatter =
 @Composable
 fun DateCalculatorScreen(
     onNavigateBack: () -> Unit,
-    modifier: Modifier = Modifier
+    onNavigateToAddEvent: (type: String, date: String, endDate: String?) -> Unit,
+    modifier: Modifier = Modifier,
+    viewModel: DateCalculatorViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val topBarState = rememberCollapsingTopBarState()
     var mode by rememberSaveable { mutableStateOf(CalcMode.OFFSET) }
+    val reminders by viewModel.reminders.collectAsState()
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -196,8 +214,14 @@ fun DateCalculatorScreen(
                     label = "calcModeSwitch"
                 ) { currentMode ->
                     when (currentMode) {
-                        CalcMode.OFFSET -> OffsetModeContent()
-                        CalcMode.INTERVAL -> IntervalModeContent()
+                        CalcMode.OFFSET -> OffsetModeContent(
+                            reminders = reminders,
+                            onNavigateToAddEvent = onNavigateToAddEvent
+                        )
+                        CalcMode.INTERVAL -> IntervalModeContent(
+                            reminders = reminders,
+                            onNavigateToAddEvent = onNavigateToAddEvent
+                        )
                     }
                 }
             }
@@ -251,7 +275,10 @@ private fun tweenish() = androidx.compose.animation.core.tween<Float>(120)
 // region 日期推算模式
 
 @Composable
-private fun OffsetModeContent() {
+private fun OffsetModeContent(
+    reminders: List<ReminderItem>,
+    onNavigateToAddEvent: (type: String, date: String, endDate: String?) -> Unit
+) {
     val today = remember { LocalDate.now() }
     var baseDate by rememberSaveable(
         stateSaver = LocalDateSaver
@@ -260,10 +287,13 @@ private fun OffsetModeContent() {
     var forward by rememberSaveable { mutableStateOf(true) }
     var daysText by rememberSaveable { mutableStateOf("") }
     var pickerTarget by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
+    var showReminderPicker by rememberSaveable { mutableStateOf(false) }
 
     val days = daysText.toIntOrNull()?.coerceIn(0, 99999) ?: 0
     val targetDate = baseDate.plusDays(if (forward) days.toLong() else -days.toLong())
     val diffFromToday = ChronoUnit.DAYS.between(today, targetDate)
+    // 未来（含今天）默认倒数日 ANNUAL，已过默认正数日 COUNT_UP
+    val addType = if (diffFromToday >= 0) ReminderType.ANNUAL else ReminderType.COUNT_UP
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // 基准日期
@@ -279,6 +309,7 @@ private fun OffsetModeContent() {
                 QuickDateChip("今天") { baseDate = today }
                 QuickDateChip("昨天") { baseDate = today.minusDays(1) }
                 QuickDateChip("明天") { baseDate = today.plusDays(1) }
+                QuickDateChip("从提醒选择") { showReminderPicker = true }
             }
         }
 
@@ -368,6 +399,14 @@ private fun OffsetModeContent() {
                 diffFromToday == 0L -> "就是今天"
                 diffFromToday > 0 -> "距今还有 $diffFromToday 天"
                 else -> "距今已过 ${-diffFromToday} 天"
+            },
+            action = {
+                AddEventButton(
+                    label = if (addType == ReminderType.ANNUAL) "添加为倒数日" else "添加为正数日",
+                    onClick = {
+                        onNavigateToAddEvent(addType.name, targetDate.toString(), null)
+                    }
+                )
             }
         )
     }
@@ -384,6 +423,17 @@ private fun OffsetModeContent() {
             }
         )
     }
+    if (showReminderPicker) {
+        ReminderPickerDialog(
+            reminders = reminders,
+            onDismiss = { showReminderPicker = false },
+            onPick = { reminder ->
+                baseDate = reminder.date
+                baseIsLunar = reminder.isLunar
+                showReminderPicker = false
+            }
+        )
+    }
 }
 
 // endregion
@@ -391,7 +441,10 @@ private fun OffsetModeContent() {
 // region 日期间隔模式
 
 @Composable
-private fun IntervalModeContent() {
+private fun IntervalModeContent(
+    reminders: List<ReminderItem>,
+    onNavigateToAddEvent: (type: String, date: String, endDate: String?) -> Unit
+) {
     val today = remember { LocalDate.now() }
     var startDate by rememberSaveable(stateSaver = LocalDateSaver) {
         mutableStateOf(today.minusDays(30))
@@ -400,6 +453,7 @@ private fun IntervalModeContent() {
         mutableStateOf(today)
     }
     var pickerTarget by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
+    var showReminderPicker by rememberSaveable { mutableStateOf(false) }
 
     val ordered = startDate <= endDate
     val effectiveStart = if (ordered) startDate else endDate
@@ -450,6 +504,7 @@ private fun IntervalModeContent() {
             ) {
                 QuickDateChip("到今天") { endDate = today }
                 QuickDateChip("到明天") { endDate = today.plusDays(1) }
+                QuickDateChip("从提醒选择") { showReminderPicker = true }
             }
         }
 
@@ -465,7 +520,19 @@ private fun IntervalModeContent() {
             headline = "$totalDays 天",
             subline = detailParts + " · " +
                 if (weeks > 0) "$weeks 个星期余 $remDays 天" else "$remDays 天不足一周",
-            badge = if (ordered) "起始 → 结束" else "已自动按先后顺序计算"
+            badge = if (ordered) "起始 → 结束" else "已自动按先后顺序计算",
+            action = {
+                AddEventButton(
+                    label = "添加为区间倒数日",
+                    onClick = {
+                        onNavigateToAddEvent(
+                            ReminderType.ANNUAL.name,
+                            effectiveStart.toString(),
+                            effectiveEnd.toString()
+                        )
+                    }
+                )
+            }
         )
     }
 
@@ -490,6 +557,16 @@ private fun IntervalModeContent() {
             }
         )
         null -> {}
+    }
+    if (showReminderPicker) {
+        ReminderPickerDialog(
+            reminders = reminders,
+            onDismiss = { showReminderPicker = false },
+            onPick = { reminder ->
+                endDate = reminder.date
+                showReminderPicker = false
+            }
+        )
     }
 }
 
@@ -582,7 +659,8 @@ private fun QuickDateChip(text: String, onClick: () -> Unit) {
 private fun ResultCard(
     headline: String,
     subline: String,
-    badge: String
+    badge: String,
+    action: (@Composable () -> Unit)? = null
 ) {
     val bounce = remember { Animatable(1f) }
     LaunchedEffect(headline, subline) {
@@ -644,6 +722,141 @@ private fun ResultCard(
                     )
                     .padding(horizontal = 12.dp, vertical = 6.dp)
             )
+            if (action != null) {
+                Spacer(modifier = Modifier.height(8.dp))
+                action()
+            }
+        }
+    }
+}
+
+/** 结果卡内的"添加为事件"按钮：跳转新建提醒页并预填日期 */
+@Composable
+private fun AddEventButton(label: String, onClick: () -> Unit) {
+    Button(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        colors = androidx.compose.material3.ButtonDefaults.buttonColors(
+            containerColor = MaterialTheme.colorScheme.primary,
+            contentColor = MaterialTheme.colorScheme.onPrimary
+        )
+    ) {
+        Icon(
+            imageVector = Icons.Filled.Add,
+            contentDescription = null,
+            modifier = Modifier.size(18.dp)
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(label, style = MaterialTheme.typography.labelLarge)
+    }
+}
+
+/** 从已有提醒中选择日期：按事件日期升序的提醒列表对话框 */
+@Composable
+private fun ReminderPickerDialog(
+    reminders: List<ReminderItem>,
+    onDismiss: () -> Unit,
+    onPick: (ReminderItem) -> Unit
+) {
+    Dialog(
+        onDismissRequest = onDismiss,
+        properties = DialogProperties(usePlatformDefaultWidth = false)
+    ) {
+        Card(
+            modifier = Modifier
+                .fillMaxWidth()
+                .padding(24.dp)
+                .heightIn(max = 480.dp),
+            shape = RoundedCornerShape(28.dp),
+            colors = CardDefaults.cardColors(
+                containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+            )
+        ) {
+            Column(modifier = Modifier.padding(top = 20.dp)) {
+                Text(
+                    text = "从提醒选择日期",
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold),
+                    modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp)
+                )
+                HorizontalDivider(
+                    modifier = Modifier.padding(horizontal = 20.dp),
+                    color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f)
+                )
+                if (reminders.isEmpty()) {
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(vertical = 40.dp),
+                        contentAlignment = Alignment.Center
+                    ) {
+                        Text(
+                            text = "暂无提醒事件",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
+                } else {
+                    LazyColumn(modifier = Modifier.fillMaxWidth()) {
+                        items(reminders, key = { it.id }) { reminder ->
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .clickable { onPick(reminder) }
+                                    .padding(horizontal = 20.dp, vertical = 12.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(14.dp)
+                            ) {
+                                Box(
+                                    modifier = Modifier
+                                        .size(38.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.secondaryContainer,
+                                            CircleShape
+                                        ),
+                                    contentAlignment = Alignment.Center
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Filled.Event,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.onSecondaryContainer,
+                                        modifier = Modifier.size(20.dp)
+                                    )
+                                }
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = reminder.title,
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        maxLines = 1,
+                                        overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                                    )
+                                    Text(
+                                        text = reminder.date.format(cnDateFormatter) +
+                                            " · " + reminder.date.format(weekDayFormatter),
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Text(
+                                    text = when (reminder.type) {
+                                        ReminderType.ANNUAL -> "倒数"
+                                        ReminderType.COUNT_UP -> "正数"
+                                        ReminderType.BIRTHDAY -> "生日"
+                                    },
+                                    style = MaterialTheme.typography.labelMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                                )
+                            }
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(8.dp))
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.End
+                ) {
+                    TextButton(onClick = onDismiss) { Text("取消") }
+                }
+            }
         }
     }
 }

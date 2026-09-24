@@ -83,6 +83,13 @@ object AppViewModelProvider {
         initializer {
             TagManagementViewModel(reminderApplication().container.tagRepository)
         }
+
+        // Initializer for DateCalculatorViewModel
+        initializer {
+            com.ybhgl.reminder.ui.calculator.DateCalculatorViewModel(
+                reminderRepository = reminderApplication().container.reminderRepository
+            )
+        }
     }
 }
 

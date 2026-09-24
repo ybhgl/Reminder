@@ -623,7 +623,7 @@ object Routes {
     const val REMINDER_LIST = "reminder_list"
     const val ADD_REMINDER_BASE = "add_reminder"
     const val ADD_REMINDER = ADD_REMINDER_BASE
-    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}"
+    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}&initialDate={initialDate}&initialEndDate={initialEndDate}"
     private const val EDIT_REMINDER_BASE = "edit_reminder"
     const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}"
     const val SETTINGS = "settings"
@@ -648,8 +648,13 @@ object Routes {
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
     fun shareReminder(reminderId: Int): String = "$SHARE_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
-    fun addReminder(initialType: String? = null): String {
-        return if (initialType != null) "$ADD_REMINDER_BASE?initialType=$initialType" else ADD_REMINDER_BASE
+    fun addReminder(initialType: String? = null, initialDate: String? = null, initialEndDate: String? = null): String {
+        val parts = listOfNotNull(
+            initialType?.let { "initialType=$it" },
+            initialDate?.let { "initialDate=$it" },
+            initialEndDate?.let { "initialEndDate=$it" }
+        )
+        return if (parts.isEmpty()) ADD_REMINDER_BASE else "$ADD_REMINDER_BASE?" + parts.joinToString("&")
     }
     fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null, eventDate: String? = null, fromManage: Boolean = false): String {
         val base = "$REMINDER_SETTING_BASE?"
@@ -790,6 +795,16 @@ fun ReminderApp() {
                         type = NavType.StringType
                         nullable = true
                         defaultValue = null
+                    },
+                    navArgument("initialDate") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("initialEndDate") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
                     }
                 )
             ) {
@@ -893,7 +908,12 @@ fun ReminderApp() {
                 BackupAndRestoreScreen(onNavigateBack = { navController.navigateUp() })
             }
             composable(route = Routes.DATE_CALCULATOR) {
-                DateCalculatorScreen(onNavigateBack = { navController.navigateUp() })
+                DateCalculatorScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToAddEvent = { type, date, endDate ->
+                        navController.navigate(Routes.addReminder(initialType = type, initialDate = date, initialEndDate = endDate))
+                    }
+                )
             }
             composable(route = Routes.GESTURE_SETUP) {
                 com.ybhgl.reminder.ui.security.GestureSetupScreen(

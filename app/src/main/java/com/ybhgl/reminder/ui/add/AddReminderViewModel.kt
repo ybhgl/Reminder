@@ -71,6 +71,17 @@ class AddReminderViewModel(
             if (type != null) {
                 onTypeChange(type)
             }
+            // 日期计算工具"添加为事件"入口：预填起止日期（ANNUAL 支持区间结束日）
+            val dateStr = savedStateHandle.get<String>("initialDate")
+            val parsedDate = dateStr?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            if (parsedDate != null) {
+                reminderUiState = reminderUiState.copy(date = parsedDate)
+            }
+            val endDateStr = savedStateHandle.get<String>("initialEndDate")
+            val parsedEndDate = endDateStr?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
+            if (parsedEndDate != null && reminderUiState.type == ReminderType.ANNUAL) {
+                reminderUiState = reminderUiState.copy(endDate = parsedEndDate)
+            }
             initialUiState = reminderUiState
         }
     }
