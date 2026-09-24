@@ -193,6 +193,7 @@ import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.ReminderManageScreen
+import com.ybhgl.reminder.ui.calculator.DateCalculatorScreen
 import com.ybhgl.reminder.ui.settings.SettingsScreen
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
 import com.ybhgl.reminder.ui.tag.TagManagementScreen
@@ -631,6 +632,7 @@ object Routes {
     const val REMINDER_SETTING_BASE = "reminder_setting"
     const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}&fromManage={fromManage}"
     const val REMINDER_MANAGE = "reminder_manage"
+    const val DATE_CALCULATOR = "date_calculator"
     const val OPEN_SOURCE_LICENSES = "open_source_licenses"
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
@@ -880,6 +882,9 @@ fun ReminderApp() {
             }
             composable(route = Routes.BACKUP_AND_RESTORE) {
                 BackupAndRestoreScreen(onNavigateBack = { navController.navigateUp() })
+            }
+            composable(route = Routes.DATE_CALCULATOR) {
+                DateCalculatorScreen(onNavigateBack = { navController.navigateUp() })
             }
             composable(route = Routes.GESTURE_SETUP) {
                 com.ybhgl.reminder.ui.security.GestureSetupScreen(
