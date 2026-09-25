@@ -383,6 +383,69 @@ fun UnifiedDatePickerDialog(
 
 
     // ==========================================
+    // 3.5 Jump to today (sync both Solar & Lunar pickers)
+    // ==========================================
+    val scrollToToday: () -> Unit = {
+        coroutineScope.launch {
+            // Freeze all `selected*` state during the animation: as long as they are
+            // untouched, every column's `values` list stays identical, so each PickerState
+            // keeps its Measured layoutInfo and `animateScrollToIndex` plays for real
+            // (instead of falling back to an instant scrollToIndex on a rebuilt state).
+            isUpdating = true
+            try {
+                val today = LocalDate.now()
+
+                // Solar target indices
+                val sYIdx = solarYearOptions.indexOfFirst { it.value == today.year }.coerceAtLeast(0)
+                val sMIdx = solarMonthOptions.indexOfFirst { it.value == today.monthValue }.coerceAtLeast(0)
+                val maxD = java.time.YearMonth.of(today.year, today.monthValue).lengthOfMonth()
+                val sDIdx = (today.dayOfMonth - 1).coerceIn(0, maxD - 1)
+
+                // Lunar target indices
+                val solar = SolarDay.fromYmd(today.year, today.monthValue, today.dayOfMonth)
+                val lunar = solar.getLunarDay()
+                val targetYear = lunar.year
+                val targetMonthName = lunar.getLunarMonth()!!.getName()
+                val targetDay = lunar.day
+                val yIdx = yearOptions.indexOfFirst { it.value == targetYear }.coerceAtLeast(0)
+                val mOpts = LunarYear.fromYear(targetYear).getMonths()
+                val mIdx = mOpts.indexOfFirst { it.getName() == targetMonthName }.coerceAtLeast(0)
+                val dIdx = (targetDay - 1).coerceIn(0, (mOpts.getOrNull(mIdx)?.getDayCount() ?: 30) - 1)
+
+                val animSpec = androidx.compose.animation.core.tween<Float>(
+                    durationMillis = 450,
+                    easing = androidx.compose.animation.core.FastOutSlowInEasing
+                )
+
+                // Animate all six columns in parallel; state is frozen so no list rebuilds mid-flight.
+                kotlinx.coroutines.joinAll(
+                    launch { solarYearPickerState.animateScrollToIndex(sYIdx, animSpec) },
+                    launch { solarMonthPickerState.animateScrollToIndex(sMIdx, animSpec) },
+                    launch { solarDayPickerState.animateScrollToIndex(sDIdx, animSpec) },
+                    launch { yearPickerState.animateScrollToIndex(yIdx, animSpec) },
+                    launch { monthPickerState.animateScrollToIndex(mIdx, animSpec) },
+                    launch { dayPickerState.animateScrollToIndex(dIdx, animSpec) }
+                )
+
+                // Animation finished — commit the selection so the live title updates in sync
+                // with the now-settled wheels, then let the rebuild effects re-align the
+                // day / lunar-month wheels to the committed values.
+                selectedSolarYear = today.year
+                selectedSolarMonth = today.monthValue
+                selectedSolarDay = today.dayOfMonth
+                selectedYear = targetYear
+                activeMonthName = targetMonthName
+                activeDay = targetDay
+                isUpdating = false
+                kotlinx.coroutines.delay(150)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                isUpdating = false
+            }
+        }
+    }
+
+    // ==========================================
     // 4. Dialog Core Layout
     // ==========================================
     Dialog(
@@ -683,9 +746,20 @@ fun UnifiedDatePickerDialog(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(start = 16.dp, end = 16.dp, top = 16.dp),
-                    horizontalArrangement = Arrangement.End,
+                    horizontalArrangement = Arrangement.SpaceBetween,
                     verticalAlignment = Alignment.CenterVertically
                 ) {
+                    if (!supportFlexibleFilter) {
+                        TextButton(onClick = scrollToToday) {
+                            Text("今天")
+                        }
+                    } else {
+                        Spacer(modifier = Modifier.width(1.dp))
+                    }
+                    Row(
+                        horizontalArrangement = Arrangement.End,
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
                     TextButton(onClick = onDismissRequest) {
                         Text("取消")
                     }
@@ -723,6 +797,7 @@ fun UnifiedDatePickerDialog(
                         }
                     ) {
                         Text("确定")
+                    }
                     }
                 }
             }
