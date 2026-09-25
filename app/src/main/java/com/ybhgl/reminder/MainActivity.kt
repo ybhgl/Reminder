@@ -39,6 +39,12 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.Crossfade
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.border
 import androidx.compose.foundation.ExperimentalFoundationApi
@@ -81,6 +87,8 @@ import androidx.compose.material.icons.outlined.CloudUpload
 import androidx.compose.material.icons.outlined.CloudDone
 import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.filled.ViewModule
+import androidx.compose.material.icons.filled.Category
+import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowBack
@@ -193,6 +201,7 @@ import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.ReminderManageScreen
+import com.ybhgl.reminder.ui.calculator.DateCalculatorScreen
 import com.ybhgl.reminder.ui.settings.SettingsScreen
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
 import com.ybhgl.reminder.ui.tag.TagManagementScreen
@@ -261,6 +270,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.ui.graphics.Brush
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.activity.SystemBarStyle
 import androidx.compose.ui.graphics.toArgb
@@ -613,7 +623,7 @@ object Routes {
     const val REMINDER_LIST = "reminder_list"
     const val ADD_REMINDER_BASE = "add_reminder"
     const val ADD_REMINDER = ADD_REMINDER_BASE
-    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}"
+    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}&initialDate={initialDate}&initialEndDate={initialEndDate}"
     private const val EDIT_REMINDER_BASE = "edit_reminder"
     const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}"
     const val SETTINGS = "settings"
@@ -631,14 +641,20 @@ object Routes {
     const val REMINDER_SETTING_BASE = "reminder_setting"
     const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}&fromManage={fromManage}"
     const val REMINDER_MANAGE = "reminder_manage"
+    const val DATE_CALCULATOR = "date_calculator"
     const val OPEN_SOURCE_LICENSES = "open_source_licenses"
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
     fun shareReminder(reminderId: Int): String = "$SHARE_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
-    fun addReminder(initialType: String? = null): String {
-        return if (initialType != null) "$ADD_REMINDER_BASE?initialType=$initialType" else ADD_REMINDER_BASE
+    fun addReminder(initialType: String? = null, initialDate: String? = null, initialEndDate: String? = null): String {
+        val parts = listOfNotNull(
+            initialType?.let { "initialType=$it" },
+            initialDate?.let { "initialDate=$it" },
+            initialEndDate?.let { "initialEndDate=$it" }
+        )
+        return if (parts.isEmpty()) ADD_REMINDER_BASE else "$ADD_REMINDER_BASE?" + parts.joinToString("&")
     }
     fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null, eventDate: String? = null, fromManage: Boolean = false): String {
         val base = "$REMINDER_SETTING_BASE?"
@@ -779,6 +795,16 @@ fun ReminderApp() {
                         type = NavType.StringType
                         nullable = true
                         defaultValue = null
+                    },
+                    navArgument("initialDate") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
+                    },
+                    navArgument("initialEndDate") {
+                        type = NavType.StringType
+                        nullable = true
+                        defaultValue = null
                     }
                 )
             ) {
@@ -880,6 +906,14 @@ fun ReminderApp() {
             }
             composable(route = Routes.BACKUP_AND_RESTORE) {
                 BackupAndRestoreScreen(onNavigateBack = { navController.navigateUp() })
+            }
+            composable(route = Routes.DATE_CALCULATOR) {
+                DateCalculatorScreen(
+                    onNavigateBack = { navController.navigateUp() },
+                    onNavigateToAddEvent = { type, date, endDate ->
+                        navController.navigate(Routes.addReminder(initialType = type, initialDate = date, initialEndDate = endDate))
+                    }
+                )
             }
             composable(route = Routes.GESTURE_SETUP) {
                 com.ybhgl.reminder.ui.security.GestureSetupScreen(
@@ -1400,6 +1434,7 @@ fun ReminderListScreen(
     )
 
     var viewMode by rememberSaveable { mutableStateOf(ReminderViewMode.CARD) }
+    var fabMenuExpanded by rememberSaveable { mutableStateOf(false) }
     var hasLoaded by remember { mutableStateOf(false) }
     var showDeleteDialog by remember { mutableStateOf(false) }
     var collapsedSections by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(setOf<String>()) }
@@ -1838,6 +1873,85 @@ fun ReminderListScreen(
                 }
             }
 
+            // FAB 扩展菜单遮罩：点击空白处收起菜单
+            if (fabMenuExpanded) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .clickable(
+                            interactionSource = remember { MutableInteractionSource() },
+                            indication = null,
+                            onClick = { fabMenuExpanded = false }
+                        )
+                )
+            }
+
+            // FAB 扩展菜单浮层：锚定左侧 FAB 上方，跟随底栏滚动位移。
+            // 绘制在底栏 Box 之前（z 序位于 FAB 之下），使狂点 FAB 时点击始终被最上层 FAB 接收，
+            // 弹入/弹出动画经过 FAB 区域的子项不会误吞点击。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationY = bottomBarOffsetPx },
+                contentAlignment = Alignment.BottomStart
+            ) {
+                AnimatedVisibility(
+                    visible = fabMenuExpanded && !isSelectionMode,
+                    enter = slideInVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) { it } + fadeIn() +
+                        scaleIn(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            initialScale = 0.8f
+                        ),
+                    exit = slideOutVertically { it } + fadeOut(animationSpec = tween(100)) +
+                        scaleOut(targetScale = 0.8f, animationSpec = tween(100)),
+                    label = "FabExpandedMenu",
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(
+                            start = 24.dp,
+                            bottom = segmentedBottomSpacing + segmentedHeight + 12.dp
+                        )
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        FabMenuItem(
+                            icon = Icons.Default.Calculate,
+                            label = "日期计算",
+                            onClick = {
+                                fabMenuExpanded = false
+                                navController.navigate(Routes.DATE_CALCULATOR)
+                            }
+                        )
+                        FabMenuItem(
+                            icon = if (viewMode == ReminderViewMode.CARD) {
+                                Icons.AutoMirrored.Filled.ViewList
+                            } else {
+                                Icons.Default.ViewModule
+                            },
+                            label = "切换视图",
+                            onClick = {
+                                viewMode = if (viewMode == ReminderViewMode.CARD) {
+                                    ReminderViewMode.LIST
+                                } else {
+                                    ReminderViewMode.CARD
+                                }
+                                fabMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -1853,20 +1967,34 @@ fun ReminderListScreen(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        val toggleIcon = if (viewMode == ReminderViewMode.CARD) Icons.AutoMirrored.Filled.ViewList else Icons.Default.ViewModule
+                        // 左侧 FAB：点击展开操作菜单（浮层见下方 FabExpandedMenu）
+                        // 注意：Close 图标本身是 X，旋转 45° 的奇数倍会看成 +，故展开态只转 90°
+                        val mainFabIconRotation by animateFloatAsState(
+                            targetValue = if (fabMenuExpanded) 90f else 0f,
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            label = "MainFabIconRotation"
+                        )
                         FloatingActionButton(
-                            onClick = {
-                                viewMode = if (viewMode == ReminderViewMode.CARD) ReminderViewMode.LIST else ReminderViewMode.CARD
-                            },
+                            onClick = { fabMenuExpanded = !fabMenuExpanded },
                             shape = CircleShape,
                             containerColor = MaterialTheme.colorScheme.primary,
                             contentColor = MaterialTheme.colorScheme.onPrimary,
                             modifier = Modifier.size(segmentedHeight)
                         ) {
-                            Icon(
-                                imageVector = toggleIcon,
-                                contentDescription = "切换视图"
-                            )
+                            Crossfade(
+                                targetState = fabMenuExpanded,
+                                animationSpec = tween(150),
+                                label = "MainFabIcon"
+                            ) { expanded ->
+                                Icon(
+                                    imageVector = if (expanded) Icons.Default.Close else Icons.Default.Category,
+                                    contentDescription = if (expanded) "收起菜单" else "更多操作",
+                                    modifier = Modifier.graphicsLayer { rotationZ = mainFabIconRotation }
+                                )
+                            }
                         }
                         Spacer(modifier = Modifier.width(16.dp))
 
@@ -2033,6 +2161,42 @@ fun ReminderListScreen(
     }
 
 
+
+/**
+ * FAB 扩展菜单中的单个操作项：pill 形状的 secondaryContainer，含图标与文字标签。
+ */
+@Composable
+private fun FabMenuItem(
+    icon: ImageVector,
+    label: String,
+    onClick: () -> Unit
+) {
+    Surface(
+        onClick = onClick,
+        shape = RoundedCornerShape(50),
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+        tonalElevation = 3.dp,
+        shadowElevation = 2.dp
+    ) {
+        Row(
+            modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp),
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(12.dp)
+        ) {
+            Icon(
+                imageVector = icon,
+                contentDescription = null,
+                modifier = Modifier.size(20.dp)
+            )
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Medium
+            )
+        }
+    }
+}
 
 @Composable
 private fun ReminderListItem(
