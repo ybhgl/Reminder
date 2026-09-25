@@ -338,10 +338,13 @@ private fun OffsetModeContent(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                // 方向下拉 + 天数输入：下拉菜单在输入框左侧
+                // 方向下拉 + 天数输入：下拉菜单在输入框左侧。
+                // 底对齐：OutlinedTextField 浮动 label 时可见边框顶部下缩约 8dp、底边贴组件底部，
+                // 触发器取 48dp 高与边框精确对齐
                 Row(
                     modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                    horizontalArrangement = Arrangement.spacedBy(12.dp),
+                    verticalAlignment = Alignment.Bottom
                 ) {
                     var directionMenuExpanded by remember { mutableStateOf(false) }
                     Box {
@@ -350,7 +353,7 @@ private fun OffsetModeContent(
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.height(56.dp)
+                            modifier = Modifier.height(48.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -806,6 +809,7 @@ private fun ResultCard(
                     fontSize = 34.sp
                 ),
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
+                fillWidth = true,
                 modifier = Modifier
                     .fillMaxWidth()
                     .graphicsLayer {

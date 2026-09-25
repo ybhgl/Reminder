@@ -246,7 +246,9 @@ fun AutoResizeText(
     style: TextStyle,
     modifier: Modifier = Modifier,
     color: Color = Color.Unspecified,
-    checkHeight: Boolean = false
+    checkHeight: Boolean = false,
+    /** true 时文字铺满可用宽度并水平居中；默认 false 保持包裹宽度，不影响基线对齐的既有调用方 */
+    fillWidth: Boolean = false
 ) {
     val textMeasurer = rememberTextMeasurer()
     // 测量键剥离颜色：颜色（如纯色效果透明度）连续变化时不重置字号、不重启测量协程，
@@ -290,7 +292,8 @@ fun AutoResizeText(
                 color = if (color != Color.Unspecified) color else style.color,
                 textAlign = TextAlign.Center,
                 style = resizedTextStyle,
-                softWrap = false
+                softWrap = false,
+                modifier = if (fillWidth) Modifier.fillMaxWidth() else Modifier
             )
         }
     }
