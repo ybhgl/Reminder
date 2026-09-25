@@ -40,7 +40,6 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
@@ -1887,6 +1886,72 @@ fun ReminderListScreen(
                 )
             }
 
+            // FAB 扩展菜单浮层：锚定左侧 FAB 上方，跟随底栏滚动位移。
+            // 绘制在底栏 Box 之前（z 序位于 FAB 之下），使狂点 FAB 时点击始终被最上层 FAB 接收，
+            // 弹入/弹出动画经过 FAB 区域的子项不会误吞点击。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .graphicsLayer { translationY = bottomBarOffsetPx },
+                contentAlignment = Alignment.BottomStart
+            ) {
+                AnimatedVisibility(
+                    visible = fabMenuExpanded && !isSelectionMode,
+                    enter = slideInVertically(
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessMediumLow
+                        )
+                    ) { it } + fadeIn() +
+                        scaleIn(
+                            animationSpec = spring(
+                                dampingRatio = Spring.DampingRatioMediumBouncy,
+                                stiffness = Spring.StiffnessMediumLow
+                            ),
+                            initialScale = 0.8f
+                        ),
+                    exit = slideOutVertically { it } + fadeOut(animationSpec = tween(100)) +
+                        scaleOut(targetScale = 0.8f, animationSpec = tween(100)),
+                    label = "FabExpandedMenu",
+                    modifier = Modifier
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(
+                            start = 24.dp,
+                            bottom = segmentedBottomSpacing + segmentedHeight + 12.dp
+                        )
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.Start,
+                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    ) {
+                        FabMenuItem(
+                            icon = Icons.Default.Calculate,
+                            label = "日期计算",
+                            onClick = {
+                                fabMenuExpanded = false
+                                navController.navigate(Routes.DATE_CALCULATOR)
+                            }
+                        )
+                        FabMenuItem(
+                            icon = if (viewMode == ReminderViewMode.CARD) {
+                                Icons.AutoMirrored.Filled.ViewList
+                            } else {
+                                Icons.Default.ViewModule
+                            },
+                            label = "切换视图",
+                            onClick = {
+                                viewMode = if (viewMode == ReminderViewMode.CARD) {
+                                    ReminderViewMode.LIST
+                                } else {
+                                    ReminderViewMode.CARD
+                                }
+                                fabMenuExpanded = false
+                            }
+                        )
+                    }
+                }
+            }
+
             Box(
                 modifier = Modifier
                     .align(Alignment.BottomCenter)
@@ -2011,75 +2076,6 @@ fun ReminderListScreen(
                 }
             }
 
-            // FAB 扩展菜单浮层：锚定左侧 FAB 上方，跟随底栏滚动位移
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .graphicsLayer { translationY = bottomBarOffsetPx },
-                contentAlignment = Alignment.BottomStart
-            ) {
-                AnimatedVisibility(
-                    visible = fabMenuExpanded && !isSelectionMode,
-                    enter = slideInVertically(
-                        animationSpec = spring(
-                            dampingRatio = Spring.DampingRatioMediumBouncy,
-                            stiffness = Spring.StiffnessMediumLow
-                        )
-                    ) { it } + fadeIn() +
-                        scaleIn(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            ),
-                            initialScale = 0.8f
-                        ),
-                    exit = slideOutVertically { it } + fadeOut(animationSpec = tween(100)) +
-                        scaleOut(targetScale = 0.8f, animationSpec = tween(100)),
-                    label = "FabExpandedMenu",
-                    modifier = Modifier
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(
-                            start = 24.dp,
-                            bottom = segmentedBottomSpacing + segmentedHeight + 12.dp
-                        )
-                ) {
-                    // 弹入/弹出动画过程中禁用菜单项点击，防止快速连点误触发功能入口
-                    val menuReady = transition.currentState == EnterExitState.Visible &&
-                        transition.targetState == EnterExitState.Visible
-                    Column(
-                        horizontalAlignment = Alignment.Start,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
-                    ) {
-                        FabMenuItem(
-                            icon = Icons.Default.Calculate,
-                            label = "日期计算",
-                            enabled = menuReady,
-                            onClick = {
-                                fabMenuExpanded = false
-                                navController.navigate(Routes.DATE_CALCULATOR)
-                            }
-                        )
-                        FabMenuItem(
-                            icon = if (viewMode == ReminderViewMode.CARD) {
-                                Icons.AutoMirrored.Filled.ViewList
-                            } else {
-                                Icons.Default.ViewModule
-                            },
-                            label = "切换视图",
-                            enabled = menuReady,
-                            onClick = {
-                                viewMode = if (viewMode == ReminderViewMode.CARD) {
-                                    ReminderViewMode.LIST
-                                } else {
-                                    ReminderViewMode.CARD
-                                }
-                                fabMenuExpanded = false
-                            }
-                        )
-                    }
-                }
-            }
-
             if (showDeleteDialog) {
                 AppAlertDialog(
                     onDismissRequest = { showDeleteDialog = false },
@@ -2173,14 +2169,10 @@ fun ReminderListScreen(
 private fun FabMenuItem(
     icon: ImageVector,
     label: String,
-    modifier: Modifier = Modifier,
-    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Surface(
         onClick = onClick,
-        enabled = enabled,
-        modifier = modifier,
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
