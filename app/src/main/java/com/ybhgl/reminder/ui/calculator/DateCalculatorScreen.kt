@@ -332,53 +332,56 @@ private fun OffsetModeContent(
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                    verticalAlignment = Alignment.CenterVertically
+                // 方向：整行 SegmentedButton，带箭头图标
+                SingleChoiceSegmentedButtonRow(
+                    modifier = Modifier.fillMaxWidth()
                 ) {
-                    FilterChip(
+                    SegmentedButton(
                         selected = !forward,
                         onClick = { forward = false },
-                        label = { Text("往前") },
-                        leadingIcon = {
+                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
+                        icon = {
                             Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
                             )
                         },
-                        shape = RoundedCornerShape(50)
+                        label = { Text("往前") }
                     )
-                    FilterChip(
+                    SegmentedButton(
                         selected = forward,
                         onClick = { forward = true },
-                        label = { Text("往后") },
-                        leadingIcon = {
+                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
+                        icon = {
                             Icon(
-                                Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
                                 contentDescription = null,
-                                modifier = Modifier.size(18.dp)
+                                modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
                             )
                         },
-                        shape = RoundedCornerShape(50)
-                    )
-                    OutlinedTextField(
-                        value = daysText,
-                        onValueChange = { input ->
-                            daysText = input.filter { it.isDigit() }.take(5)
-                        },
-                        modifier = Modifier.weight(1f),
-                        placeholder = { Text("天数") },
-                        singleLine = true,
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        shape = RoundedCornerShape(16.dp),
-                        colors = OutlinedTextFieldDefaults.colors(
-                            focusedBorderColor = MaterialTheme.colorScheme.primary,
-                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                        )
+                        label = { Text("往后") }
                     )
                 }
+
+                // 天数：独占整行，label + suffix 更清晰
+                OutlinedTextField(
+                    value = daysText,
+                    onValueChange = { input ->
+                        daysText = input.filter { it.isDigit() }.take(5)
+                    },
+                    modifier = Modifier.fillMaxWidth(),
+                    label = { Text("推算天数") },
+                    suffix = { Text("天", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                    placeholder = { Text("0") },
+                    singleLine = true,
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                    shape = RoundedCornerShape(16.dp),
+                    colors = OutlinedTextFieldDefaults.colors(
+                        focusedBorderColor = MaterialTheme.colorScheme.primary,
+                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                    )
+                )
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -396,7 +399,7 @@ private fun OffsetModeContent(
             subline = targetDate.format(weekDayFormatter) +
                 " · " + CalendarUtil.formatLunarDateShort(targetDate),
             badge = when {
-                diffFromToday == 0L -> "就是今天"
+                diffFromToday == 0L -> "今天"
                 diffFromToday > 0 -> "距今还有 $diffFromToday 天"
                 else -> "距今已过 ${-diffFromToday} 天"
             },
@@ -447,13 +450,14 @@ private fun IntervalModeContent(
 ) {
     val today = remember { LocalDate.now() }
     var startDate by rememberSaveable(stateSaver = LocalDateSaver) {
-        mutableStateOf(today.minusDays(30))
-    }
-    var endDate by rememberSaveable(stateSaver = LocalDateSaver) {
         mutableStateOf(today)
     }
+    var endDate by rememberSaveable(stateSaver = LocalDateSaver) {
+        mutableStateOf(today.plusDays(1))
+    }
     var pickerTarget by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
-    var showReminderPicker by rememberSaveable { mutableStateOf(false) }
+    /** 提醒选择对话框的目标字段：START 或 END */
+    var reminderPickerFor by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
 
     val ordered = startDate <= endDate
     val effectiveStart = if (ordered) startDate else endDate
@@ -468,7 +472,16 @@ private fun IntervalModeContent(
             label = "起始日期",
             date = startDate,
             onClick = { pickerTarget = PickerTarget.START }
-        )
+        ) {
+            Row(
+                modifier = Modifier.horizontalScroll(rememberScrollState()),
+                horizontalArrangement = Arrangement.spacedBy(8.dp)
+            ) {
+                QuickDateChip("今天") { startDate = today }
+                QuickDateChip("昨天") { startDate = today.minusDays(1) }
+                QuickDateChip("从提醒选择") { reminderPickerFor = PickerTarget.START }
+            }
+        }
 
         // 交换按钮
         Box(
@@ -502,9 +515,9 @@ private fun IntervalModeContent(
                 modifier = Modifier.horizontalScroll(rememberScrollState()),
                 horizontalArrangement = Arrangement.spacedBy(8.dp)
             ) {
-                QuickDateChip("到今天") { endDate = today }
-                QuickDateChip("到明天") { endDate = today.plusDays(1) }
-                QuickDateChip("从提醒选择") { showReminderPicker = true }
+                QuickDateChip("今天") { endDate = today }
+                QuickDateChip("明天") { endDate = today.plusDays(1) }
+                QuickDateChip("从提醒选择") { reminderPickerFor = PickerTarget.END }
             }
         }
 
@@ -558,13 +571,13 @@ private fun IntervalModeContent(
         )
         null -> {}
     }
-    if (showReminderPicker) {
+    reminderPickerFor?.let { target ->
         ReminderPickerDialog(
             reminders = reminders,
-            onDismiss = { showReminderPicker = false },
+            onDismiss = { reminderPickerFor = null },
             onPick = { reminder ->
-                endDate = reminder.date
-                showReminderPicker = false
+                if (target == PickerTarget.START) startDate = reminder.date else endDate = reminder.date
+                reminderPickerFor = null
             }
         )
     }
