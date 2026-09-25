@@ -751,9 +751,10 @@ private fun dayFormatAnchor(reminder: ReminderItem): Pair<LocalDate, LocalDate> 
 }
 
 /**
- * 天数栏可循环切换的格式：纯天数 → 年月天 → 月天（月可超 12）。
- * 零段省略（"1年0月4天"→"1年4天"、"1月0天"→"1月"），去重后与前一格式相同时自动跳过；
- * "今"或不足 1 个月时仅有纯天数一种（点击不切换）。
+ * 天数栏可循环切换的格式：纯天数 → 年月天 → 月天（月可超 12）→ 周天。
+ * 零段省略（"1年0月4天"→"1年4天"、"1月0天"→"1月"、"1周0天"→"1周"），
+ * 去重后与前一格式相同时自动跳过；
+ * "今"或不足 1 周时仅有纯天数一种（点击不切换）。
  */
 private fun buildDayCountFormats(
     dayCount: Int,
@@ -764,8 +765,18 @@ private fun buildDayCountFormats(
     val totalFormat = listOf(
         if (isToday) DayCountSegment("今", "天") else DayCountSegment(dayCount.toString(), "天")
     )
-    val (months, days) = monthsAndDaysBetween(anchor, target) ?: return listOf(totalFormat)
-    if (months <= 0) return listOf(totalFormat)
+    // 周天格式按总天数直接换算（满一周才提供），与年月格式相互独立
+    val weekFormat: List<DayCountSegment>? = if (dayCount >= 7) {
+        buildList {
+            add(DayCountSegment((dayCount / 7).toString(), "周"))
+            if (dayCount % 7 > 0) add(DayCountSegment((dayCount % 7).toString(), "天"))
+        }
+    } else {
+        null
+    }
+    val monthsAndDays = monthsAndDaysBetween(anchor, target)
+    if (monthsAndDays == null || monthsAndDays.first <= 0) return listOfNotNull(totalFormat, weekFormat)
+    val (months, days) = monthsAndDays
     val years = months / 12
     val monthsInYear = months % 12
     val yearFormat = buildList {
@@ -777,7 +788,7 @@ private fun buildDayCountFormats(
         add(DayCountSegment(months.toString(), "月"))
         if (days > 0) add(DayCountSegment(days.toString(), "天"))
     }
-    return listOf(totalFormat, yearFormat, monthFormat)
+    return listOfNotNull(totalFormat, yearFormat, monthFormat, weekFormat)
         .distinctBy { format -> format.joinToString("|") { it.number + it.unit } }
 }
 
@@ -1005,7 +1016,7 @@ fun ReminderDetailCard(
     val glassShadowResolved = glassShadowColor(parseGlassTextTheme(numberRenderSpec?.glassTheme ?: "DARK"))
     val glassStrokeWidthPx = with(androidx.compose.ui.platform.LocalDensity.current) { GlassStrokeWidth.toPx() }
 
-    // 天数栏日期格式（纯天数 → 年月天 → 月天循环切换）：仅详情页启用；
+    // 天数栏日期格式（纯天数 → 年月天 → 月天 → 周天循环切换）：仅详情页启用；
     // 格式选择仅在会话内有效（rememberSaveable，翻页返回保留、离开页面重置），不写入数据库
     val dayCountIsToday = displayInfo.dayCount == 0 && reminderItem.type != ReminderType.COUNT_UP
     val dayCountFormats = remember(
