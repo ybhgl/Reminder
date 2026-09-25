@@ -43,10 +43,13 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.CalendarMonth
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Event
+import androidx.compose.material.icons.filled.ExpandMore
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.FilterChip
@@ -60,6 +63,7 @@ import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SegmentedButton
 import androidx.compose.material3.SegmentedButtonDefaults
 import androidx.compose.material3.SingleChoiceSegmentedButtonRow
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -90,6 +94,7 @@ import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.util.CalendarUtil
@@ -298,7 +303,7 @@ private fun OffsetModeContent(
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         // 基准日期
         DateFieldCard(
-            label = "基准日期",
+            label = "开始日期",
             date = baseDate,
             isLunar = baseIsLunar,
             onClick = { pickerTarget = PickerTarget.BASE }
@@ -329,60 +334,91 @@ private fun OffsetModeContent(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 Text(
-                    text = "推算方向与天数",
+                    text = "推算天数",
                     style = MaterialTheme.typography.labelLarge,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
-                // 方向：整行 SegmentedButton，带箭头图标
-                SingleChoiceSegmentedButtonRow(
-                    modifier = Modifier.fillMaxWidth()
+                // 方向下拉 + 天数输入：下拉菜单在输入框左侧
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    SegmentedButton(
-                        selected = !forward,
-                        onClick = { forward = false },
-                        shape = SegmentedButtonDefaults.itemShape(index = 0, count = 2),
-                        icon = {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                contentDescription = null,
-                                modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
+                    var directionMenuExpanded by remember { mutableStateOf(false) }
+                    Box {
+                        Surface(
+                            onClick = { directionMenuExpanded = true },
+                            shape = RoundedCornerShape(16.dp),
+                            color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
+                            contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                            modifier = Modifier.height(56.dp)
+                        ) {
+                            Row(
+                                modifier = Modifier.padding(horizontal = 16.dp),
+                                verticalAlignment = Alignment.CenterVertically,
+                                horizontalArrangement = Arrangement.spacedBy(4.dp)
+                            ) {
+                                Text(
+                                    text = if (forward) "往后" else "往前",
+                                    style = MaterialTheme.typography.bodyLarge,
+                                    maxLines = 1
+                                )
+                                Icon(
+                                    imageVector = Icons.Default.ExpandMore,
+                                    contentDescription = "选择推算方向"
+                                )
+                            }
+                        }
+                        DropdownMenu(
+                            expanded = directionMenuExpanded,
+                            onDismissRequest = { directionMenuExpanded = false }
+                        ) {
+                            DropdownMenuItem(
+                                text = { Text("往前") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    forward = false
+                                    directionMenuExpanded = false
+                                }
                             )
-                        },
-                        label = { Text("往前") }
-                    )
-                    SegmentedButton(
-                        selected = forward,
-                        onClick = { forward = true },
-                        shape = SegmentedButtonDefaults.itemShape(index = 1, count = 2),
-                        icon = {
-                            Icon(
-                                imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                contentDescription = null,
-                                modifier = Modifier.size(SegmentedButtonDefaults.IconSize)
+                            DropdownMenuItem(
+                                text = { Text("往后") },
+                                leadingIcon = {
+                                    Icon(
+                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                        contentDescription = null
+                                    )
+                                },
+                                onClick = {
+                                    forward = true
+                                    directionMenuExpanded = false
+                                }
                             )
+                        }
+                    }
+
+                    OutlinedTextField(
+                        value = daysText,
+                        onValueChange = { input ->
+                            daysText = input.filter { it.isDigit() }.take(5)
                         },
-                        label = { Text("往后") }
+                        modifier = Modifier.weight(1f),
+                        label = { Text("请输入天数") },
+                        suffix = { Text("天", color = MaterialTheme.colorScheme.onSurfaceVariant) },
+                        placeholder = { Text("0") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
+                        shape = RoundedCornerShape(16.dp),
+                        colors = OutlinedTextFieldDefaults.colors(
+                            focusedBorderColor = MaterialTheme.colorScheme.primary,
+                            unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
+                        )
                     )
                 }
-
-                // 天数：独占整行，label + suffix 更清晰
-                OutlinedTextField(
-                    value = daysText,
-                    onValueChange = { input ->
-                        daysText = input.filter { it.isDigit() }.take(5)
-                    },
-                    modifier = Modifier.fillMaxWidth(),
-                    label = { Text("推算天数") },
-                    suffix = { Text("天", color = MaterialTheme.colorScheme.onSurfaceVariant) },
-                    placeholder = { Text("0") },
-                    singleLine = true,
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                    shape = RoundedCornerShape(16.dp),
-                    colors = OutlinedTextFieldDefaults.colors(
-                        focusedBorderColor = MaterialTheme.colorScheme.primary,
-                        unfocusedBorderColor = MaterialTheme.colorScheme.outlineVariant
-                    )
-                )
                 Row(
                     modifier = Modifier.horizontalScroll(rememberScrollState()),
                     horizontalArrangement = Arrangement.spacedBy(8.dp)
@@ -545,7 +581,7 @@ private fun IntervalModeContent(
                 add(
                     buildString {
                         append("${period.years}年")
-                        if (period.months > 0) append("${period.months}个月")
+                        if (period.months > 0) append("${period.months}月")
                         if (period.days > 0) append("${period.days}天")
                     }
                 )
@@ -553,7 +589,7 @@ private fun IntervalModeContent(
             if (totalMonths > 0) {
                 add(
                     buildString {
-                        append("${totalMonths}个月")
+                        append("${totalMonths}月")
                         if (daysAfterMonths > 0) append("${daysAfterMonths}天")
                     }
                 )
@@ -561,7 +597,7 @@ private fun IntervalModeContent(
             if (weeks > 0) {
                 add(
                     buildString {
-                        append("${weeks}个星期")
+                        append("${weeks}周")
                         if (daysAfterWeeks > 0) append("${daysAfterWeeks}天")
                     }
                 )
@@ -762,17 +798,20 @@ private fun ResultCard(
                 style = MaterialTheme.typography.labelLarge,
                 color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.7f)
             )
-            Text(
+            // 大日期响应式单行：农历等长文本自动缩小字号，保证永不换行
+            AutoResizeText(
                 text = headline,
                 style = MaterialTheme.typography.displaySmall.copy(
                     fontWeight = FontWeight.Bold,
                     fontSize = 34.sp
                 ),
                 color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier.graphicsLayer {
-                    scaleX = bounce.value
-                    scaleY = bounce.value
-                }
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .graphicsLayer {
+                        scaleX = bounce.value
+                        scaleY = bounce.value
+                    }
             )
             if (subline.isNotEmpty()) {
                 Text(
