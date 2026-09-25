@@ -353,7 +353,7 @@ private fun OffsetModeContent(
                             shape = RoundedCornerShape(16.dp),
                             color = MaterialTheme.colorScheme.secondaryContainer.copy(alpha = 0.5f),
                             contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                            modifier = Modifier.height(48.dp)
+                            modifier = Modifier.height(56.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(horizontal = 16.dp),
@@ -361,7 +361,7 @@ private fun OffsetModeContent(
                                 horizontalArrangement = Arrangement.spacedBy(4.dp)
                             ) {
                                 Text(
-                                    text = if (forward) "往后" else "往前",
+                                    text = if (forward) "向后" else "向前",
                                     style = MaterialTheme.typography.bodyLarge,
                                     maxLines = 1
                                 )
@@ -376,7 +376,7 @@ private fun OffsetModeContent(
                             onDismissRequest = { directionMenuExpanded = false }
                         ) {
                             DropdownMenuItem(
-                                text = { Text("往前") },
+                                text = { Text("向前") },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
@@ -389,7 +389,7 @@ private fun OffsetModeContent(
                                 }
                             )
                             DropdownMenuItem(
-                                text = { Text("往后") },
+                                text = { Text("向后") },
                                 leadingIcon = {
                                     Icon(
                                         imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
