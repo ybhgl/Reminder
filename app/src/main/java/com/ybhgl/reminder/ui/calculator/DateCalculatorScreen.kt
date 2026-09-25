@@ -18,6 +18,7 @@ import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -94,6 +95,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
@@ -207,38 +209,66 @@ fun DateCalculatorScreen(
                     modifier = Modifier.fillMaxWidth()
                 )
 
-                AnimatedContent(
-                    targetState = mode,
-                    transitionSpec = {
-                        val dir = if (targetState == CalcMode.INTERVAL) 1 else -1
-                        val slide = androidx.compose.animation.core.tween<androidx.compose.ui.unit.IntOffset>(220)
-                        (
-                            fadeIn(tweenish()) +
-                                slideInHorizontally(animationSpec = slide) { full -> dir * full / 8 }
-                            ) togetherWith (
-                            fadeOut(tweenish()) +
-                                slideOutHorizontally(animationSpec = slide) { full -> -dir * full / 8 }
+                // 水平拖拽切换：左滑进入"日期间隔"、右滑回到"日期推算"，
+                // 未达阈值则不切换；切换动画由下方 AnimatedContent 的滑动过渡呈现
+                val swipeThresholdPx = with(androidx.compose.ui.platform.LocalDensity.current) {
+                    64.dp.toPx()
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .pointerInput(swipeThresholdPx) {
+                            var accumulated = 0f
+                            detectHorizontalDragGestures(
+                                onDragStart = { accumulated = 0f },
+                                onDragEnd = {
+                                    when {
+                                        accumulated <= -swipeThresholdPx &&
+                                            mode == CalcMode.OFFSET -> mode = CalcMode.INTERVAL
+                                        accumulated >= swipeThresholdPx &&
+                                            mode == CalcMode.INTERVAL -> mode = CalcMode.OFFSET
+                                    }
+                                    accumulated = 0f
+                                },
+                                onDragCancel = { accumulated = 0f }
+                            ) { _, dragAmount ->
+                                accumulated += dragAmount
+                            }
+                        }
+                ) {
+                    AnimatedContent(
+                        targetState = mode,
+                        transitionSpec = {
+                            val dir = if (targetState == CalcMode.INTERVAL) 1 else -1
+                            val slide = androidx.compose.animation.core.tween<androidx.compose.ui.unit.IntOffset>(220)
+                            (
+                                fadeIn(tweenish()) +
+                                    slideInHorizontally(animationSpec = slide) { full -> dir * full / 8 }
+                                ) togetherWith (
+                                fadeOut(tweenish()) +
+                                    slideOutHorizontally(animationSpec = slide) { full -> -dir * full / 8 }
+                                )
+                        },
+                        label = "calcModeSwitch"
+                    ) { currentMode ->
+                        when (currentMode) {
+                            CalcMode.OFFSET -> OffsetModeContent(
+                                reminders = reminders,
+                                baseDateState = baseDateState,
+                                baseIsLunarState = baseIsLunarState,
+                                forwardState = forwardState,
+                                daysTextState = daysTextState,
+                                onNavigateToAddEvent = onNavigateToAddEvent
                             )
-                    },
-                    label = "calcModeSwitch"
-                ) { currentMode ->
-                    when (currentMode) {
-                        CalcMode.OFFSET -> OffsetModeContent(
-                            reminders = reminders,
-                            baseDateState = baseDateState,
-                            baseIsLunarState = baseIsLunarState,
-                            forwardState = forwardState,
-                            daysTextState = daysTextState,
-                            onNavigateToAddEvent = onNavigateToAddEvent
-                        )
-                        CalcMode.INTERVAL -> IntervalModeContent(
-                            reminders = reminders,
-                            startDateState = startDateState,
-                            endDateState = endDateState,
-                            startIsLunarState = startIsLunarState,
-                            endIsLunarState = endIsLunarState,
-                            onNavigateToAddEvent = onNavigateToAddEvent
-                        )
+                            CalcMode.INTERVAL -> IntervalModeContent(
+                                reminders = reminders,
+                                startDateState = startDateState,
+                                endDateState = endDateState,
+                                startIsLunarState = startIsLunarState,
+                                endIsLunarState = endIsLunarState,
+                                onNavigateToAddEvent = onNavigateToAddEvent
+                            )
+                        }
                     }
                 }
             }
