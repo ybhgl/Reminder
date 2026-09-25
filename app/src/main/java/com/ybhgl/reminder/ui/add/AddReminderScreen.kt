@@ -244,7 +244,7 @@ fun AddReminderScreen(
                 TonalCardRow(
                     modifier = Modifier.padding(top = 16.dp),
                     icon = Icons.Default.Event,
-                    title = "时间",
+                    title = "日期",
                     subtitle = if (uiState.isLunar) {
                         currentLunarLabel
                     } else {
@@ -271,7 +271,7 @@ fun AddReminderScreen(
                     TonalCardRow(
                         modifier = Modifier.padding(top = 16.dp),
                         icon = Icons.Default.EventAvailable,
-                        title = "结束时间",
+                        title = "结束日期",
                         subtitle = uiState.endDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "未设置",
                         showChevron = true,
                         trailingBeforeChevron = true,
@@ -281,7 +281,7 @@ fun AddReminderScreen(
                                 // 与箭头同规格的裸图标（24dp、同色），替代 IconButton 避免过大触摸盒造成宽间距
                                 Icon(
                                     imageVector = Icons.Default.Close,
-                                    contentDescription = "清除结束时间",
+                                    contentDescription = "清除结束日期",
                                     tint = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.clickable {
                                         viewModel.onEndDateChange(null)
