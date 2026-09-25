@@ -1,8 +1,11 @@
 package com.ybhgl.reminder.ui.calculator
 
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.Animatable
+
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -18,16 +21,19 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.navigationBars
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -66,9 +72,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -76,6 +79,7 @@ import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.MutableState
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
@@ -84,6 +88,7 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -142,6 +147,26 @@ fun DateCalculatorScreen(
     var mode by rememberSaveable { mutableStateOf(CalcMode.OFFSET) }
     val reminders by viewModel.reminders.collectAsState()
 
+    val today = remember { LocalDate.now() }
+    // 两种模式的用户输入状态提升到此处：AnimatedContent 切换会销毁离开的内容，
+    // 状态留在顶层才能在模式间保留，仅在真正退出本页（composable 销毁）时重置。
+    // —— 日期推算 ——
+    val baseDateState = rememberSaveable(stateSaver = LocalDateSaver) {
+        mutableStateOf(today)
+    }
+    val baseIsLunarState = rememberSaveable { mutableStateOf(false) }
+    val forwardState = rememberSaveable { mutableStateOf(true) }
+    val daysTextState = rememberSaveable { mutableStateOf("") }
+    // —— 日期间隔 ——
+    val startDateState = rememberSaveable(stateSaver = LocalDateSaver) {
+        mutableStateOf(today)
+    }
+    val endDateState = rememberSaveable(stateSaver = LocalDateSaver) {
+        mutableStateOf(today.plusDays(1))
+    }
+    val startIsLunarState = rememberSaveable { mutableStateOf(false) }
+    val endIsLunarState = rememberSaveable { mutableStateOf(false) }
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -163,65 +188,36 @@ fun DateCalculatorScreen(
                     ),
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
+                // 顶栏占位：仅需让出 TopAppBar 实际高度，
+                // 与下方切换器的间距由 Column 的 spacedBy 统一提供
                 Spacer(
                     modifier = Modifier.height(
                         (topBarHeightDp +
                             with(androidx.compose.ui.platform.LocalDensity.current) {
                                 topBarState.titleOffsetPx.toDp()
-                            } + 12.dp)
+                            })
                             .coerceAtLeast(0.dp)
                     )
                 )
 
-                // 模式切换
-                SingleChoiceSegmentedButtonRow(
+                // 模式切换：SliderSwitch 风格胶囊滑动开关
+                CalcModeSwitch(
+                    mode = mode,
+                    onModeChange = { mode = it },
                     modifier = Modifier.fillMaxWidth()
-                ) {
-                    CalcMode.entries.forEachIndexed { index, value ->
-                        SegmentedButton(
-                            selected = mode == value,
-                            onClick = { mode = value },
-                            shape = SegmentedButtonDefaults.itemShape(
-                                index = index,
-                                count = CalcMode.entries.size
-                            ),
-                            label = {
-                                Text(
-                                    text = if (value == CalcMode.OFFSET) "日期推算" else "日期间隔",
-                                    fontWeight = if (mode == value) {
-                                        FontWeight.SemiBold
-                                    } else {
-                                        FontWeight.Normal
-                                    }
-                                )
-                            }
-                        )
-                    }
-                }
+                )
 
                 AnimatedContent(
                     targetState = mode,
                     transitionSpec = {
                         val dir = if (targetState == CalcMode.INTERVAL) 1 else -1
+                        val slide = androidx.compose.animation.core.tween<androidx.compose.ui.unit.IntOffset>(220)
                         (
-                            fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) +
-                                slideInHorizontally(
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioLowBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    )
-                                ) { full -> dir * full / 8 } +
-                                scaleIn(
-                                    animationSpec = spring(
-                                        dampingRatio = Spring.DampingRatioLowBouncy,
-                                        stiffness = Spring.StiffnessMediumLow
-                                    ),
-                                    initialScale = 0.96f
-                                )
+                            fadeIn(tweenish()) +
+                                slideInHorizontally(animationSpec = slide) { full -> dir * full / 8 }
                             ) togetherWith (
                             fadeOut(tweenish()) +
-                                slideOutHorizontally { full -> -dir * full / 8 } +
-                                scaleOut(targetScale = 0.96f)
+                                slideOutHorizontally(animationSpec = slide) { full -> -dir * full / 8 }
                             )
                     },
                     label = "calcModeSwitch"
@@ -229,10 +225,18 @@ fun DateCalculatorScreen(
                     when (currentMode) {
                         CalcMode.OFFSET -> OffsetModeContent(
                             reminders = reminders,
+                            baseDateState = baseDateState,
+                            baseIsLunarState = baseIsLunarState,
+                            forwardState = forwardState,
+                            daysTextState = daysTextState,
                             onNavigateToAddEvent = onNavigateToAddEvent
                         )
                         CalcMode.INTERVAL -> IntervalModeContent(
                             reminders = reminders,
+                            startDateState = startDateState,
+                            endDateState = endDateState,
+                            startIsLunarState = startIsLunarState,
+                            endIsLunarState = endIsLunarState,
                             onNavigateToAddEvent = onNavigateToAddEvent
                         )
                     }
@@ -285,20 +289,91 @@ fun DateCalculatorScreen(
 /** 退出动画用的短时长 tween（与 spring 进入形成对比，避免退场拖沓） */
 private fun tweenish() = androidx.compose.animation.core.tween<Float>(120)
 
+/**
+ * SliderSwitch 风格的模式切换胶囊：轨道用 surfaceContainerHighest，
+ * 选中段以 primary 滑块平滑滑动，标签颜色随覆盖渐变。
+ * 替代 SegmentedButton，切换为纯滑动动画。
+ */
+@Composable
+private fun CalcModeSwitch(
+    mode: CalcMode,
+    onModeChange: (CalcMode) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val modes = CalcMode.entries
+    val selectedIndex = modes.indexOf(mode)
+    val inset = 4.dp
+    BoxWithConstraints(
+        modifier = modifier
+            .height(48.dp)
+            .clip(RoundedCornerShape(50))
+            .background(MaterialTheme.colorScheme.surfaceContainerHighest)
+    ) {
+        val segmentWidth = (maxWidth - inset * 2) / modes.size
+        val thumbOffset by animateDpAsState(
+            targetValue = inset + segmentWidth * selectedIndex,
+            animationSpec = androidx.compose.animation.core.tween(durationMillis = 220),
+            label = "calcModeThumb"
+        )
+        // 滑块：等宽两段，平滑滑动
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterStart)
+                .offset(x = thumbOffset)
+                .width(segmentWidth)
+                .fillMaxHeight()
+                .padding(vertical = inset)
+                .clip(RoundedCornerShape(50))
+                .background(MaterialTheme.colorScheme.primary)
+        )
+        // 标签：与滑块同段宽，文字颜色随选中态渐变
+        Row(modifier = Modifier.fillMaxSize().padding(horizontal = inset)) {
+            modes.forEachIndexed { index, value ->
+                val selected = index == selectedIndex
+                val labelColor by animateColorAsState(
+                    targetValue = if (selected) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    animationSpec = androidx.compose.animation.core.tween(durationMillis = 220),
+                    label = "calcModeLabelColor"
+                )
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxHeight()
+                        .clickable { onModeChange(value) },
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (value == CalcMode.OFFSET) "日期推算" else "日期间隔",
+                        style = MaterialTheme.typography.titleSmall,
+                        fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal,
+                        color = labelColor
+                    )
+                }
+            }
+        }
+    }
+}
+
 // region 日期推算模式
 
 @Composable
 private fun OffsetModeContent(
     reminders: List<ReminderItem>,
+    baseDateState: MutableState<LocalDate>,
+    baseIsLunarState: MutableState<Boolean>,
+    forwardState: MutableState<Boolean>,
+    daysTextState: MutableState<String>,
     onNavigateToAddEvent: (type: String, date: String, endDate: String?) -> Unit
 ) {
     val today = remember { LocalDate.now() }
-    var baseDate by rememberSaveable(
-        stateSaver = LocalDateSaver
-    ) { mutableStateOf(today) }
-    var baseIsLunar by rememberSaveable { mutableStateOf(false) }
-    var forward by rememberSaveable { mutableStateOf(true) }
-    var daysText by rememberSaveable { mutableStateOf("") }
+    var baseDate by baseDateState
+    var baseIsLunar by baseIsLunarState
+    var forward by forwardState
+    var daysText by daysTextState
     var pickerTarget by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
     var showReminderPicker by rememberSaveable { mutableStateOf(false) }
 
@@ -516,17 +591,17 @@ private fun OffsetModeContent(
 @Composable
 private fun IntervalModeContent(
     reminders: List<ReminderItem>,
+    startDateState: MutableState<LocalDate>,
+    endDateState: MutableState<LocalDate>,
+    startIsLunarState: MutableState<Boolean>,
+    endIsLunarState: MutableState<Boolean>,
     onNavigateToAddEvent: (type: String, date: String, endDate: String?) -> Unit
 ) {
     val today = remember { LocalDate.now() }
-    var startDate by rememberSaveable(stateSaver = LocalDateSaver) {
-        mutableStateOf(today)
-    }
-    var endDate by rememberSaveable(stateSaver = LocalDateSaver) {
-        mutableStateOf(today.plusDays(1))
-    }
-    var startIsLunar by rememberSaveable { mutableStateOf(false) }
-    var endIsLunar by rememberSaveable { mutableStateOf(false) }
+    var startDate by startDateState
+    var endDate by endDateState
+    var startIsLunar by startIsLunarState
+    var endIsLunar by endIsLunarState
     var pickerTarget by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
     /** 提醒选择对话框的目标字段：START 或 END */
     var reminderPickerFor by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
