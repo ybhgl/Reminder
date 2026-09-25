@@ -300,6 +300,7 @@ private fun OffsetModeContent(
         DateFieldCard(
             label = "基准日期",
             date = baseDate,
+            isLunar = baseIsLunar,
             onClick = { pickerTarget = PickerTarget.BASE }
         ) {
             Row(
@@ -393,11 +394,19 @@ private fun OffsetModeContent(
             }
         }
 
-        // 结果卡片
+        // 结果卡片：主行跟随所选历法，次行显示星期 + 另一历法
         ResultCard(
-            headline = targetDate.format(cnDateFormatter),
-            subline = targetDate.format(weekDayFormatter) +
-                " · " + CalendarUtil.formatLunarDateShort(targetDate),
+            headline = if (baseIsLunar) {
+                CalendarUtil.formatLunarDateShort(targetDate)
+            } else {
+                targetDate.format(cnDateFormatter)
+            },
+            subline = targetDate.format(weekDayFormatter) + " · " +
+                if (baseIsLunar) {
+                    "公历 " + targetDate.format(cnDateFormatter)
+                } else {
+                    "农历 " + CalendarUtil.formatLunarDateShort(targetDate)
+                },
             badge = when {
                 diffFromToday == 0L -> "今天"
                 diffFromToday > 0 -> "距今还有 $diffFromToday 天"
@@ -455,6 +464,8 @@ private fun IntervalModeContent(
     var endDate by rememberSaveable(stateSaver = LocalDateSaver) {
         mutableStateOf(today.plusDays(1))
     }
+    var startIsLunar by rememberSaveable { mutableStateOf(false) }
+    var endIsLunar by rememberSaveable { mutableStateOf(false) }
     var pickerTarget by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
     /** 提醒选择对话框的目标字段：START 或 END */
     var reminderPickerFor by rememberSaveable { mutableStateOf<PickerTarget?>(null) }
@@ -463,14 +474,12 @@ private fun IntervalModeContent(
     val effectiveStart = if (ordered) startDate else endDate
     val effectiveEnd = if (ordered) endDate else startDate
     val totalDays = ChronoUnit.DAYS.between(effectiveStart, effectiveEnd)
-    val period = Period.between(effectiveStart, effectiveEnd)
-    val weeks = totalDays / 7
-    val remDays = totalDays % 7
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         DateFieldCard(
             label = "起始日期",
             date = startDate,
+            isLunar = startIsLunar,
             onClick = { pickerTarget = PickerTarget.START }
         ) {
             Row(
@@ -509,6 +518,7 @@ private fun IntervalModeContent(
         DateFieldCard(
             label = "结束日期",
             date = endDate,
+            isLunar = endIsLunar,
             onClick = { pickerTarget = PickerTarget.END }
         ) {
             Row(
@@ -521,19 +531,47 @@ private fun IntervalModeContent(
             }
         }
 
-        val detailParts = buildList {
-            if (period.years > 0) add("${period.years}年")
-            if (period.months > 0) add("${period.months}个月")
-            if (period.days > 0 || (period.years == 0 && period.months == 0)) {
-                add("${period.days}天")
+        // 细分文案：按实际日历计算三段（年月日 / 总月数 / 周数），不满足条件的段自动省略
+        val period = Period.between(effectiveStart, effectiveEnd)
+        val totalMonths = ChronoUnit.MONTHS.between(effectiveStart, effectiveEnd)
+        val daysAfterMonths = ChronoUnit.DAYS.between(
+            effectiveStart.plusMonths(totalMonths), effectiveEnd
+        )
+        val weeks = totalDays / 7
+        val daysAfterWeeks = totalDays % 7
+
+        val breakdown = buildList {
+            if (period.years > 0) {
+                add(
+                    buildString {
+                        append("${period.years}年")
+                        if (period.months > 0) append("${period.months}个月")
+                        if (period.days > 0) append("${period.days}天")
+                    }
+                )
             }
-        }.joinToString("")
+            if (totalMonths > 0) {
+                add(
+                    buildString {
+                        append("${totalMonths}个月")
+                        if (daysAfterMonths > 0) append("${daysAfterMonths}天")
+                    }
+                )
+            }
+            if (weeks > 0) {
+                add(
+                    buildString {
+                        append("${weeks}个星期")
+                        if (daysAfterWeeks > 0) append("${daysAfterWeeks}天")
+                    }
+                )
+            }
+        }.joinToString(" · ")
 
         ResultCard(
             headline = "$totalDays 天",
-            subline = detailParts + " · " +
-                if (weeks > 0) "$weeks 个星期余 $remDays 天" else "$remDays 天不足一周",
-            badge = if (ordered) "起始 → 结束" else "已自动按先后顺序计算",
+            subline = breakdown,
+            badge = if (ordered) null else "已自动按先后顺序计算",
             action = {
                 AddEventButton(
                     label = "添加为区间倒数日",
@@ -553,19 +591,21 @@ private fun IntervalModeContent(
         PickerTarget.BASE -> {}
         PickerTarget.START -> UnifiedDatePickerDialog(
             initialDate = startDate,
-            initialIsLunar = false,
+            initialIsLunar = startIsLunar,
             onDismissRequest = { pickerTarget = null },
-            onConfirm = { date, _ ->
+            onConfirm = { date, isLunar ->
                 startDate = date
+                startIsLunar = isLunar
                 pickerTarget = null
             }
         )
         PickerTarget.END -> UnifiedDatePickerDialog(
             initialDate = endDate,
-            initialIsLunar = false,
+            initialIsLunar = endIsLunar,
             onDismissRequest = { pickerTarget = null },
-            onConfirm = { date, _ ->
+            onConfirm = { date, isLunar ->
                 endDate = date
+                endIsLunar = isLunar
                 pickerTarget = null
             }
         )
@@ -576,7 +616,13 @@ private fun IntervalModeContent(
             reminders = reminders,
             onDismiss = { reminderPickerFor = null },
             onPick = { reminder ->
-                if (target == PickerTarget.START) startDate = reminder.date else endDate = reminder.date
+                if (target == PickerTarget.START) {
+                    startDate = reminder.date
+                    startIsLunar = reminder.isLunar
+                } else {
+                    endDate = reminder.date
+                    endIsLunar = reminder.isLunar
+                }
                 reminderPickerFor = null
             }
         )
@@ -598,9 +644,13 @@ private val LocalDateSaver = androidx.compose.runtime.saveable.Saver<LocalDate, 
 private fun DateFieldCard(
     label: String,
     date: LocalDate,
+    isLunar: Boolean,
     onClick: () -> Unit,
     bottomContent: (@Composable () -> Unit)? = null
 ) {
+    val solarText = date.format(cnDateFormatter)
+    val lunarText = CalendarUtil.formatLunarDateShort(date)
+    val weekText = date.format(weekDayFormatter)
     Card(
         modifier = Modifier
             .fillMaxWidth()
@@ -614,7 +664,7 @@ private fun DateFieldCard(
             modifier = Modifier
                 .fillMaxWidth()
                 .padding(16.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp)
+            verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 Text(
@@ -630,9 +680,10 @@ private fun DateFieldCard(
                     modifier = Modifier.size(20.dp)
                 )
             }
+            // 主行：用户所选历法 + 星期
             Row(verticalAlignment = Alignment.Bottom) {
                 Text(
-                    text = date.format(cnDateFormatter),
+                    text = if (isLunar) lunarText else solarText,
                     style = MaterialTheme.typography.titleLarge.copy(
                         fontWeight = FontWeight.Bold,
                         fontSize = 22.sp
@@ -640,12 +691,18 @@ private fun DateFieldCard(
                 )
                 Spacer(modifier = Modifier.width(8.dp))
                 Text(
-                    text = date.format(weekDayFormatter),
+                    text = weekText,
                     style = MaterialTheme.typography.bodyMedium,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(bottom = 2.dp)
                 )
             }
+            // 次行：另一套历法，小字次级色
+            Text(
+                text = if (isLunar) "公历 $solarText" else "农历 $lunarText",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
             if (bottomContent != null) bottomContent()
         }
     }
@@ -672,7 +729,7 @@ private fun QuickDateChip(text: String, onClick: () -> Unit) {
 private fun ResultCard(
     headline: String,
     subline: String,
-    badge: String,
+    badge: String? = null,
     action: (@Composable () -> Unit)? = null
 ) {
     val bounce = remember { Animatable(1f) }
@@ -717,24 +774,28 @@ private fun ResultCard(
                     scaleY = bounce.value
                 }
             )
-            Text(
-                text = subline,
-                style = MaterialTheme.typography.bodyMedium,
-                color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
-                textAlign = androidx.compose.ui.text.style.TextAlign.Center
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = badge,
-                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
-                color = MaterialTheme.colorScheme.onPrimaryContainer,
-                modifier = Modifier
-                    .background(
-                        MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
-                        RoundedCornerShape(50)
-                    )
-                    .padding(horizontal = 12.dp, vertical = 6.dp)
-            )
+            if (subline.isNotEmpty()) {
+                Text(
+                    text = subline,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.8f),
+                    textAlign = androidx.compose.ui.text.style.TextAlign.Center
+                )
+            }
+            if (badge != null) {
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = badge,
+                    style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Medium),
+                    color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    modifier = Modifier
+                        .background(
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.12f),
+                            RoundedCornerShape(50)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                )
+            }
             if (action != null) {
                 Spacer(modifier = Modifier.height(8.dp))
                 action()
