@@ -40,6 +40,7 @@ import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.EnterExitState
 import androidx.compose.animation.Crossfade
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
@@ -1902,8 +1903,9 @@ fun ReminderListScreen(
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // 左侧 FAB：点击展开操作菜单（浮层见下方 FabExpandedMenu）
+                        // 注意：Close 图标本身是 X，旋转 45° 的奇数倍会看成 +，故展开态只转 90°
                         val mainFabIconRotation by animateFloatAsState(
-                            targetValue = if (fabMenuExpanded) 135f else 0f,
+                            targetValue = if (fabMenuExpanded) 90f else 0f,
                             animationSpec = spring(
                                 dampingRatio = Spring.DampingRatioMediumBouncy,
                                 stiffness = Spring.StiffnessMediumLow
@@ -2041,6 +2043,9 @@ fun ReminderListScreen(
                             bottom = segmentedBottomSpacing + segmentedHeight + 12.dp
                         )
                 ) {
+                    // 弹入/弹出动画过程中禁用菜单项点击，防止快速连点误触发功能入口
+                    val menuReady = transition.currentState == EnterExitState.Visible &&
+                        transition.targetState == EnterExitState.Visible
                     Column(
                         horizontalAlignment = Alignment.Start,
                         verticalArrangement = Arrangement.spacedBy(10.dp)
@@ -2048,6 +2053,7 @@ fun ReminderListScreen(
                         FabMenuItem(
                             icon = Icons.Default.Calculate,
                             label = "日期计算",
+                            enabled = menuReady,
                             onClick = {
                                 fabMenuExpanded = false
                                 navController.navigate(Routes.DATE_CALCULATOR)
@@ -2060,6 +2066,7 @@ fun ReminderListScreen(
                                 Icons.Default.ViewModule
                             },
                             label = "切换视图",
+                            enabled = menuReady,
                             onClick = {
                                 viewMode = if (viewMode == ReminderViewMode.CARD) {
                                     ReminderViewMode.LIST
@@ -2166,10 +2173,14 @@ fun ReminderListScreen(
 private fun FabMenuItem(
     icon: ImageVector,
     label: String,
+    modifier: Modifier = Modifier,
+    enabled: Boolean = true,
     onClick: () -> Unit
 ) {
     Surface(
         onClick = onClick,
+        enabled = enabled,
+        modifier = modifier,
         shape = RoundedCornerShape(50),
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
