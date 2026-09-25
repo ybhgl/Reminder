@@ -1027,8 +1027,11 @@ private fun ReminderPickerDialog(
                                         overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
                                     )
                                     Text(
-                                        text = reminder.date.format(cnDateFormatter) +
-                                            " · " + reminder.date.format(weekDayFormatter),
+                                        text = (if (reminder.isLunar) {
+                                            CalendarUtil.formatLunarDateShort(reminder.date)
+                                        } else {
+                                            reminder.date.format(cnDateFormatter)
+                                        }) + " · " + reminder.date.format(weekDayFormatter),
                                         style = MaterialTheme.typography.bodySmall,
                                         color = MaterialTheme.colorScheme.onSurfaceVariant
                                     )
