@@ -44,10 +44,12 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Cake
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.ExpandMore
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.SwapHoriz
 import androidx.compose.material3.Button
 import androidx.compose.material3.Card
@@ -90,6 +92,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
@@ -387,10 +390,12 @@ private fun OffsetModeContent(
                             }
                         }
                         // 弹出菜单与页面 Expressive 语言统一：大圆角、分层容器色、细描边、轻量遮罩
+                        // offset 下移 8dp，与触发器边框留出呼吸间距
                         DropdownMenu(
                             expanded = directionMenuExpanded,
                             onDismissRequest = { directionMenuExpanded = false },
                             modifier = Modifier.widthIn(min = 168.dp),
+                            offset = DpOffset(0.dp, 8.dp),
                             shape = RoundedCornerShape(24.dp),
                             containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
                             tonalElevation = 0.dp,
@@ -1004,7 +1009,11 @@ private fun ReminderPickerDialog(
                                     contentAlignment = Alignment.Center
                                 ) {
                                     Icon(
-                                        imageVector = Icons.Filled.Event,
+                                        imageVector = when (reminder.type) {
+                                            ReminderType.ANNUAL -> Icons.Filled.Event
+                                            ReminderType.COUNT_UP -> Icons.Filled.Schedule
+                                            ReminderType.BIRTHDAY -> Icons.Filled.Cake
+                                        },
                                         contentDescription = null,
                                         tint = MaterialTheme.colorScheme.onSecondaryContainer,
                                         modifier = Modifier.size(20.dp)
