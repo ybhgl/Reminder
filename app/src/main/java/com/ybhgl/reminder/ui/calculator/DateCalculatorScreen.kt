@@ -3,6 +3,7 @@ package com.ybhgl.reminder.ui.calculator
 import androidx.compose.animation.AnimatedContent
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.core.spring
@@ -11,6 +12,7 @@ import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.togetherWith
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -29,6 +31,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -41,6 +44,7 @@ import androidx.compose.material.icons.automirrored.filled.KeyboardArrowRight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Event
 import androidx.compose.material.icons.filled.ExpandMore
@@ -81,6 +85,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.text.font.FontWeight
@@ -347,6 +352,15 @@ private fun OffsetModeContent(
                     verticalAlignment = Alignment.Bottom
                 ) {
                     var directionMenuExpanded by remember { mutableStateOf(false) }
+                    // 展开时箭头 spring 旋转 180°，呼应页面的弹性动画语言
+                    val arrowRotation by animateFloatAsState(
+                        targetValue = if (directionMenuExpanded) 180f else 0f,
+                        animationSpec = spring(
+                            dampingRatio = Spring.DampingRatioMediumBouncy,
+                            stiffness = Spring.StiffnessLow
+                        ),
+                        label = "directionArrowRotation"
+                    )
                     Box {
                         Surface(
                             onClick = { directionMenuExpanded = true },
@@ -367,35 +381,38 @@ private fun OffsetModeContent(
                                 )
                                 Icon(
                                     imageVector = Icons.Default.ExpandMore,
-                                    contentDescription = "选择推算方向"
+                                    contentDescription = "选择推算方向",
+                                    modifier = Modifier.graphicsLayer { rotationZ = arrowRotation }
                                 )
                             }
                         }
+                        // 弹出菜单与页面 Expressive 语言统一：大圆角、分层容器色、细描边、轻量遮罩
                         DropdownMenu(
                             expanded = directionMenuExpanded,
-                            onDismissRequest = { directionMenuExpanded = false }
+                            onDismissRequest = { directionMenuExpanded = false },
+                            modifier = Modifier.widthIn(min = 168.dp),
+                            shape = RoundedCornerShape(24.dp),
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh,
+                            tonalElevation = 0.dp,
+                            shadowElevation = 6.dp,
+                            border = BorderStroke(
+                                1.dp,
+                                MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.6f)
+                            )
                         ) {
-                            DropdownMenuItem(
-                                text = { Text("向前") },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
-                                        contentDescription = null
-                                    )
-                                },
+                            DirectionMenuItem(
+                                label = "向前",
+                                icon = Icons.AutoMirrored.Filled.KeyboardArrowLeft,
+                                selected = !forward,
                                 onClick = {
                                     forward = false
                                     directionMenuExpanded = false
                                 }
                             )
-                            DropdownMenuItem(
-                                text = { Text("向后") },
-                                leadingIcon = {
-                                    Icon(
-                                        imageVector = Icons.AutoMirrored.Filled.KeyboardArrowRight,
-                                        contentDescription = null
-                                    )
-                                },
+                            DirectionMenuItem(
+                                label = "向后",
+                                icon = Icons.AutoMirrored.Filled.KeyboardArrowRight,
+                                selected = forward,
                                 onClick = {
                                     forward = true
                                     directionMenuExpanded = false
@@ -516,7 +533,7 @@ private fun IntervalModeContent(
 
     Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
         DateFieldCard(
-            label = "起始日期",
+            label = "开始日期",
             date = startDate,
             isLunar = startIsLunar,
             onClick = { pickerTarget = PickerTarget.START }
@@ -745,6 +762,60 @@ private fun DateFieldCard(
             if (bottomContent != null) bottomContent()
         }
     }
+}
+
+/**
+ * 推算方向菜单项：选中项以 primary 高亮并在尾部显示勾选，
+ * 呼应 M3 Expressive「当前状态可见」的菜单设计规范。
+ */
+@Composable
+private fun DirectionMenuItem(
+    label: String,
+    icon: ImageVector,
+    selected: Boolean,
+    onClick: () -> Unit
+) {
+    val contentColor = if (selected) {
+        MaterialTheme.colorScheme.primary
+    } else {
+        MaterialTheme.colorScheme.onSurface
+    }
+    DropdownMenuItem(
+        text = {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.bodyLarge.copy(
+                    fontWeight = if (selected) FontWeight.SemiBold else FontWeight.Normal
+                ),
+                color = contentColor
+            )
+        },
+        leadingIcon = {
+            Icon(imageVector = icon, contentDescription = null, tint = contentColor)
+        },
+        trailingIcon = {
+            AnimatedContent(
+                targetState = selected,
+                transitionSpec = {
+                    (
+                        fadeIn(spring(stiffness = Spring.StiffnessMediumLow)) +
+                            scaleIn(initialScale = 0.6f)
+                        ) togetherWith fadeOut(tweenish())
+                },
+                label = "directionMenuCheck"
+            ) { isSelected ->
+                if (isSelected) {
+                    Icon(
+                        imageVector = Icons.Filled.Check,
+                        contentDescription = null,
+                        tint = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.size(20.dp)
+                    )
+                }
+            }
+        },
+        onClick = onClick
+    )
 }
 
 /** 快捷日期/天数芯片 */
