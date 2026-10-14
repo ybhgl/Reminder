@@ -124,13 +124,8 @@ import android.content.ComponentName
 import com.ybhgl.reminder.widget.ReminderWidget1x2
 import com.ybhgl.reminder.widget.ReminderWidget2x2
 import com.ybhgl.reminder.widget.ReminderWidget4x2
-import com.ybhgl.reminder.widget.WidgetConfigStore
-import com.ybhgl.reminder.widget.WidgetConfigureScreen
-import com.ybhgl.reminder.widget.WidgetUpdateHelper
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
+import com.ybhgl.reminder.widget.WidgetConfigureActivity
 import androidx.compose.material3.Surface
-import kotlinx.coroutines.flow.first
 import androidx.compose.ui.graphics.toArgb
 
 import androidx.compose.material.icons.filled.Lock
@@ -225,8 +220,6 @@ fun SettingsScreen(
         list
     }
 
-    var configuringWidget by remember { mutableStateOf<ActiveWidgetInfo?>(null) }
-
     Scaffold(
         snackbarHost = { SnackbarHost(snackbarHostState) },
         containerColor = MaterialTheme.colorScheme.background,
@@ -254,63 +247,6 @@ fun SettingsScreen(
                                 }
                             },
                             onCancel = { showDisableVerify = false }
-                        )
-                    }
-                }
-            }
-
-            if (configuringWidget != null) {
-                val widget = configuringWidget!!
-                val isSingleSelection = widget.isSingleSelection
-                val appWidgetId = widget.id
-                val initialOpacity = remember(appWidgetId) { WidgetConfigStore.getWidgetOpacity(context, appWidgetId) }
-                val initialSelectedId = remember(appWidgetId) { WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId) }
-                val initialFilterType = remember(appWidgetId) { if (!isSingleSelection) WidgetConfigStore.get4x2FilterType(context, appWidgetId) else "all" }
-                val initialCustomIds = remember(appWidgetId) { if (!isSingleSelection) WidgetConfigStore.get4x2CustomIds(context, appWidgetId) else emptySet<Int>() }
-
-                Dialog(
-                    onDismissRequest = { configuringWidget = null },
-                    properties = DialogProperties(usePlatformDefaultWidth = false)
-                ) {
-                    Surface(
-                        modifier = Modifier.fillMaxSize(),
-                        color = MaterialTheme.colorScheme.background
-                    ) {
-                        WidgetConfigureScreen(
-                            isSingleSelection = isSingleSelection,
-                            initialOpacity = initialOpacity,
-                            initialSelectedId = initialSelectedId,
-                            initialFilterType = initialFilterType,
-                            initialCustomIds = initialCustomIds,
-                            onCancel = { configuringWidget = null },
-                            onSave = { selectedId, filterType, customIds, opacity, items ->
-                                WidgetConfigStore.saveWidgetOpacity(context, appWidgetId, opacity)
-
-                                if (isSingleSelection) {
-                                    WidgetConfigStore.save1x2Or2x2Config(context, appWidgetId, selectedId)
-                                    val is1x2 = widget.providerClassName.contains("ReminderWidget1x2")
-                                    if (is1x2) {
-                                        WidgetUpdateHelper.update1x2WidgetWithData(context, appWidgetManager, appWidgetId, opacity, selectedId, items)
-                                    } else {
-                                        WidgetUpdateHelper.update2x2WidgetWithData(context, appWidgetManager, appWidgetId, opacity, selectedId, items)
-                                    }
-                                    val updateIntent = Intent(context, if (is1x2) ReminderWidget1x2::class.java else ReminderWidget2x2::class.java).apply {
-                                        action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                                        putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
-                                    }
-                                    context.sendBroadcast(updateIntent)
-                                } else {
-                                    WidgetConfigStore.save4x2Config(context, appWidgetId, filterType, customIds)
-                                    val updateIntent = Intent(context, ReminderWidget4x2::class.java).apply {
-                                        action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
-                                        putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
-                                    }
-                                    context.sendBroadcast(updateIntent)
-                                    appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list_view)
-                                }
-                                configuringWidget = null
-                            },
-                            loadReminders = { viewModel.getAllRemindersStream().first() }
                         )
                     }
                 }
@@ -420,7 +356,12 @@ fun SettingsScreen(
                 HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
                 WidgetManagementCard(
                     activeWidgets = activeWidgets,
-                    onConfigureClick = { widget -> configuringWidget = widget }
+                    onConfigureClick = { widget ->
+                        context.startActivity(
+                            Intent(context, WidgetConfigureActivity::class.java)
+                                .putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, widget.id)
+                        )
+                    }
                 )
                 Text(
                     text = "安全",
