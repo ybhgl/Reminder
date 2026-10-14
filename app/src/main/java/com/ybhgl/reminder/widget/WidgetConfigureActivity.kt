@@ -8,25 +8,30 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.SystemBarStyle
-import androidx.compose.foundation.clickable
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.selection.selectable
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.ui.draw.clip
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.R
 import com.ybhgl.reminder.ReminderApplication
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
+import com.ybhgl.reminder.data.TagItem
+import com.ybhgl.reminder.ui.settings.SettingsActionItem
+import com.ybhgl.reminder.ui.settings.typeDisplayName
+import com.ybhgl.reminder.ui.settings.typeIcon
 import com.ybhgl.reminder.ui.theme.ReminderTheme
 import kotlinx.coroutines.flow.first
 
@@ -62,12 +67,14 @@ class WidgetConfigureActivity : ComponentActivity() {
 
         val isSingleSelection = providerClassName.contains("ReminderWidget1x2") || providerClassName.contains("ReminderWidget2x2")
 
-        val repository = (applicationContext as ReminderApplication).container.reminderRepository
+        val container = (applicationContext as ReminderApplication).container
+        val repository = container.reminderRepository
 
         val initialOpacity = WidgetConfigStore.getWidgetOpacity(this, appWidgetId)
         val initialSelectedId = WidgetConfigStore.get1x2Or2x2Config(this, appWidgetId)
         val initialFilterType = if (!isSingleSelection) WidgetConfigStore.get4x2FilterType(this, appWidgetId) else "all"
         val initialCustomIds = if (!isSingleSelection) WidgetConfigStore.get4x2CustomIds(this, appWidgetId) else emptySet()
+        val initialTags = if (!isSingleSelection) WidgetConfigStore.get4x2Tags(this, appWidgetId) else emptySet()
 
         setContent {
             ReminderTheme {
@@ -81,8 +88,9 @@ class WidgetConfigureActivity : ComponentActivity() {
                         initialSelectedId = initialSelectedId,
                         initialFilterType = initialFilterType,
                         initialCustomIds = initialCustomIds,
+                        initialTags = initialTags,
                         onCancel = { finish() },
-                        onSave = { selectedId, filterType, customIds, opacity, items ->
+                        onSave = { selectedId, filterType, customIds, tags, opacity, items ->
                             // Save opacity first for any widget
                             WidgetConfigStore.saveWidgetOpacity(this@WidgetConfigureActivity, appWidgetId, opacity)
 
@@ -102,6 +110,7 @@ class WidgetConfigureActivity : ComponentActivity() {
                                 sendBroadcast(updateIntent)
                             } else {
                                 WidgetConfigStore.save4x2Config(this@WidgetConfigureActivity, appWidgetId, filterType, customIds)
+                                WidgetConfigStore.save4x2Tags(this@WidgetConfigureActivity, appWidgetId, tags)
                                 
                                 val updateIntent = Intent(this@WidgetConfigureActivity, ReminderWidget4x2::class.java).apply {
                                     action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
@@ -117,7 +126,8 @@ class WidgetConfigureActivity : ComponentActivity() {
                             setResult(RESULT_OK, resultValue)
                             finish()
                         },
-                        loadReminders = { repository.getAllRemindersStream().first() }
+                        loadReminders = { repository.getAllRemindersStream().first() },
+                        loadTags = { container.tagRepository.getAllTags() }
                     )
                 }
             }
@@ -125,7 +135,7 @@ class WidgetConfigureActivity : ComponentActivity() {
     }
 }
 
-@OptIn(ExperimentalMaterial3Api::class)
+@OptIn(ExperimentalMaterial3Api::class, ExperimentalLayoutApi::class)
 @Composable
 fun WidgetConfigureScreen(
     isSingleSelection: Boolean,
@@ -133,11 +143,14 @@ fun WidgetConfigureScreen(
     initialSelectedId: Int = -1,
     initialFilterType: String = "all",
     initialCustomIds: Set<Int> = emptySet(),
+    initialTags: Set<String> = emptySet(),
     onCancel: () -> Unit,
-    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, opacity: Int, reminders: List<ReminderItem>) -> Unit,
-    loadReminders: suspend () -> List<ReminderItem>
+    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, tags: Set<String>, opacity: Int, reminders: List<ReminderItem>) -> Unit,
+    loadReminders: suspend () -> List<ReminderItem>,
+    loadTags: suspend () -> List<TagItem>
 ) {
     var reminders by remember { mutableStateOf<List<ReminderItem>>(emptyList()) }
+    var tags by remember { mutableStateOf<List<TagItem>>(emptyList()) }
     var isLoading by remember { mutableStateOf(true) }
     val widgetCardShape = RoundedCornerShape(16.dp)
 
@@ -150,13 +163,39 @@ fun WidgetConfigureScreen(
     // Selection States for 4x2
     var filterType by remember { mutableStateOf(initialFilterType) }
     var customSelectedIds by remember { mutableStateOf(initialCustomIds) }
+    var selectedTags by remember { mutableStateOf(initialTags) }
 
     LaunchedEffect(Unit) {
         reminders = loadReminders()
+        tags = loadTags()
         if (reminders.isNotEmpty() && selectedReminderId == -1) {
             selectedReminderId = reminders.first().id
         }
         isLoading = false
+    }
+
+    // 类型筛选（第一排互斥）+ 标签筛选（第二排叠加）后的可见事件；custom 模式不限制类型
+    val typeFiltered = when (filterType) {
+        "countdown" -> reminders.filter { it.type == ReminderType.ANNUAL }
+        "countup" -> reminders.filter { it.type == ReminderType.COUNT_UP }
+        "birthday" -> reminders.filter { it.type == ReminderType.BIRTHDAY }
+        else -> reminders
+    }
+    val visibleReminders = if (selectedTags.isEmpty()) typeFiltered
+    else typeFiltered.filter { it.tag in selectedTags }
+
+    // 勾选切换：custom 模式直接增删 id；动态模式下取消勾选 → 物化当前可见集合并切到 custom
+    val toggleSelection: (ReminderItem) -> Unit = { reminder ->
+        if (filterType == "custom") {
+            customSelectedIds = if (customSelectedIds.contains(reminder.id)) {
+                customSelectedIds - reminder.id
+            } else {
+                customSelectedIds + reminder.id
+            }
+        } else {
+            customSelectedIds = visibleReminders.map { it.id }.toSet() - reminder.id
+            filterType = "custom"
+        }
     }
 
     Scaffold(
@@ -203,17 +242,23 @@ fun WidgetConfigureScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .padding(innerPadding)
-                    .padding(16.dp)
             ) {
+                // 整页单一滚动列表：透明度卡、chips 与事件行一起滚动，底部操作栏固定
+                LazyColumn(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth(),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 16.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                item {
                 // Opacity Selection Card
                 Card(
                     shape = widgetCardShape,
                     colors = CardDefaults.cardColors(
                         containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
                     ),
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(bottom = 16.dp)
+                    modifier = Modifier.fillMaxWidth()
                 ) {
                     Column(modifier = Modifier.padding(16.dp)) {
                         Row(
@@ -247,200 +292,194 @@ fun WidgetConfigureScreen(
                         )
                     }
                 }
+                }
 
                 if (isSingleSelection) {
-                    Text(
-                        text = "选择要显示的提醒：",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                    item {
+                        Text(
+                            text = "选择要显示的提醒：",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
 
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
-                        verticalArrangement = Arrangement.spacedBy(8.dp)
-                    ) {
-                        items(reminders) { reminder ->
+                    items(reminders) { reminder ->
                             val isSelected = reminder.id == selectedReminderId
-                            Card(
-                                shape = widgetCardShape,
-                                colors = CardDefaults.cardColors(
-                                    containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .clip(widgetCardShape)
-                                    .selectable(
-                                        selected = isSelected,
-                                        onClick = { selectedReminderId = reminder.id }
+                            SettingsActionItem(
+                                title = reminder.title,
+                                description = reminderItemDescription(reminder),
+                                icon = {
+                                    Icon(
+                                        typeIcon(reminder.type), null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
                                     )
-                            ) {
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(16.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.SpaceBetween
-                                ) {
-                                    Column(modifier = Modifier.weight(1f)) {
-                                        Text(
-                                            text = reminder.title,
-                                            style = MaterialTheme.typography.bodyLarge,
-                                            fontWeight = FontWeight.Bold,
-                                            maxLines = 1
-                                        )
-                                        Text(
-                                            text = when (reminder.type) {
-                                                ReminderType.ANNUAL -> "倒数日 · ${reminder.date}"
-                                                ReminderType.COUNT_UP -> "正数日 · ${reminder.date}"
-                                                ReminderType.BIRTHDAY -> "生日 · ${reminder.date}"
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                    }
+                                },
+                                onClick = { selectedReminderId = reminder.id },
+                                trailingContent = {
                                     RadioButton(
                                         selected = isSelected,
                                         onClick = { selectedReminderId = reminder.id }
                                     )
-                                }
-                            }
+                                },
+                                containerColor = if (isSelected) MaterialTheme.colorScheme.primaryContainer
+                                else MaterialTheme.colorScheme.surfaceColorAtElevation(2.dp),
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            )
                         }
-                    }
                 } else {
-                    Text(
-                        text = "选择展示哪些提醒：",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.Medium,
-                        modifier = Modifier.padding(bottom = 12.dp)
-                    )
+                    item {
+                        Text(
+                            text = "选择展示哪些提醒：",
+                            style = MaterialTheme.typography.titleMedium,
+                            fontWeight = FontWeight.Medium
+                        )
+                    }
 
-                    val filterOptions = listOf(
-                        "all" to "展示所有提醒",
-                        "countdown" to "仅展示倒数日",
-                        "countup" to "仅展示正数日",
-                        "birthday" to "仅展示生日",
+                    // 第一排：类型筛选 chips（互斥），"自由选择"承接手动勾选
+                    val typeFilterOptions = listOf(
+                        "all" to "所有",
+                        "countdown" to "倒数日",
+                        "countup" to "正数日",
+                        "birthday" to "生日",
                         "custom" to "自由选择"
                     )
 
-                    LazyColumn(
-                        modifier = Modifier
-                            .weight(1f)
-                            .fillMaxWidth(),
+                    item {
+                    FlowRow(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
                         verticalArrangement = Arrangement.spacedBy(8.dp)
                     ) {
-                        item {
-                            Card(
-                                shape = widgetCardShape,
-                                colors = CardDefaults.cardColors(
-                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                ),
-                                modifier = Modifier
-                                    .fillMaxWidth()
-                                    .padding(bottom = 8.dp)
-                            ) {
-                                Column(modifier = Modifier.padding(8.dp)) {
-                                    filterOptions.forEach { (optionType, label) ->
-                                        val itemShape = RoundedCornerShape(8.dp)
-                                        Row(
-                                            modifier = Modifier
-                                                .fillMaxWidth()
-                                                .clip(itemShape)
-                                                .clickable { filterType = optionType }
-                                                .padding(vertical = 10.dp, horizontal = 12.dp),
-                                            verticalAlignment = Alignment.CenterVertically
-                                        ) {
-                                            RadioButton(
-                                                selected = filterType == optionType,
-                                                onClick = { filterType = optionType }
-                                            )
-                                            Spacer(modifier = Modifier.width(8.dp))
-                                            Text(
-                                                text = label,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = if (filterType == optionType) FontWeight.Bold else FontWeight.Normal
-                                            )
+                        typeFilterOptions.forEach { (optionType, label) ->
+                            val isSelected = filterType == optionType
+                            FilterChip(
+                                selected = isSelected,
+                                onClick = {
+                                    if (!isSelected) {
+                                        if (optionType == "custom") {
+                                            // 切入自由选择：物化当前可见事件为勾选集合
+                                            customSelectedIds = visibleReminders.map { it.id }.toSet()
                                         }
+                                        filterType = optionType
                                     }
-                                }
-                            }
-                        }
-
-                        if (filterType == "custom") {
-                            item {
-                                Text(
-                                    text = "请勾选要显示的提醒（可多选）：",
-                                    style = MaterialTheme.typography.bodyMedium,
-                                    fontWeight = FontWeight.Medium,
-                                    modifier = Modifier.padding(vertical = 8.dp, horizontal = 4.dp)
-                                )
-                            }
-
-                            items(reminders) { reminder ->
-                                val isChecked = customSelectedIds.contains(reminder.id)
-                                Card(
-                                    shape = widgetCardShape,
-                                    colors = CardDefaults.cardColors(
-                                        containerColor = if (isChecked) MaterialTheme.colorScheme.secondaryContainer else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
-                                    ),
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(widgetCardShape)
-                                        .clickable {
-                                            customSelectedIds = if (isChecked) {
-                                                customSelectedIds - reminder.id
-                                            } else {
-                                                customSelectedIds + reminder.id
-                                            }
-                                        }
-                                ) {
-                                    Row(
-                                        modifier = Modifier
-                                            .fillMaxWidth()
-                                            .padding(12.dp),
-                                        verticalAlignment = Alignment.CenterVertically,
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Column(modifier = Modifier.weight(1f)) {
-                                            Text(
-                                                text = reminder.title,
-                                                style = MaterialTheme.typography.bodyMedium,
-                                                fontWeight = FontWeight.Bold,
-                                                maxLines = 1
-                                            )
-                                            Text(
-                                                text = when (reminder.type) {
-                                                    ReminderType.ANNUAL -> "倒数日"
-                                                    ReminderType.COUNT_UP -> "正数日"
-                                                    ReminderType.BIRTHDAY -> "生日"
-                                                },
-                                                style = MaterialTheme.typography.bodySmall,
-                                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                                            )
-                                        }
-                                        Checkbox(
-                                            checked = isChecked,
-                                            onCheckedChange = { checked ->
-                                                customSelectedIds = if (checked == true) {
-                                                    customSelectedIds + reminder.id
-                                                } else {
-                                                    customSelectedIds - reminder.id
-                                                }
-                                            }
+                                },
+                                label = { Text(label, style = MaterialTheme.typography.bodyMedium) },
+                                leadingIcon = if (isSelected) {
+                                    {
+                                        Icon(
+                                            imageVector = Icons.Default.Check,
+                                            contentDescription = null,
+                                            modifier = Modifier.size(FilterChipDefaults.IconSize)
                                         )
                                     }
-                                }
-                            }
+                                } else null,
+                                shape = RoundedCornerShape(12.dp)
+                            )
                         }
                     }
+
+                    }
+
+                    // 第二排：标签 chips（叠加筛选，与第一排取交集）
+                    if (tags.isNotEmpty()) {
+                        item {
+                        FlowRow(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            tags.forEach { tagItem ->
+                                val isSelected = tagItem.name in selectedTags
+                                val parsedColor = remember(tagItem.color) {
+                                    try {
+                                        Color(android.graphics.Color.parseColor(tagItem.color))
+                                    } catch (e: IllegalArgumentException) {
+                                        Color(0xFF2196F3)
+                                    }
+                                }
+                                FilterChip(
+                                    selected = isSelected,
+                                    onClick = {
+                                        selectedTags = if (isSelected) {
+                                            selectedTags - tagItem.name
+                                        } else {
+                                            selectedTags + tagItem.name
+                                        }
+                                    },
+                                    label = {
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(6.dp)
+                                        ) {
+                                            Box(
+                                                modifier = Modifier
+                                                    .size(8.dp)
+                                                    .background(parsedColor, shape = CircleShape)
+                                            )
+                                            Text(tagItem.name, style = MaterialTheme.typography.bodyMedium)
+                                        }
+                                    },
+                                    leadingIcon = if (isSelected) {
+                                        {
+                                            Icon(
+                                                imageVector = Icons.Default.Check,
+                                                contentDescription = null,
+                                                modifier = Modifier.size(FilterChipDefaults.IconSize)
+                                            )
+                                        }
+                                    } else null,
+                                    shape = RoundedCornerShape(12.dp)
+                                )
+                            }
+                        }
+                        }
+                    }
+
+                    // 事件勾选区：始终展示；动态筛选下全部可见事件视为已勾选
+                        if (visibleReminders.isEmpty()) {
+                            item {
+                                Text(
+                                    text = "没有符合当前筛选条件的事件",
+                                    style = MaterialTheme.typography.bodyMedium,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    modifier = Modifier.padding(vertical = 8.dp)
+                                )
+                            }
+                        }
+                        items(visibleReminders) { reminder ->
+                            val isChecked = if (filterType == "custom") {
+                                customSelectedIds.contains(reminder.id)
+                            } else {
+                                true
+                            }
+                            SettingsActionItem(
+                                title = reminder.title,
+                                description = reminderItemDescription(reminder),
+                                icon = {
+                                    Icon(
+                                        typeIcon(reminder.type), null,
+                                        tint = MaterialTheme.colorScheme.primary,
+                                        modifier = Modifier.size(22.dp)
+                                    )
+                                },
+                                onClick = { toggleSelection(reminder) },
+                                trailingContent = {
+                                    Checkbox(
+                                        checked = isChecked,
+                                        onCheckedChange = { toggleSelection(reminder) }
+                                    )
+                                },
+                                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
+                            )
+                        }
+                }
                 }
 
-                Spacer(modifier = Modifier.height(16.dp))
-
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     OutlinedButton(
@@ -452,9 +491,9 @@ fun WidgetConfigureScreen(
                     Button(
                         onClick = {
                             if (isSingleSelection) {
-                                onSave(selectedReminderId, "", emptySet(), opacity.toInt(), reminders)
+                                onSave(selectedReminderId, "", emptySet(), emptySet(), opacity.toInt(), reminders)
                             } else {
-                                onSave(-1, filterType, customSelectedIds, opacity.toInt(), reminders)
+                                onSave(-1, filterType, customSelectedIds, selectedTags, opacity.toInt(), reminders)
                             }
                         },
                         modifier = Modifier.weight(1f),
@@ -466,4 +505,11 @@ fun WidgetConfigureScreen(
             }
         }
     }
+}
+
+/** 事件行副标题：日期 · 类型 */
+private fun reminderItemDescription(reminder: ReminderItem): String = buildString {
+    append(reminder.date)
+    append(" · ")
+    append(typeDisplayName(reminder.type))
 }

@@ -40,6 +40,7 @@ class ReminderListWidgetFactory(
                 if (appWidgetId != AppWidgetManager.INVALID_APPWIDGET_ID) {
                     val filterType = WidgetConfigStore.get4x2FilterType(context, appWidgetId)
                     val customIds = WidgetConfigStore.get4x2CustomIds(context, appWidgetId)
+                    val filterTags = WidgetConfigStore.get4x2Tags(context, appWidgetId)
 
                     list = when (filterType) {
                         "countdown" -> list.filter { it.type == com.ybhgl.reminder.data.ReminderType.ANNUAL }
@@ -47,6 +48,10 @@ class ReminderListWidgetFactory(
                         "birthday" -> list.filter { it.type == com.ybhgl.reminder.data.ReminderType.BIRTHDAY }
                         "custom" -> list.filter { it.id in customIds }
                         else -> list
+                    }
+                    // 标签筛选叠加在所有模式之上（空集合=不限制）
+                    if (filterTags.isNotEmpty()) {
+                        list = list.filter { it.tag in filterTags }
                     }
                 }
 

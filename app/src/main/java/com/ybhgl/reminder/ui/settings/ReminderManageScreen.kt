@@ -553,13 +553,13 @@ private fun styleDisplayName(style: NotificationStyleOption): String = when (sty
     NotificationStyleOption.LIVE -> "原生 Live 通知"
 }
 
-private fun typeDisplayName(type: ReminderType): String = when (type) {
+internal fun typeDisplayName(type: ReminderType): String = when (type) {
     ReminderType.ANNUAL -> "倒数日"
     ReminderType.COUNT_UP -> "正数日"
     ReminderType.BIRTHDAY -> "生日"
 }
 
-private fun typeIcon(type: ReminderType) = when (type) {
+internal fun typeIcon(type: ReminderType) = when (type) {
     ReminderType.ANNUAL -> Icons.Filled.Event
     ReminderType.COUNT_UP -> Icons.Filled.Schedule
     ReminderType.BIRTHDAY -> Icons.Filled.Cake

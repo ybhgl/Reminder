@@ -463,11 +463,25 @@ object WidgetConfigStore {
         return str.split(",").mapNotNull { it.toIntOrNull() }.toSet()
     }
 
+    fun save4x2Tags(context: Context, appWidgetId: Int, tags: Set<String>) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putString("widget_${appWidgetId}_filter_tags", tags.joinToString(","))
+            .commit()
+    }
+
+    fun get4x2Tags(context: Context, appWidgetId: Int): Set<String> {
+        val str = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getString("widget_${appWidgetId}_filter_tags", "") ?: ""
+        if (str.isEmpty()) return emptySet()
+        return str.split(",").filter { it.isNotEmpty() }.toSet()
+    }
+
     fun deleteConfig(context: Context, appWidgetId: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .remove("widget_${appWidgetId}_reminder_id")
             .remove("widget_${appWidgetId}_filter_type")
             .remove("widget_${appWidgetId}_custom_ids")
+            .remove("widget_${appWidgetId}_filter_tags")
             .remove("widget_${appWidgetId}_opacity")
             .commit()
     }
