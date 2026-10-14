@@ -75,6 +75,7 @@ class WidgetConfigureActivity : ComponentActivity() {
         val initialFilterType = if (!isSingleSelection) WidgetConfigStore.get4x2FilterType(this, appWidgetId) else "all"
         val initialCustomIds = if (!isSingleSelection) WidgetConfigStore.get4x2CustomIds(this, appWidgetId) else emptySet()
         val initialTags = if (!isSingleSelection) WidgetConfigStore.get4x2Tags(this, appWidgetId) else emptySet()
+        val initialDualColumn = if (!isSingleSelection) WidgetConfigStore.get4x2DualColumn(this, appWidgetId) else false
 
         setContent {
             ReminderTheme {
@@ -89,8 +90,9 @@ class WidgetConfigureActivity : ComponentActivity() {
                         initialFilterType = initialFilterType,
                         initialCustomIds = initialCustomIds,
                         initialTags = initialTags,
+                        initialDualColumn = initialDualColumn,
                         onCancel = { finish() },
-                        onSave = { selectedId, filterType, customIds, tags, opacity, items ->
+                        onSave = { selectedId, filterType, customIds, tags, opacity, dualColumn, items ->
                             // Save opacity first for any widget
                             WidgetConfigStore.saveWidgetOpacity(this@WidgetConfigureActivity, appWidgetId, opacity)
 
@@ -111,13 +113,15 @@ class WidgetConfigureActivity : ComponentActivity() {
                             } else {
                                 WidgetConfigStore.save4x2Config(this@WidgetConfigureActivity, appWidgetId, filterType, customIds)
                                 WidgetConfigStore.save4x2Tags(this@WidgetConfigureActivity, appWidgetId, tags)
+                                WidgetConfigStore.save4x2DualColumn(this@WidgetConfigureActivity, appWidgetId, dualColumn)
                                 
                                 val updateIntent = Intent(this@WidgetConfigureActivity, ReminderWidget4x2::class.java).apply {
                                     action = AppWidgetManager.ACTION_APPWIDGET_UPDATE
                                     putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, intArrayOf(appWidgetId))
                                 }
                                 sendBroadcast(updateIntent)
-                                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, R.id.widget_list_view)
+                                val listViewId = if (dualColumn) R.id.widget_grid_view else R.id.widget_list_view
+                                appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetId, listViewId)
                             }
 
                             val resultValue = Intent().apply {
@@ -144,8 +148,9 @@ fun WidgetConfigureScreen(
     initialFilterType: String = "all",
     initialCustomIds: Set<Int> = emptySet(),
     initialTags: Set<String> = emptySet(),
+    initialDualColumn: Boolean = false,
     onCancel: () -> Unit,
-    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, tags: Set<String>, opacity: Int, reminders: List<ReminderItem>) -> Unit,
+    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, tags: Set<String>, opacity: Int, dualColumn: Boolean, reminders: List<ReminderItem>) -> Unit,
     loadReminders: suspend () -> List<ReminderItem>,
     loadTags: suspend () -> List<TagItem>
 ) {
@@ -164,6 +169,7 @@ fun WidgetConfigureScreen(
     var filterType by remember { mutableStateOf(initialFilterType) }
     var customSelectedIds by remember { mutableStateOf(initialCustomIds) }
     var selectedTags by remember { mutableStateOf(initialTags) }
+    var dualColumn by remember { mutableStateOf(initialDualColumn) }
 
     LaunchedEffect(Unit) {
         reminders = loadReminders()
@@ -328,6 +334,43 @@ fun WidgetConfigureScreen(
                             )
                         }
                 } else {
+                    // 双列显示开关：开启后每行显示两个简化事件（颜色条 + 名称 + 天数）
+                    item {
+                        Card(
+                            shape = widgetCardShape,
+                            colors = CardDefaults.cardColors(
+                                containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                            ),
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Row(
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                                horizontalArrangement = Arrangement.SpaceBetween,
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
+                                Column(modifier = Modifier.weight(1f)) {
+                                    Text(
+                                        text = "双列显示",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        fontWeight = FontWeight.Bold
+                                    )
+                                    Spacer(modifier = Modifier.height(2.dp))
+                                    Text(
+                                        text = "开启后每行显示两个事件",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+                                }
+                                Switch(
+                                    checked = dualColumn,
+                                    onCheckedChange = { dualColumn = it }
+                                )
+                            }
+                        }
+                    }
+
                     item {
                         Text(
                             text = "选择展示哪些提醒：",
@@ -491,9 +534,9 @@ fun WidgetConfigureScreen(
                     Button(
                         onClick = {
                             if (isSingleSelection) {
-                                onSave(selectedReminderId, "", emptySet(), emptySet(), opacity.toInt(), reminders)
+                                onSave(selectedReminderId, "", emptySet(), emptySet(), opacity.toInt(), false, reminders)
                             } else {
-                                onSave(-1, filterType, customSelectedIds, selectedTags, opacity.toInt(), reminders)
+                                onSave(-1, filterType, customSelectedIds, selectedTags, opacity.toInt(), dualColumn, reminders)
                             }
                         },
                         modifier = Modifier.weight(1f),

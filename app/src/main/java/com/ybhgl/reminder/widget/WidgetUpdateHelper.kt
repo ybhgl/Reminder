@@ -282,7 +282,14 @@ object WidgetUpdateHelper {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_IDS, ids4x2)
             }
             context.sendBroadcast(intent)
-            appWidgetManager.notifyAppWidgetViewDataChanged(ids4x2, R.id.widget_list_view)
+            // 按双列开关分组，分别通知对应列表视图刷新数据
+            val (dualIds, singleIds) = ids4x2.partition { WidgetConfigStore.get4x2DualColumn(context, it) }
+            if (singleIds.isNotEmpty()) {
+                appWidgetManager.notifyAppWidgetViewDataChanged(singleIds.toIntArray(), R.id.widget_list_view)
+            }
+            if (dualIds.isNotEmpty()) {
+                appWidgetManager.notifyAppWidgetViewDataChanged(dualIds.toIntArray(), R.id.widget_grid_view)
+            }
         }
     }
 
@@ -476,12 +483,24 @@ object WidgetConfigStore {
         return str.split(",").filter { it.isNotEmpty() }.toSet()
     }
 
+    fun save4x2DualColumn(context: Context, appWidgetId: Int, enabled: Boolean) {
+        context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
+            .putBoolean("widget_${appWidgetId}_dual_column", enabled)
+            .commit()
+    }
+
+    fun get4x2DualColumn(context: Context, appWidgetId: Int): Boolean {
+        return context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            .getBoolean("widget_${appWidgetId}_dual_column", false)
+    }
+
     fun deleteConfig(context: Context, appWidgetId: Int) {
         context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE).edit()
             .remove("widget_${appWidgetId}_reminder_id")
             .remove("widget_${appWidgetId}_filter_type")
             .remove("widget_${appWidgetId}_custom_ids")
             .remove("widget_${appWidgetId}_filter_tags")
+            .remove("widget_${appWidgetId}_dual_column")
             .remove("widget_${appWidgetId}_opacity")
             .commit()
     }

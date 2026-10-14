@@ -24,7 +24,14 @@ class ReminderWidget4x2 : AppWidgetProvider() {
                 val appWidgetIds = appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget4x2::class.java))
                 if (appWidgetIds.isNotEmpty()) {
                     onUpdate(context, appWidgetManager, appWidgetIds)
-                    appWidgetManager.notifyAppWidgetViewDataChanged(appWidgetIds, R.id.widget_list_view)
+                    // 按双列开关分组，通知对应的列表视图刷新
+                    val (dualIds, singleIds) = appWidgetIds.partition { WidgetConfigStore.get4x2DualColumn(context, it) }
+                    if (singleIds.isNotEmpty()) {
+                        appWidgetManager.notifyAppWidgetViewDataChanged(singleIds.toIntArray(), R.id.widget_list_view)
+                    }
+                    if (dualIds.isNotEmpty()) {
+                        appWidgetManager.notifyAppWidgetViewDataChanged(dualIds.toIntArray(), R.id.widget_grid_view)
+                    }
                 }
             }
         }
@@ -32,7 +39,10 @@ class ReminderWidget4x2 : AppWidgetProvider() {
 
     override fun onUpdate(context: Context, appWidgetManager: AppWidgetManager, appWidgetIds: IntArray) {
         for (appWidgetId in appWidgetIds) {
-            val views = RemoteViews(context.packageName, R.layout.widget_layout_4x2)
+            val dualColumn = WidgetConfigStore.get4x2DualColumn(context, appWidgetId)
+            val layoutResId = if (dualColumn) R.layout.widget_layout_4x2_dual else R.layout.widget_layout_4x2
+            val listViewId = if (dualColumn) R.id.widget_grid_view else R.id.widget_list_view
+            val views = RemoteViews(context.packageName, layoutResId)
 
             // Apply transparency
             WidgetUpdateHelper.applyWidgetOpacity(context, views, R.id.widget_4x2_bg, appWidgetId)
@@ -41,8 +51,8 @@ class ReminderWidget4x2 : AppWidgetProvider() {
                 putExtra(AppWidgetManager.EXTRA_APPWIDGET_ID, appWidgetId)
                 data = Uri.parse(toUri(Intent.URI_INTENT_SCHEME))
             }
-            views.setRemoteAdapter(R.id.widget_list_view, intent)
-            views.setEmptyView(R.id.widget_list_view, R.id.widget_empty_view)
+            views.setRemoteAdapter(listViewId, intent)
+            views.setEmptyView(listViewId, R.id.widget_empty_view)
 
             val clickIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
@@ -53,7 +63,7 @@ class ReminderWidget4x2 : AppWidgetProvider() {
                 clickIntent,
                 PendingIntent.FLAG_MUTABLE or PendingIntent.FLAG_UPDATE_CURRENT
             )
-            views.setPendingIntentTemplate(R.id.widget_list_view, clickPI)
+            views.setPendingIntentTemplate(listViewId, clickPI)
 
             val addIntent = Intent(context, MainActivity::class.java).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP

@@ -71,20 +71,28 @@ class ReminderListWidgetFactory(
     override fun getCount(): Int = reminderList.size
 
     override fun getViewAt(position: Int): RemoteViews {
+        val dualColumn = WidgetConfigStore.get4x2DualColumn(context, appWidgetId)
+        val itemLayout = if (dualColumn) R.layout.widget_list_item_4x2_dual else R.layout.widget_list_item
         if (position < 0 || position >= reminderList.size) {
-            return RemoteViews(context.packageName, R.layout.widget_list_item)
+            return RemoteViews(context.packageName, itemLayout)
         }
 
         val reminder = reminderList[position]
-        val views = RemoteViews(context.packageName, R.layout.widget_list_item)
+        val views = RemoteViews(context.packageName, itemLayout)
 
         val displayInfo = WidgetUpdateHelper.getDisplayInfo(context, reminder)
 
-        views.setTextViewText(R.id.widget_item_title, displayInfo.title)
-        views.setTextViewText(R.id.widget_item_date, displayInfo.dateString)
-        views.setTextViewText(R.id.widget_item_label, displayInfo.label)
-        views.setTextViewText(R.id.widget_item_days, displayInfo.days)
-        views.setTextViewText(R.id.widget_item_unit, displayInfo.unit)
+        if (dualColumn) {
+            // 简化版事件：颜色指示条 + 事件名称 + 天数数字
+            views.setTextViewText(R.id.widget_item_title, displayInfo.title)
+            views.setTextViewText(R.id.widget_item_days, displayInfo.days)
+        } else {
+            views.setTextViewText(R.id.widget_item_title, displayInfo.title)
+            views.setTextViewText(R.id.widget_item_date, displayInfo.dateString)
+            views.setTextViewText(R.id.widget_item_label, displayInfo.label)
+            views.setTextViewText(R.id.widget_item_days, displayInfo.days)
+            views.setTextViewText(R.id.widget_item_unit, displayInfo.unit)
+        }
 
         views.setInt(R.id.widget_item_accent_bar, "setBackgroundColor", context.getColor(displayInfo.accentColorResId))
         views.setTextColor(R.id.widget_item_days, context.getColor(displayInfo.accentColorResId))

@@ -1,0 +1,41 @@
+<?xml version="1.0" encoding="utf-8"?>
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_item_container"
+    android:layout_width="match_parent"
+    android:layout_height="40dp"
+    android:background="@drawable/widget_list_item_bg_shape"
+    android:orientation="horizontal"
+    android:gravity="center_vertical"
+    android:paddingStart="6dp"
+    android:paddingEnd="6dp">
+
+    <!-- Accent Color Left Strip -->
+    <FrameLayout
+        android:id="@+id/widget_item_accent_bar"
+        android:layout_width="3dp"
+        android:layout_height="20dp"
+        android:background="@color/widget_accent_annual" />
+
+    <TextView
+        android:id="@+id/widget_item_title"
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:layout_marginStart="6dp"
+        android:textColor="@color/widget_text_primary"
+        android:textSize="12sp"
+        android:textStyle="bold"
+        android:maxLines="1"
+        android:ellipsize="end"
+        android:text="标题" />
+
+    <TextView
+        android:id="@+id/widget_item_days"
+        android:layout_width="wrap_content"
+        android:layout_height="wrap_content"
+        android:layout_marginStart="4dp"
+        android:textColor="@color/widget_text_primary"
+        android:textSize="16sp"
+        android:textStyle="bold"
+        android:text="0" />
+</LinearLayout>
