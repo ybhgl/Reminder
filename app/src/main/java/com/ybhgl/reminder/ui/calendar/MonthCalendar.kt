@@ -3,6 +3,7 @@ package com.ybhgl.reminder.ui.calendar
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -172,6 +173,13 @@ internal fun weekCountFor(month: YearMonth): Int {
     val lead = month.atDay(1).dayOfWeek.value % 7
     return (lead + month.lengthOfMonth() + 6) / 7
 }
+
+/**
+ * 目标月保留"日"：把既定日号落到 [month] 的同号日期；
+ * 超出该月天数时回落到月末（如 1/31 切到 2 月取 2/28，闰年 2 月取 2/29）。
+ */
+internal fun datePreservingDayOfMonth(month: YearMonth, dayOfMonth: Int): LocalDate =
+    month.atDay(dayOfMonth.coerceIn(1, month.lengthOfMonth()))
 
 /**
  * 月历网格：横向翻页切月（HorizontalPager，页码↔月份一一对应），
@@ -650,26 +658,34 @@ private fun DayCell(
 ) {
     val onAccent = MaterialTheme.colorScheme.onPrimary
     val contentColor = when {
-        isSelected -> onAccent
+        isToday -> onAccent
         !cell.inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
         cell.isWeekend -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurface
     }
     val subColor = when {
-        isSelected -> onAccent.copy(alpha = 0.9f)
+        isToday -> onAccent.copy(alpha = 0.9f)
         !cell.inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
         cell.subKind == DayCellLabelKind.TERM -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
-    val dotColor = if (isSelected) onAccent else MaterialTheme.colorScheme.onSurfaceVariant
+    val dotColor = if (isToday) onAccent else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier
             .padding(2.dp)
             .clip(RoundedCornerShape(12.dp))
             .then(
-                // 选中日：强调色填充方块，内部文字与事件小点用对比色
-                if (isSelected) {
+                // 今天：强调色填充方块，内部文字与事件小点用对比色
+                if (isToday) {
                     Modifier.background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
+                } else {
+                    Modifier
+                }
+            )
+            .then(
+                // 选中日：强调色描边框选（选中即今天时色块与描边并存，数字仍用对比色）
+                if (isSelected) {
+                    Modifier.border(2.dp, MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }

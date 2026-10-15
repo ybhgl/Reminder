@@ -61,8 +61,7 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 import kotlin.math.abs
 
-private val HEADER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.CHINA)
-/** 浏览非选中日期所在月时，顶部指示器只显示年月（如 2026/09） */
+/** 顶部标题只显示年月（如 2026/10），不显示具体天数 */
 private val HEADER_MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM", Locale.CHINA)
 
 private val LocalDateSaver: Saver<LocalDate, Long> = Saver(
@@ -153,12 +152,8 @@ fun CalendarScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                // 浏览非选中日期所在月时显示年月（2026/09），否则显示选中日期全量（2026/10/15）
-                text = if (displayMonth != YearMonth.from(selectedDate)) {
-                    displayMonth.format(HEADER_MONTH_FORMAT)
-                } else {
-                    selectedDate.format(HEADER_DATE_FORMAT)
-                },
+                // 标题只显示当前浏览月份的年月（2026/10），不显示具体天数
+                text = displayMonth.format(HEADER_MONTH_FORMAT),
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
@@ -170,8 +165,8 @@ fun CalendarScreen(
                     )
             )
             Spacer(modifier = Modifier.weight(1f))
-            // 选中非今天，或页面显示月份已偏离选中日期所在月（滑动切月后）时，显示回今天按钮
-            if (selectedDate != today || displayMonth != YearMonth.from(selectedDate)) {
+            // 选中日非今天时显示回今天按钮（切月/切周后选中日会跟随，故只需比对今天）
+            if (selectedDate != today) {
                 // "今"字圆形按钮：回到今天
                 Surface(
                     onClick = {
@@ -237,7 +232,14 @@ fun CalendarScreen(
                 selectedDate = date
                 displayMonth = YearMonth.from(date)
             },
-            onMonthChange = { month -> displayMonth = month }
+            // 切月保留"日"：选中日同步到目标月同号（天数不足回落月末）；
+            // 切周（±7 天）已天然保留星期，不走此分支
+            onMonthChange = { month ->
+                displayMonth = month
+                if (YearMonth.from(selectedDate) != month) {
+                    selectedDate = datePreservingDayOfMonth(month, selectedDate.dayOfMonth)
+                }
+            }
         )
 
         // ===== 农历详情卡 + 当日事件列表 =====

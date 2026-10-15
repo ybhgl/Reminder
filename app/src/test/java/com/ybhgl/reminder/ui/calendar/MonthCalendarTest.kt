@@ -170,4 +170,16 @@ class MonthCalendarTest {
             }
         }
     }
+
+    @Test
+    fun `datePreservingDayOfMonth keeps day and clamps to month length`() {
+        // 常规月份原样保留"日"
+        assertEquals(LocalDate.of(2026, 11, 14), datePreservingDayOfMonth(YearMonth.of(2026, 11), 14))
+        // 1/31 切到 2 月 → 回落月末 2/28
+        assertEquals(LocalDate.of(2026, 2, 28), datePreservingDayOfMonth(YearMonth.of(2026, 2), 31))
+        // 保留的"日"已被回落值覆盖：从 2/28 再切回 1 月 → 1/28
+        assertEquals(LocalDate.of(2026, 1, 28), datePreservingDayOfMonth(YearMonth.of(2026, 1), 28))
+        // 闰年 2 月允许 29
+        assertEquals(LocalDate.of(2028, 2, 29), datePreservingDayOfMonth(YearMonth.of(2028, 2), 31))
+    }
 }
