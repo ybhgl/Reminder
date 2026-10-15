@@ -1563,6 +1563,10 @@ fun ReminderListScreen(
         }
     }
     val coroutineScope = rememberCoroutineScope()
+    // 日历页（第 0 页）按返回键回到主列表页，而不是直接退出应用
+    BackHandler(enabled = pagerState.currentPage == 0) {
+        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+    }
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp.dp
     val columnsCount = kotlin.math.max(2, ((screenWidthDp - 16.dp) / 176.dp).toInt())
