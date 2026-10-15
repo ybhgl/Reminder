@@ -25,6 +25,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
@@ -37,8 +38,8 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -162,9 +163,10 @@ internal fun weekCountFor(month: YearMonth): Int {
  * 拖拽完全跟手且相邻月页预组合，杜绝手写条带的偏移竞态/空白问题。
  * 展开高度统一为 6 行（356dp）：5 行月由 SpaceEvenly 分摊富余空间，跨月总高度恒定，无空白/裁切差异。
  * 收缩采用 [collapsePx] 像素模型（状态提升到 CalendarScreen）：容器高度=展开高-收缩量，
- * 网格整体经 translationY 上移（最多到选中行顶部）使选中行保持可见；
- * 日历面纵向拖拽实时跟手收展并在 Initial pass 消费手势（屏蔽 pager 横滑切月），
- * 横向主导手势原样放行给 MonthPager；底部手柄支持拖动收展与轻点切换。
+ * 网格整体经 translationY 上移（封顶到选中行在容器内垂直居中）使选中行保持可见；
+ * 日历面纵向拖拽实时跟手收展并在 Initial pass 消费手势（屏蔽 pager 横滑切月）；
+ * 展开态横向主导手势原样放行给 MonthPager 切月，收缩态横向改为整周切换选中日期（±7 天）；
+ * 底部手柄 Initial pass 无条件消费，纵向拖拉不再误触主页横滑。
  */
 @Composable
 fun MonthCalendar(
@@ -185,6 +187,9 @@ fun MonthCalendar(
     val currentCollapse = rememberUpdatedState(collapsePx)
     val currentOnCollapseChange = rememberUpdatedState(onCollapseChange)
     val currentOnCollapseSettle = rememberUpdatedState(onCollapseSettle)
+    val currentSelectedDate = rememberUpdatedState(selectedDate)
+    val currentOnDateSelected = rememberUpdatedState(onDateSelected)
+    var widthPx by remember { mutableFloatStateOf(1f) }
 
     Surface(
         modifier = modifier
@@ -197,20 +202,25 @@ fun MonthCalendar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .onSizeChanged { if (it.width > 0) widthPx = it.width.toFloat() }
                     .height(
                         with(density) {
                             (EXPANDED_GRID_HEIGHT_DP.dp.toPx() - collapsePx).coerceAtLeast(0f).toDp()
                         }
                     )
                     .clipToBounds()
-                    // 日历面纵向拖拽=跟手收展：Initial pass 判定纵向主导后消费全部后续事件，
-                    // HorizontalPager 在 Main pass 只见已消费事件而不切月；横向主导则不消费原样放行
+                    // 日历面手势三态判定（Initial pass）：
+                    // ①纵向主导→消费全部后续事件实时收展（pager 在 Main 只见已消费事件，不切月）；
+                    // ②收缩态（过半）横向主导→消费并整周切换选中日期（±7 天，跨月由上层跟随），
+                    //   屏蔽 HorizontalPager 的切月手势；
+                    // ③展开态横向主导→不消费，原样放行给 MonthPager 切月
                     .pointerInput(maxCollapsePx) {
                         awaitEachGesture {
                             var totalX = 0f
                             var totalY = 0f
                             var decided = false
                             var verticalLocked = false
+                            var horizontalLocked = false
                             val startCollapse = currentCollapse.value
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
@@ -226,15 +236,24 @@ fun MonthCalendar(
                                     ) continue
                                     decided = true
                                     verticalLocked = abs(totalY) > abs(totalX)
+                                    horizontalLocked = !verticalLocked &&
+                                        currentCollapse.value > maxCollapsePx / 2f
                                 }
                                 if (verticalLocked) {
                                     change.consume()
                                     currentOnCollapseChange.value(
                                         (startCollapse - totalY).coerceIn(0f, maxCollapsePx)
                                     )
+                                } else if (horizontalLocked) {
+                                    change.consume()
                                 }
                             }
-                            if (verticalLocked) currentOnCollapseSettle.value()
+                            if (verticalLocked) {
+                                currentOnCollapseSettle.value()
+                            } else if (horizontalLocked && abs(totalX) > widthPx * 0.3f) {
+                                val dir = if (totalX < 0f) 7L else -7L
+                                currentOnDateSelected.value(currentSelectedDate.value.plusDays(dir))
+                            }
                         }
                     }
             ) {
@@ -373,11 +392,17 @@ private fun MonthGrid(
     val selRowTopPx = with(density) {
         (GRID_VERTICAL_PADDING_DP + gapDp * (selRow + 1) + WEEK_ROW_HEIGHT_DP * selRow).dp.toPx()
     }
+    // 完全收缩时让选中行在 76dp 容器内垂直居中：封顶位移=行中心-容器半高；
+    // 若对齐到行顶（旧公式），行会贴容器上沿、下方留出整段富余，视觉偏上
+    val centeredCap = with(density) {
+        ((selRowTopPx + (WEEK_ROW_HEIGHT_DP / 2f).dp.toPx()) - (COLLAPSED_GRID_HEIGHT_DP / 2f).dp.toPx())
+            .coerceAtLeast(0f).toDp().toPx()
+    }
     Column(
         modifier = modifier
             .padding(horizontal = 8.dp)
             .height(EXPANDED_GRID_HEIGHT_DP.dp)
-            .graphicsLayer { translationY = -collapsePx.coerceAtMost(selRowTopPx) }
+            .graphicsLayer { translationY = -collapsePx.coerceAtMost(centeredCap) }
             .padding(vertical = GRID_VERTICAL_PADDING_DP.dp),
         verticalArrangement = Arrangement.SpaceEvenly
     ) {
@@ -422,14 +447,17 @@ private fun CollapseHandle(
                     var dragging = false
                     val startCollapse = currentCollapse.value
                     while (true) {
-                        val event = awaitPointerEvent()
+                        // Initial pass + 越 slop 后无条件消费（不分方向）：
+                        // 外层主页 pager 在 Main pass 只见已消费事件，纵向拖拉杆时手指横向漂移不再切页
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
                         val change = event.changes.firstOrNull() ?: break
                         if (change.pressed) {
-                            val dy = change.positionChange().y
+                            val dy = change.positionChangeIgnoreConsumed().y
                             if (dy == 0f) continue
                             totalY += dy
                             if (!dragging && abs(totalY) > viewConfiguration.touchSlop) dragging = true
                             if (dragging) {
+                                change.consume()
                                 onDragCollapse((startCollapse - totalY).coerceIn(0f, maxCollapsePx))
                             }
                         } else {
