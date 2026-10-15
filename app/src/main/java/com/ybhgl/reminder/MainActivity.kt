@@ -210,6 +210,7 @@ import com.ybhgl.reminder.data.BackupPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
 import com.ybhgl.reminder.ui.theme.ReminderTheme
+import com.ybhgl.reminder.ui.theme.getDefaultRawColor
 import com.ybhgl.reminder.util.CalendarUtil
 import com.ybhgl.reminder.util.FontManager
 import com.ybhgl.reminder.util.ReminderSectionData
@@ -1122,17 +1123,6 @@ internal fun reminderDisplayInfo(
 private fun buildHeaderTitle(title: String, suffix: String): String {
     val parts = listOf(title.trim(), suffix.trim()).filter { it.isNotEmpty() }
     return parts.joinToString(" ")
-}
-
-private fun getDefaultRawColor(type: ReminderType, isDark: Boolean): Color {
-    return when {
-        !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
-        !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
-        !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
-        isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
-        isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
-        else -> Color(0xFFF7A03A) // isDark && COUNT_UP
-    }
 }
 
 @Composable
