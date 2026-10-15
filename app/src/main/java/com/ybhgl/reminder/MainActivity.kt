@@ -90,9 +90,6 @@ import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.CalendarMonth
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import com.ybhgl.reminder.ui.calendar.CalendarScreen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
@@ -1744,9 +1741,11 @@ fun ReminderListScreen(
                 }
             }
 
-            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
+            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)；日历页随顶栏一起淡出
             StatusBarScrim(
-                modifier = Modifier.align(Alignment.TopCenter)
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .graphicsLayer { alpha = 1f - calendarProgress }
             )
 
             // 标题栏 (Top Bar)
@@ -1771,16 +1770,17 @@ fun ReminderListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onSizeChanged {
-                        topBarHeightPx = it.height.toFloat()
+                        // 日历页内容被跳过组合时高度为 0，保留最后测量值供列表页占位
+                        if (it.height > 0) topBarHeightPx = it.height.toFloat()
                     }
                     .graphicsLayer {
                         translationY = titleOffsetPx
                         alpha = 1f - calendarProgress
                     }
-                    .consumeTouchWhen(calendarProgress >= 0.99f)
                     .then(topAppBarModifier)
             ) {
-                if (isSelectionMode) {
+                // 日历页完全展示时不组合顶栏内容：既消除淡出浮层的误触，也让日历头部点击直达
+                if (isSelectionMode && calendarProgress < 0.999f) {
                     TopAppBar(
                         title = { Text("已选择 ${selectedIds.size} 项") },
                         windowInsets = TopAppBarDefaults.windowInsets,
@@ -1800,7 +1800,7 @@ fun ReminderListScreen(
                             }
                         }
                     )
-                } else {
+                } else if (calendarProgress < 0.999f) {
                     TopAppBar(
                         title = {
                             Icon(
@@ -1990,16 +1990,17 @@ fun ReminderListScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .onSizeChanged {
-                        bottomBarHeightPx = it.height.toFloat()
+                        if (it.height > 0) bottomBarHeightPx = it.height.toFloat()
                     }
                     .graphicsLayer {
                         translationY = bottomBarOffsetPx
                         alpha = 1f - calendarProgress
                     }
-                    .consumeTouchWhen(calendarProgress >= 0.99f)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
             ) {
+                // 日历页完全展示时不组合底栏内容，避免淡出浮层误触并放行日历手势
+                if (calendarProgress < 0.999f) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -2112,6 +2113,7 @@ fun ReminderListScreen(
                         }
                     }
                 }
+                }
             }
 
             if (showDeleteDialog) {
@@ -2199,20 +2201,6 @@ fun ReminderListScreen(
     }
 
 
-
-/**
- * 日历页完全展示时顶/底栏 alpha=0 但仍可命中，用此修饰吞掉触摸防止误触。
- */
-private fun Modifier.consumeTouchWhen(active: Boolean): Modifier = pointerInput(active) {
-    if (!active) return@pointerInput
-    awaitEachGesture {
-        awaitFirstDown()
-        do {
-            val event = awaitPointerEvent()
-            event.changes.forEach { it.consume() }
-        } while (event.changes.any { it.pressed })
-    }
-}
 
 /**
  * FAB 扩展菜单中的单个操作项：pill 形状的 secondaryContainer，含图标与文字标签。
