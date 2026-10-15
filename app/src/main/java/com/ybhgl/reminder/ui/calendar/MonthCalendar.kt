@@ -1,47 +1,57 @@
 package com.ybhgl.reminder.ui.calendar
 
-import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
-import androidx.compose.animation.togetherWith
-import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectVerticalDragGestures
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tyme.solar.SolarDay
 import com.ybhgl.reminder.util.CalendarUtil
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
+import kotlin.math.abs
 
 /** 月历格子副标签类型（决定颜色语义） */
 enum class DayCellLabelKind { TERM, FESTIVAL, HOLIDAY, LUNAR }
@@ -136,7 +146,8 @@ fun WeekdayHeader(modifier: Modifier = Modifier) {
 }
 
 /**
- * 月历网格：垂直滑动切月（上滑=下月、下滑=上月，避免与主页 pager 水平手势冲突）。
+ * 月历网格：水平滑动切月，位移完全跟随手势进度（prev/current/next 三个月拼接的横向带），
+ * 在 Initial pass 拦截并消费横向手势，屏蔽主页 pager 的左右切页冲突；纵向手势原样放行。
  */
 @Composable
 fun MonthCalendar(
@@ -148,60 +159,127 @@ fun MonthCalendar(
     onMonthChange: (YearMonth) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    var dragPx by remember { mutableFloatStateOf(0f) }
+    var widthPx by remember { mutableFloatStateOf(1f) }
+    val scope = rememberCoroutineScope()
     val currentMonth = rememberUpdatedState(displayMonth)
     val currentOnMonthChange = rememberUpdatedState(onMonthChange)
 
+    // 外部切月（日期选择器/回今天）后复位拖拽偏移
+    LaunchedEffect(displayMonth) { dragPx = 0f }
+
     Surface(
-        modifier = modifier.pointerInput(Unit) {
-            var accumulated = 0f
-            detectVerticalDragGestures(
-                onVerticalDrag = { _, dy -> accumulated += dy },
-                onDragEnd = {
-                    val threshold = 56.dp.toPx()
-                    when {
-                        accumulated <= -threshold -> currentOnMonthChange.value(currentMonth.value.plusMonths(1))
-                        accumulated >= threshold -> currentOnMonthChange.value(currentMonth.value.minusMonths(1))
+        modifier = modifier
+            .fillMaxWidth()
+            .clipToBounds()
+            .pointerInput(displayMonth) {
+                awaitEachGesture {
+                    var locked = false
+                    var lastMoveTime = 0L
+                    var velocity = 0f
+                    while (true) {
+                        val event = awaitPointerEvent(PointerEventPass.Initial)
+                        val change = event.changes.firstOrNull() ?: break
+                        if (!change.pressed) break
+                        val delta = change.positionChangeIgnoreConsumed()
+                        if (delta.x == 0f && delta.y == 0f) continue
+                        if (!locked) {
+                            // 仅当横向主导且越过 slop 才锁定接管，纵向手势放行
+                            if (abs(delta.x) > viewConfiguration.touchSlop && abs(delta.x) > abs(delta.y)) {
+                                locked = true
+                            } else {
+                                continue
+                            }
+                        }
+                        change.consume()
+                        dragPx += delta.x
+                        val now = change.uptimeMillis
+                        if (now > lastMoveTime) velocity = delta.x * 1000f / (now - lastMoveTime)
+                        lastMoveTime = now
                     }
-                    accumulated = 0f
+                    if (!locked) return@awaitEachGesture
+                    val w = widthPx
+                    val drag = dragPx
+                    val commit = abs(drag) > w * 0.3f || (abs(velocity) > 900f && drag != 0f)
+                    scope.launch {
+                        // 抬手动画用局部 Animatable 驱动（手势受限作用域内不可调 suspend 动画）
+                        val anim = Animatable(dragPx)
+                        if (commit && drag != 0f) {
+                            val dir = if (drag < 0f) 1L else -1L
+                            anim.animateTo(if (dir > 0) w else -w, tween(180)) { dragPx = value }
+                            currentOnMonthChange.value(currentMonth.value.plusMonths(dir))
+                            dragPx = 0f
+                        } else {
+                            anim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy)) { dragPx = value }
+                        }
+                    }
                 }
-            )
-        },
+            },
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
-        AnimatedContent(
-            targetState = displayMonth,
-            transitionSpec = {
-                val forward = if (targetState > initialState) 1 else -1
-                (
-                    slideInVertically { height -> height * forward } +
-                        fadeIn(tween(220))
-                    ) togetherWith (
-                    slideOutVertically { height -> -height * forward } +
-                        fadeOut(tween(220))
-                    )
-            },
-            label = "MonthTransition",
-            modifier = Modifier.fillMaxWidth()
-        ) { month ->
-            val cells = remember(month, dayMap) { buildMonthCells(month, dayMap) }
-            Column(
+        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+            val monthWidth = maxWidth
+            val offsetPx = with(LocalDensity.current) { -monthWidth.toPx() } + dragPx
+            Row(
                 modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 8.dp, vertical = 10.dp)
+                    .requiredWidth(monthWidth * 3)
+                    .graphicsLayer { translationX = offsetPx },
+                verticalAlignment = Alignment.Top
             ) {
-                cells.chunked(7).forEach { row ->
-                    Row(modifier = Modifier.fillMaxWidth()) {
-                        row.forEach { cell ->
-                            DayCell(
-                                cell = cell,
-                                isSelected = cell.date == selectedDate,
-                                isToday = cell.date == today,
-                                onClick = { onDateSelected(cell.date) },
-                                modifier = Modifier.weight(1f)
-                            )
-                        }
-                    }
+                MonthGrid(
+                    month = displayMonth.minusMonths(1),
+                    dayMap = dayMap,
+                    today = today,
+                    selectedDate = selectedDate,
+                    onDateSelected = onDateSelected,
+                    modifier = Modifier.width(monthWidth)
+                )
+                MonthGrid(
+                    month = displayMonth,
+                    dayMap = dayMap,
+                    today = today,
+                    selectedDate = selectedDate,
+                    onDateSelected = onDateSelected,
+                    modifier = Modifier.width(monthWidth)
+                )
+                MonthGrid(
+                    month = displayMonth.plusMonths(1),
+                    dayMap = dayMap,
+                    today = today,
+                    selectedDate = selectedDate,
+                    onDateSelected = onDateSelected,
+                    modifier = Modifier.width(monthWidth)
+                )
+            }
+        }
+    }
+}
+
+/** 单月网格（5 或 6 行 × 7 列） */
+@Composable
+private fun MonthGrid(
+    month: YearMonth,
+    dayMap: Map<LocalDate, List<CalendarOccurrence>>,
+    today: LocalDate,
+    selectedDate: LocalDate,
+    onDateSelected: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val cells = remember(month, dayMap) { buildMonthCells(month, dayMap) }
+    Column(
+        modifier = modifier.padding(horizontal = 8.dp, vertical = 10.dp)
+    ) {
+        cells.chunked(7).forEach { row ->
+            Row(modifier = Modifier.fillMaxWidth()) {
+                row.forEach { cell ->
+                    DayCell(
+                        cell = cell,
+                        isSelected = cell.date == selectedDate,
+                        isToday = cell.date == today,
+                        onClick = { onDateSelected(cell.date) },
+                        modifier = Modifier.weight(1f)
+                    )
                 }
             }
         }
