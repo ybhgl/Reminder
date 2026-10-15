@@ -29,6 +29,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -44,6 +45,8 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalViewConfiguration
+import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -112,6 +115,15 @@ fun CalendarScreen(
 
     val calendarCollapseConnection = remember(maxCollapsePx) {
         collapseConnection(maxCollapsePx, { collapsePx }, { collapsePx = it })
+    }
+
+    // 低死区触摸配置：仅把拖拽启动阈值降为 4dp，其余（fling 速度等）沿用系统值
+    val baseViewConfig = LocalViewConfiguration.current
+    val lowSlopViewConfig = remember(density, baseViewConfig) {
+        val slopPx = with(density) { 4.dp.toPx() }
+        object : ViewConfiguration by baseViewConfig {
+            override val touchSlop: Float = slopPx
+        }
     }
 
     // 覆盖前后补位日：窗口取 displayMonth±1 与选中日期所在月的并集，
@@ -229,32 +241,35 @@ fun CalendarScreen(
             onMonthChange = { month -> displayMonth = month }
         )
 
-        // ===== 农历详情卡 =====
-        CalendarDetailCard(
-            date = selectedDate,
-            today = today,
-            onClick = { showAlmanac = true },
-            modifier = Modifier.padding(top = 12.dp)
-        )
-
-        // ===== 当日事件卡片 =====
-        LazyColumn(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .nestedScroll(calendarCollapseConnection)
-                .padding(top = 12.dp),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-            )
-        ) {
-            items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
-                CalendarEventCard(
-                    occurrence = occurrence,
-                    today = today,
-                    onClick = { onNavigateDetail(occurrence.item.id) }
+        // ===== 农历详情卡 + 当日事件列表 =====
+        // 详情卡并入统一滚动容器：日历下方整块区域的上下拖动都能触发收展手势；
+        // 低死区 ViewConfiguration 把拖拽启动阈值从系统 ~8dp 降到 4dp，滑动近乎即时响应
+        CompositionLocalProvider(LocalViewConfiguration provides lowSlopViewConfig) {
+            LazyColumn(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f)
+                    .nestedScroll(calendarCollapseConnection),
+                verticalArrangement = Arrangement.spacedBy(10.dp),
+                contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                    top = 12.dp,
+                    bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                 )
+            ) {
+                item(key = "almanac_detail_card") {
+                    CalendarDetailCard(
+                        date = selectedDate,
+                        today = today,
+                        onClick = { showAlmanac = true }
+                    )
+                }
+                items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
+                    CalendarEventCard(
+                        occurrence = occurrence,
+                        today = today,
+                        onClick = { onNavigateDetail(occurrence.item.id) }
+                    )
+                }
             }
         }
     }

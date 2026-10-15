@@ -1,5 +1,7 @@
 package com.ybhgl.reminder.ui.calendar
 
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -28,6 +30,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -45,6 +48,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tyme.solar.SolarDay
 import com.ybhgl.reminder.util.CalendarUtil
+import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -190,6 +194,10 @@ fun MonthCalendar(
     val currentSelectedDate = rememberUpdatedState(selectedDate)
     val currentOnDateSelected = rememberUpdatedState(onDateSelected)
     var widthPx by remember { mutableFloatStateOf(1f) }
+    val scope = rememberCoroutineScope()
+    // 收缩态横滑切周的跟手预览比例：-1..1（负=回看上一周），换算成网格纵向滑移
+    var weekDragFraction by remember { mutableFloatStateOf(0f) }
+    var weekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
     Surface(
         modifier = modifier
@@ -246,13 +254,32 @@ fun MonthCalendar(
                                     )
                                 } else if (horizontalLocked) {
                                     change.consume()
+                                    // 跟手预览：横向位移按页宽映射为纵向滑移比例（左滑=下一周从下方滑入）
+                                    weekDragFraction = (-totalX / widthPx).coerceIn(-1f, 1f)
                                 }
                             }
                             if (verticalLocked) {
                                 currentOnCollapseSettle.value()
-                            } else if (horizontalLocked && abs(totalX) > widthPx * 0.3f) {
-                                val dir = if (totalX < 0f) 7L else -7L
-                                currentOnDateSelected.value(currentSelectedDate.value.plusDays(dir))
+                            } else if (horizontalLocked) {
+                                val commit = abs(totalX) > widthPx * 0.3f
+                                val sign = if (totalX < 0f) 1f else -1f
+                                weekJob?.cancel()
+                                weekJob = scope.launch {
+                                    if (commit) {
+                                        // 先补满一整行再切日期：新行中心恰落在预览终点位置，切换无跳变
+                                        Animatable(weekDragFraction).animateTo(sign, tween(150)) {
+                                            weekDragFraction = value
+                                        }
+                                        currentOnDateSelected.value(
+                                            currentSelectedDate.value.plusDays(if (sign > 0f) 7L else -7L)
+                                        )
+                                        weekDragFraction = 0f
+                                    } else {
+                                        Animatable(weekDragFraction).animateTo(0f, tween(180)) {
+                                            weekDragFraction = value
+                                        }
+                                    }
+                                }
                             }
                         }
                     }
@@ -269,6 +296,7 @@ fun MonthCalendar(
                         selectedDate = selectedDate,
                         dayMap = dayMap,
                         collapsePx = collapsePx,
+                        weekDragFraction = weekDragFraction,
                         onDateSelected = onDateSelected,
                         onMonthChange = onMonthChange,
                         modifier = Modifier.fillMaxWidth()
@@ -299,6 +327,7 @@ private fun MonthPager(
     selectedDate: LocalDate,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
     collapsePx: Float,
+    weekDragFraction: Float,
     onDateSelected: (LocalDate) -> Unit,
     onMonthChange: (YearMonth) -> Unit,
     modifier: Modifier = Modifier
@@ -348,6 +377,7 @@ private fun MonthPager(
                 today = today,
                 selectedDate = selectedDate,
                 collapsePx = collapsePx,
+                weekDragFraction = weekDragFraction,
                 onDateSelected = onDateSelected,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -367,7 +397,8 @@ internal fun weekIndexFor(date: LocalDate): Int {
 /**
  * 单月网格（5 或 6 行 × 7 列），固定 6 行高度（356dp），行间距由 SpaceEvenly 均匀分摊：
  * 6 行月间距≈0、5 行月间距≈9dp，任何月份所有日期完整显示且总高恒定。
- * 收缩时整网格经 translationY 上移（最多到选中行顶部），使选中行保持在裁剪容器内可见；
+ * 收缩时整网格经 translationY 上移（封顶=选中行在容器内垂直居中），使选中行保持可见；
+ * [weekDragFraction] 非零时叠加一个行步长的纵向滑移，实现收缩态横滑切周的跟手预览；
  * 非选中月无选中行，按首行对齐（与 riji 行为一致）。
  */
 @Composable
@@ -377,6 +408,7 @@ private fun MonthGrid(
     today: LocalDate,
     selectedDate: LocalDate,
     collapsePx: Float,
+    weekDragFraction: Float,
     onDateSelected: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -398,11 +430,15 @@ private fun MonthGrid(
         ((selRowTopPx + (WEEK_ROW_HEIGHT_DP / 2f).dp.toPx()) - (COLLAPSED_GRID_HEIGHT_DP / 2f).dp.toPx())
             .coerceAtLeast(0f).toDp().toPx()
     }
+    // 相邻周之间的纵向步长（行高+间距），收缩态横滑切周的跟手预览按此滑移
+    val rowStepPx = with(density) { (WEEK_ROW_HEIGHT_DP + gapDp).dp.toPx() }
     Column(
         modifier = modifier
             .padding(horizontal = 8.dp)
             .height(EXPANDED_GRID_HEIGHT_DP.dp)
-            .graphicsLayer { translationY = -collapsePx.coerceAtMost(centeredCap) }
+            .graphicsLayer {
+                translationY = -collapsePx.coerceAtMost(centeredCap) - weekDragFraction * rowStepPx
+            }
             .padding(vertical = GRID_VERTICAL_PADDING_DP.dp),
         verticalArrangement = Arrangement.SpaceEvenly
     ) {
