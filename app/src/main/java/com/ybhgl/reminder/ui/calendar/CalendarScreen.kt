@@ -17,6 +17,8 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -28,9 +30,10 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -40,10 +43,13 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
+import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
@@ -81,22 +87,31 @@ fun CalendarScreen(
     var displayMonth by rememberSaveable(stateSaver = YearMonthSaver) { mutableStateOf(YearMonth.from(selectedDate)) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showAlmanac by rememberSaveable { mutableStateOf(false) }
-    var calendarExpanded by rememberSaveable { mutableStateOf(true) }
     val headerInteraction = remember { MutableInteractionSource() }
 
-    // 事件区向上滑动仅触发收缩（消费纵向增量，阻止列表上滚）
-    val currentExpanded = rememberUpdatedState(calendarExpanded)
-    val collapseOnUpScroll = remember {
-        object : NestedScrollConnection {
-            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                return if (source == NestedScrollSource.Drag && available.y < 0f && currentExpanded.value) {
-                    calendarExpanded = false
-                    Offset(0f, available.y)
-                } else {
-                    Offset.Zero
-                }
+    // ===== 日历跟手收展（riji collapsePx 像素模型）=====
+    // 收缩像素是唯一状态：0=完全展开，maxCollapsePx=收缩到仅选中行；
+    // 事件列表嵌套滚动、日历面纵向拖拽、底部手柄三方共用
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val maxCollapsePx = with(density) {
+        (EXPANDED_GRID_HEIGHT_DP - COLLAPSED_GRID_HEIGHT_DP).dp.toPx()
+    }
+    var collapsePx by remember { mutableFloatStateOf(0f) }
+    var collapseJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+
+    // 抬手/切换统一动画到目标收缩值（打断上一次未完成的收尾动画）
+    fun animateCollapseTo(target: Float) {
+        collapseJob?.cancel()
+        collapseJob = scope.launch {
+            Animatable(collapsePx).animateTo(target, tween(220)) {
+                collapsePx = value
             }
         }
+    }
+
+    val calendarCollapseConnection = remember(maxCollapsePx) {
+        collapseConnection(maxCollapsePx, { collapsePx }, { collapsePx = it })
     }
 
     // 覆盖前后补位日：窗口取 displayMonth±1 与选中日期所在月的并集，
@@ -198,8 +213,15 @@ fun CalendarScreen(
             today = today,
             selectedDate = selectedDate,
             dayMap = dayMap,
-            expanded = calendarExpanded,
-            onToggleExpanded = { calendarExpanded = it },
+            collapsePx = collapsePx,
+            maxCollapsePx = maxCollapsePx,
+            onCollapseChange = { collapsePx = it },
+            onCollapseSettle = {
+                animateCollapseTo(if (collapsePx > maxCollapsePx / 2f) maxCollapsePx else 0f)
+            },
+            onCollapseToggle = {
+                animateCollapseTo(if (collapsePx < maxCollapsePx / 2f) maxCollapsePx else 0f)
+            },
             onDateSelected = { date ->
                 selectedDate = date
                 displayMonth = YearMonth.from(date)
@@ -220,7 +242,7 @@ fun CalendarScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
-                .nestedScroll(collapseOnUpScroll)
+                .nestedScroll(calendarCollapseConnection)
                 .padding(top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -256,5 +278,46 @@ fun CalendarScreen(
             today = today,
             onDismissRequest = { showAlmanac = false }
         )
+    }
+}
+
+/**
+ * 跟手收展嵌套滚动连接（移植 riji）：
+ * 事件区上滑先消耗纵向增量收缩日历，收满后列表才开始滚动；
+ * 列表在顶部下拉先展开日历，展开完毕列表再响应下拉；
+ * 抬手停在"完全展开/完全收缩"中较近的一端（tween 220）。
+ */
+private fun collapseConnection(
+    max: Float,
+    get: () -> Float,
+    set: (Float) -> Unit
+) = object : NestedScrollConnection {
+    override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+        val dy = available.y
+        if (dy < 0f && get() < max) {
+            val consumed = (-dy).coerceAtMost(max - get())
+            set(get() + consumed)
+            return Offset(0f, -consumed)
+        }
+        return Offset.Zero
+    }
+
+    override fun onPostScroll(consumed: Offset, available: Offset, source: NestedScrollSource): Offset {
+        val dy = available.y
+        if (dy > 0f && get() > 0f) {
+            val consumedExpand = dy.coerceAtMost(get())
+            set(get() - consumedExpand)
+            return Offset(0f, consumedExpand)
+        }
+        return Offset.Zero
+    }
+
+    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
+        val cur = get()
+        if (cur > 0f && cur < max) {
+            val target = if (cur > max / 2f) max else 0f
+            Animatable(cur).animateTo(target, tween(220)) { set(value) }
+        }
+        return Velocity.Zero
     }
 }

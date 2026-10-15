@@ -1,8 +1,5 @@
 package com.ybhgl.reminder.ui.calendar
 
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.Spring
-import androidx.compose.animation.core.spring
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -17,6 +14,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -27,24 +25,25 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.tyme.solar.SolarDay
 import com.ybhgl.reminder.util.CalendarUtil
-import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
@@ -149,6 +148,8 @@ private const val WEEK_ROW_HEIGHT_DP = 56f
 private const val GRID_VERTICAL_PADDING_DP = 10f
 /** 展开态统一高度：固定 6 行（356dp）。5 行月富余空间由 SpaceEvenly 均匀分摊，跨月总高度恒定 */
 internal const val EXPANDED_GRID_HEIGHT_DP = 6 * WEEK_ROW_HEIGHT_DP + 2 * GRID_VERTICAL_PADDING_DP
+/** 收缩态高度：仅选中日所在的一行（76dp），展开高-收缩高=最大收缩像素 */
+internal const val COLLAPSED_GRID_HEIGHT_DP = WEEK_ROW_HEIGHT_DP + 2 * GRID_VERTICAL_PADDING_DP
 
 /** 覆盖 [month] 全部日期的完整周数（5 或 6），与 buildMonthCells 行数口径一致 */
 internal fun weekCountFor(month: YearMonth): Int {
@@ -160,7 +161,10 @@ internal fun weekCountFor(month: YearMonth): Int {
  * 月历网格：横向翻页切月（HorizontalPager，页码↔月份一一对应），
  * 拖拽完全跟手且相邻月页预组合，杜绝手写条带的偏移竞态/空白问题。
  * 展开高度统一为 6 行（356dp）：5 行月由 SpaceEvenly 分摊富余空间，跨月总高度恒定，无空白/裁切差异。
- * [expanded]=false 时收缩为仅显示选中日所在的那一行（7 天），底部手柄可拖动实时跟手收展/点击切换。
+ * 收缩采用 [collapsePx] 像素模型（状态提升到 CalendarScreen）：容器高度=展开高-收缩量，
+ * 网格整体经 translationY 上移（最多到选中行顶部）使选中行保持可见；
+ * 日历面纵向拖拽实时跟手收展并在 Initial pass 消费手势（屏蔽 pager 横滑切月），
+ * 横向主导手势原样放行给 MonthPager；底部手柄支持拖动收展与轻点切换。
  */
 @Composable
 fun MonthCalendar(
@@ -168,36 +172,19 @@ fun MonthCalendar(
     today: LocalDate,
     selectedDate: LocalDate,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
-    expanded: Boolean,
-    onToggleExpanded: (Boolean) -> Unit,
+    collapsePx: Float,
+    maxCollapsePx: Float,
+    onCollapseChange: (Float) -> Unit,
+    onCollapseSettle: () -> Unit,
+    onCollapseToggle: () -> Unit,
     onDateSelected: (LocalDate) -> Unit,
     onMonthChange: (YearMonth) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    // 手柄拖拽中的实时高度（-1 = 未拖拽，取 heightAnim）
-    var dragHeightPx by remember { mutableFloatStateOf(-1f) }
-    val scope = rememberCoroutineScope()
-
-    // 统一展开高度（6 行）：跨月恒定，不再随当月行数变化，避免切月时底部空白/裁切
-    val fullHeightPx = with(density) { EXPANDED_GRID_HEIGHT_DP.dp.toPx() }
-    val collapsedHeightPx = with(density) {
-        (WEEK_ROW_HEIGHT_DP + 2 * GRID_VERTICAL_PADDING_DP).dp.toPx()
-    }
-    val heightAnim = remember { Animatable(if (expanded) fullHeightPx else collapsedHeightPx) }
-    var collapseJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
-
-    // 展开态变化时高度动画到新目标（拖拽中由 dragHeightPx 实时接管）
-    LaunchedEffect(expanded) {
-        if (dragHeightPx < 0f) {
-            heightAnim.animateTo(
-                if (expanded) fullHeightPx else collapsedHeightPx,
-                spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
-            )
-        }
-    }
-
-    val currentHeightPx = if (dragHeightPx >= 0f) dragHeightPx else heightAnim.value
+    val currentCollapse = rememberUpdatedState(collapsePx)
+    val currentOnCollapseChange = rememberUpdatedState(onCollapseChange)
+    val currentOnCollapseSettle = rememberUpdatedState(onCollapseSettle)
 
     Surface(
         modifier = modifier
@@ -207,43 +194,74 @@ fun MonthCalendar(
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
         Column(modifier = Modifier.fillMaxWidth()) {
-            // 收缩时仅展示选中日所在周（相邻月取同一周序号保持对齐）
-            val collapsedWeekIndex = if (expanded) null else weekIndexFor(selectedDate)
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .height(with(density) { currentHeightPx.toDp() })
+                    .height(
+                        with(density) {
+                            (EXPANDED_GRID_HEIGHT_DP.dp.toPx() - collapsePx).coerceAtLeast(0f).toDp()
+                        }
+                    )
                     .clipToBounds()
+                    // 日历面纵向拖拽=跟手收展：Initial pass 判定纵向主导后消费全部后续事件，
+                    // HorizontalPager 在 Main pass 只见已消费事件而不切月；横向主导则不消费原样放行
+                    .pointerInput(maxCollapsePx) {
+                        awaitEachGesture {
+                            var totalX = 0f
+                            var totalY = 0f
+                            var decided = false
+                            var verticalLocked = false
+                            val startCollapse = currentCollapse.value
+                            while (true) {
+                                val event = awaitPointerEvent(PointerEventPass.Initial)
+                                val change = event.changes.firstOrNull() ?: break
+                                if (!change.pressed) break
+                                val delta = change.positionChangeIgnoreConsumed()
+                                if (delta.x == 0f && delta.y == 0f) continue
+                                totalX += delta.x
+                                totalY += delta.y
+                                if (!decided) {
+                                    if (abs(totalX) < viewConfiguration.touchSlop &&
+                                        abs(totalY) < viewConfiguration.touchSlop
+                                    ) continue
+                                    decided = true
+                                    verticalLocked = abs(totalY) > abs(totalX)
+                                }
+                                if (verticalLocked) {
+                                    change.consume()
+                                    currentOnCollapseChange.value(
+                                        (startCollapse - totalY).coerceIn(0f, maxCollapsePx)
+                                    )
+                                }
+                            }
+                            if (verticalLocked) currentOnCollapseSettle.value()
+                        }
+                    }
             ) {
-                MonthPager(
-                    displayMonth = displayMonth,
-                    today = today,
-                    selectedDate = selectedDate,
-                    dayMap = dayMap,
-                    collapsedWeekIndex = collapsedWeekIndex,
-                    onDateSelected = onDateSelected,
-                    onMonthChange = onMonthChange,
-                    modifier = Modifier.fillMaxWidth()
-                )
+                // unbounded 让网格按完整 356dp 高度测量（不受收缩后容器高度钳制），再由容器裁剪
+                Box(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .wrapContentHeight(align = Alignment.Top, unbounded = true)
+                ) {
+                    MonthPager(
+                        displayMonth = displayMonth,
+                        today = today,
+                        selectedDate = selectedDate,
+                        dayMap = dayMap,
+                        collapsePx = collapsePx,
+                        onDateSelected = onDateSelected,
+                        onMonthChange = onMonthChange,
+                        modifier = Modifier.fillMaxWidth()
+                    )
+                }
             }
             CollapseHandle(
-                expanded = expanded,
-                fullHeightPx = fullHeightPx,
-                collapsedHeightPx = collapsedHeightPx,
-                onDragHeight = { dragHeightPx = it },
-                onDragEnd = { targetExpanded ->
-                    collapseJob?.cancel()
-                    collapseJob = scope.launch {
-                        val start = if (dragHeightPx >= 0f) dragHeightPx else heightAnim.value
-                        heightAnim.snapTo(start)
-                        dragHeightPx = -1f
-                        if (targetExpanded != expanded) onToggleExpanded(targetExpanded)
-                        heightAnim.animateTo(
-                            if (targetExpanded) fullHeightPx else collapsedHeightPx,
-                            spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessMediumLow)
-                        )
-                    }
-                }
+                collapsePx = collapsePx,
+                maxCollapsePx = maxCollapsePx,
+                onDragCollapse = onCollapseChange,
+                onDragEnd = onCollapseSettle,
+                onTap = onCollapseToggle
             )
         }
     }
@@ -261,7 +279,7 @@ private fun MonthPager(
     today: LocalDate,
     selectedDate: LocalDate,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
-    collapsedWeekIndex: Int?,
+    collapsePx: Float,
     onDateSelected: (LocalDate) -> Unit,
     onMonthChange: (YearMonth) -> Unit,
     modifier: Modifier = Modifier
@@ -310,7 +328,7 @@ private fun MonthPager(
                 dayMap = dayMap,
                 today = today,
                 selectedDate = selectedDate,
-                collapsedWeekIndex = collapsedWeekIndex,
+                collapsePx = collapsePx,
                 onDateSelected = onDateSelected,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -328,9 +346,10 @@ internal fun weekIndexFor(date: LocalDate): Int {
 }
 
 /**
- * 单月网格（5 或 6 行 × 7 列）；[collapsedWeekIndex] 非空时仅渲染该周行。
- * 展开态固定 6 行高度（356dp），行间距由 SpaceEvenly 均匀分摊：
+ * 单月网格（5 或 6 行 × 7 列），固定 6 行高度（356dp），行间距由 SpaceEvenly 均匀分摊：
  * 6 行月间距≈0、5 行月间距≈9dp，任何月份所有日期完整显示且总高恒定。
+ * 收缩时整网格经 translationY 上移（最多到选中行顶部），使选中行保持在裁剪容器内可见；
+ * 非选中月无选中行，按首行对齐（与 riji 行为一致）。
  */
 @Composable
 private fun MonthGrid(
@@ -338,28 +357,31 @@ private fun MonthGrid(
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
     today: LocalDate,
     selectedDate: LocalDate,
-    collapsedWeekIndex: Int?,
+    collapsePx: Float,
     onDateSelected: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val density = LocalDensity.current
     // 标签/补位等静态内容仅随月份重建（逐格 tyme4kt 计算昂贵）；
     // 事件点渲染时按 dayMap 现查，切月 dayMap 身份变化不再触发整批网格重建（滑动卡顿源）
     val cells = remember(month) { buildMonthCells(month, emptyMap()) }
-    val collapsed = collapsedWeekIndex != null
+    val rowCount = cells.size / 7
+    // SpaceEvenly：n 行产生 n+1 段等距空隙，每段 =（内容区高 - n*行高）/(n+1)
+    val gapDp = (EXPANDED_GRID_HEIGHT_DP - 2 * GRID_VERTICAL_PADDING_DP - rowCount * WEEK_ROW_HEIGHT_DP) / (rowCount + 1)
+    val selRow = if (YearMonth.from(selectedDate) == month) weekIndexFor(selectedDate) else 0
+    // 选中行顶部在网格内的偏移：上内边距 + (行序号+1) 段间距 + 行序号 整行高
+    val selRowTopPx = with(density) {
+        (GRID_VERTICAL_PADDING_DP + gapDp * (selRow + 1) + WEEK_ROW_HEIGHT_DP * selRow).dp.toPx()
+    }
     Column(
         modifier = modifier
             .padding(horizontal = 8.dp)
-            .then(if (collapsed) Modifier else Modifier.height(EXPANDED_GRID_HEIGHT_DP.dp))
+            .height(EXPANDED_GRID_HEIGHT_DP.dp)
+            .graphicsLayer { translationY = -collapsePx.coerceAtMost(selRowTopPx) }
             .padding(vertical = GRID_VERTICAL_PADDING_DP.dp),
-        verticalArrangement = if (collapsed) Arrangement.Top else Arrangement.SpaceEvenly
+        verticalArrangement = Arrangement.SpaceEvenly
     ) {
-        val rows = cells.chunked(7)
-        val visibleRows = if (!collapsed) {
-            rows
-        } else {
-            listOf(rows.getOrElse(collapsedWeekIndex!!) { rows.last() })
-        }
-        visibleRows.forEach { row ->
+        cells.chunked(7).forEach { row ->
             Row(modifier = Modifier.fillMaxWidth()) {
                 row.forEach { cell ->
                     DayCell(
@@ -377,27 +399,28 @@ private fun MonthGrid(
 }
 
 /**
- * 收缩/展开手柄：拖动实时跟手改变网格高度（[onDragHeight] 回传当前像素高度），
- * 抬手按过半位置决定目标态并弹簧收尾；未越过 slop 的轻点直接切换。
+ * 收缩/展开手柄：拖动实时跟手调整收缩像素（上滑增大收缩、下拉减小，[onDragCollapse] 回传当前值），
+ * 抬手交 [onDragEnd] 由调用方吸附到最近端动画收尾；未越过 slop 的轻点调 [onTap] 切换两端。
  */
 @Composable
 private fun CollapseHandle(
-    expanded: Boolean,
-    fullHeightPx: Float,
-    collapsedHeightPx: Float,
-    onDragHeight: (Float) -> Unit,
-    onDragEnd: (targetExpanded: Boolean) -> Unit,
+    collapsePx: Float,
+    maxCollapsePx: Float,
+    onDragCollapse: (Float) -> Unit,
+    onDragEnd: () -> Unit,
+    onTap: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val currentCollapse = rememberUpdatedState(collapsePx)
     Box(
         modifier = modifier
             .fillMaxWidth()
             .height(20.dp)
-            .pointerInput(expanded, fullHeightPx, collapsedHeightPx) {
+            .pointerInput(maxCollapsePx) {
                 awaitEachGesture {
                     var totalY = 0f
                     var dragging = false
-                    val startHeight = if (expanded) fullHeightPx else collapsedHeightPx
+                    val startCollapse = currentCollapse.value
                     while (true) {
                         val event = awaitPointerEvent()
                         val change = event.changes.firstOrNull() ?: break
@@ -407,16 +430,10 @@ private fun CollapseHandle(
                             totalY += dy
                             if (!dragging && abs(totalY) > viewConfiguration.touchSlop) dragging = true
                             if (dragging) {
-                                onDragHeight((startHeight + totalY).coerceIn(collapsedHeightPx, fullHeightPx))
+                                onDragCollapse((startCollapse - totalY).coerceIn(0f, maxCollapsePx))
                             }
                         } else {
-                            if (!dragging) {
-                                onDragEnd(!expanded) // 轻点：直接切换
-                            } else {
-                                val h = (startHeight + totalY).coerceIn(collapsedHeightPx, fullHeightPx)
-                                val range = fullHeightPx - collapsedHeightPx
-                                onDragEnd(range > 0f && (fullHeightPx - h) < range / 2f)
-                            }
+                            if (!dragging) onTap() else onDragEnd()
                             break
                         }
                     }
