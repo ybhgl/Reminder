@@ -1531,7 +1531,10 @@ fun ReminderListScreen(
     val homeCategoryEnabled by remember(context) { com.ybhgl.reminder.data.homeCategoryFlow(context) }
         .collectAsState(initial = null)
     val showCategories = homeCategoryEnabled != false
-    val pagerState = rememberPagerState { if (showCategories) ReminderTab.entries.size else 1 }
+    // 日历视图占用 pager 第 0 页（主页右滑露出），列表页从第 1 页起：listPage = page - 1
+    val pagerState = rememberPagerState(initialPage = 1) {
+        if (showCategories) ReminderTab.entries.size + 1 else 2
+    }
     var hasSetDefaultPage by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(defaultPage, homeCategoryEnabled) {
         if (!hasSetDefaultPage && defaultPage != null && homeCategoryEnabled == true) {
@@ -1541,7 +1544,7 @@ fun ReminderListScreen(
                 AppDefaultPage.BIRTHDAY -> 2
                 else -> return@LaunchedEffect
             }
-            pagerState.scrollToPage(page)
+            pagerState.scrollToPage(page + 1)
             hasSetDefaultPage = true
         }
     }
@@ -1573,11 +1576,17 @@ fun ReminderListScreen(
                 state = pagerState,
                 modifier = Modifier
                     .fillMaxSize(),
-                userScrollEnabled = showCategories,
+                userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
-                val filteredItems = remember(reminderListUiState.itemList, page, showCategories) {
-                    if (showCategories) reminderListUiState.itemList.filter(tabs[page].filter)
+                if (page == 0) {
+                    // 日历视图占位（C7 接入 CalendarScreen）
+                    Box(modifier = Modifier.fillMaxSize())
+                    return@HorizontalPager
+                }
+                val listPage = page - 1
+                val filteredItems = remember(reminderListUiState.itemList, listPage, showCategories) {
+                    if (showCategories) reminderListUiState.itemList.filter(tabs[listPage].filter)
                     else reminderListUiState.itemList
                 }
                 val sections = remember(filteredItems, reminderListUiState.tagsList) {
@@ -1628,7 +1637,7 @@ fun ReminderListScreen(
                         )
                     ) {
                         sections.forEachIndexed { sectionIndex, section ->
-                            val collapsedKey = "${tabs[page].name}_${section.key}"
+                            val collapsedKey = "${tabs[listPage].name}_${section.key}"
                             item(key = "header_${section.key}_${viewMode.name}") {
                                 SectionHeader(
                                     title = section.title,
@@ -1997,10 +2006,10 @@ fun ReminderListScreen(
                                 FloatingSegmentedTabs(
                                     tabs = tabs,
                                     counts = tabCounts,
-                                    selectedIndex = pagerState.currentPage,
+                                    selectedIndex = pagerState.currentPage - 1,
                                     onTabSelected = { index ->
                                         coroutineScope.launch {
-                                            pagerState.animateScrollToPage(index)
+                                            pagerState.animateScrollToPage(index + 1)
                                         }
                                     },
                                     modifier = Modifier
@@ -2040,7 +2049,8 @@ fun ReminderListScreen(
                                         showDeleteDialog = true
                                     }
                                 } else {
-                                    val currentTab = tabs[pagerState.currentPage]
+                                    // 日历页（第 0 页）时底栏已淡出，此处钳制防越界
+                                    val currentTab = tabs[(pagerState.currentPage - 1).coerceAtLeast(0)]
                                     val currentType = when (currentTab) {
                                         ReminderTab.COUNTDOWN -> ReminderType.ANNUAL
                                         ReminderTab.COUNTUP -> ReminderType.COUNT_UP
