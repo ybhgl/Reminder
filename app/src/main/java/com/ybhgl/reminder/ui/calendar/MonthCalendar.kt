@@ -317,6 +317,7 @@ fun MonthCalendar(
                         selectedDate = selectedDate,
                         dayMap = dayMap,
                         collapsePx = collapsePx,
+                        maxCollapsePx = maxCollapsePx,
                         weekDragFraction = weekDragFraction,
                         widthPx = widthPx,
                         onDateSelected = onDateSelected,
@@ -349,6 +350,7 @@ private fun MonthPager(
     selectedDate: LocalDate,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
     collapsePx: Float,
+    maxCollapsePx: Float,
     weekDragFraction: Float,
     widthPx: Float,
     onDateSelected: (LocalDate) -> Unit,
@@ -409,7 +411,9 @@ private fun MonthPager(
                 today = today,
                 selectedDate = selectedDate,
                 collapsePx = collapsePx,
-                weekDragFraction = weekDragFraction,
+                maxCollapsePx = maxCollapsePx,
+                // 滑轨位移只作用于当前月页：相邻月页若同步平移，其首行会滑入视口与滑轨行叠加
+                weekDragFraction = if (m == displayMonth) weekDragFraction else 0f,
                 widthPx = widthPx,
                 onDateSelected = onDateSelected,
                 modifier = Modifier.fillMaxWidth()
@@ -442,6 +446,7 @@ private fun MonthGrid(
     today: LocalDate,
     selectedDate: LocalDate,
     collapsePx: Float,
+    maxCollapsePx: Float,
     weekDragFraction: Float,
     widthPx: Float,
     onDateSelected: (LocalDate) -> Unit,
@@ -469,8 +474,10 @@ private fun MonthGrid(
     val stripCells = remember(month, selectedDate) {
         if (isSelMonth) weekRowCells(selectedDate.minusDays(7)) to weekRowCells(selectedDate.plusDays(7)) else null
     }
-    val collapsedFull = collapsePx >= centeredCap - 1f
-    val stripVisible = isSelMonth && collapsedFull
+    // 空白化仅在容器完全收缩（高度=76dp 只剩一行窗口）后进行；
+    // 若按位移封顶（centeredCap）判定，收缩中途容器仍高、下方行已被空白 → "顶部到位下方变空白"
+    val collapsedFull = collapsePx >= maxCollapsePx - 1f
+    val stripVisible = isSelMonth && collapsePx >= centeredCap - 1f
     Box(
         modifier = modifier
             .height(EXPANDED_GRID_HEIGHT_DP.dp)
