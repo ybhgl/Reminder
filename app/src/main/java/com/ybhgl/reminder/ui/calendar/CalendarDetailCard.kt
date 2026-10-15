@@ -73,6 +73,7 @@ fun CalendarDetailCard(
     modifier: Modifier = Modifier
 ) {
     val almanac = remember(date, today) { dayAlmanac(date, today) }
+    val (recommends, avoids) = remember(date) { dayTaboos(date) }
     Surface(
         onClick = onClick,
         modifier = modifier.fillMaxWidth(),
@@ -122,6 +123,19 @@ fun CalendarDetailCard(
                     )
                 }
             }
+            // 底部宜忌预览（前 3 条，样式与黄历弹窗统一）；完整内容点击进弹窗查看
+            TabooBlock(
+                label = "宜",
+                color = MaterialTheme.colorScheme.error,
+                items = recommends.take(3),
+                modifier = Modifier.padding(top = 12.dp)
+            )
+            TabooBlock(
+                label = "忌",
+                color = MaterialTheme.colorScheme.onSurface,
+                items = avoids.take(3),
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
     }
 }

@@ -43,7 +43,7 @@ import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
 
-private val HEADER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
+private val HEADER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.CHINA)
 
 /**
  * 日历视图页（主页 pager 第 0 页）：
@@ -186,6 +186,7 @@ fun CalendarScreen(
             items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
                 CalendarEventCard(
                     occurrence = occurrence,
+                    today = today,
                     onClick = { onNavigateDetail(occurrence.item.id) }
                 )
             }

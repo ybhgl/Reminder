@@ -216,23 +216,28 @@ private fun DayCell(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
+    val onAccent = MaterialTheme.colorScheme.onPrimary
     val contentColor = when {
+        isSelected -> onAccent
         !cell.inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-        cell.isWeekend || isSelected -> MaterialTheme.colorScheme.primary
+        cell.isWeekend -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurface
     }
     val subColor = when {
+        isSelected -> onAccent.copy(alpha = 0.9f)
         !cell.inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
         cell.subKind == DayCellLabelKind.TERM -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
+    val dotColor = if (isSelected) onAccent else MaterialTheme.colorScheme.onSurfaceVariant
     Box(
         modifier = modifier
             .padding(2.dp)
             .clip(RoundedCornerShape(12.dp))
             .then(
+                // 选中日：强调色填充方块，内部文字与事件小点用对比色
                 if (isSelected) {
-                    Modifier.border(BorderStroke(2.dp, MaterialTheme.colorScheme.primary), RoundedCornerShape(12.dp))
+                    Modifier.background(MaterialTheme.colorScheme.primary, RoundedCornerShape(12.dp))
                 } else {
                     Modifier
                 }
@@ -270,7 +275,7 @@ private fun DayCell(
                     .size(4.dp)
                     .background(
                         color = if (cell.hasEvent && cell.inMonth) {
-                            MaterialTheme.colorScheme.onSurfaceVariant
+                            dotColor
                         } else {
                             Color.Transparent
                         },
