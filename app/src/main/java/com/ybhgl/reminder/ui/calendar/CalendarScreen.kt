@@ -117,13 +117,10 @@ fun CalendarScreen(
         collapseConnection(maxCollapsePx, { collapsePx }, { collapsePx = it })
     }
 
-    // 零死区触摸配置：拖拽启动阈值完全去除，其余（fling 速度等）沿用系统值
+    // 零死区触摸配置：拖拽启动阈值完全去除，其余（fling 速度等）沿用系统值。
+    // 每次组合基于最新 LocalViewConfiguration.current 现场构造（不 remember）：
+    // 首帧 local 可能还是未关联窗口的静态实例，缓存会把过期基对象固化导致首访阈值未生效
     val baseViewConfig = LocalViewConfiguration.current
-    val lowSlopViewConfig = remember(baseViewConfig) {
-        object : ViewConfiguration by baseViewConfig {
-            override val touchSlop: Float = 0f
-        }
-    }
 
     // 覆盖前后补位日：窗口取 displayMonth±1 与选中日期所在月的并集，
     // 保证划到远离选中月的月份时，选中日的事件卡片仍完整显示
@@ -242,8 +239,12 @@ fun CalendarScreen(
 
         // ===== 农历详情卡 + 当日事件列表 =====
         // 详情卡并入统一滚动容器：日历下方整块区域的上下拖动都能触发收展手势；
-        // 低死区 ViewConfiguration 把拖拽启动阈值从系统 ~8dp 降到 4dp，滑动近乎即时响应
-        CompositionLocalProvider(LocalViewConfiguration provides lowSlopViewConfig) {
+        // 零死区 ViewConfiguration：拖拽启动阈值完全去除，滑动即时响应
+        CompositionLocalProvider(
+            LocalViewConfiguration provides object : ViewConfiguration by baseViewConfig {
+                override val touchSlop: Float = 0f
+            }
+        ) {
             LazyColumn(
                 modifier = Modifier
                     .fillMaxWidth()

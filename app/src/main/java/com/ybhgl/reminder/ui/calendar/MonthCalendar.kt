@@ -240,6 +240,7 @@ fun MonthCalendar(
                             var verticalLocked = false
                             var horizontalLocked = false
                             val startCollapse = currentCollapse.value
+                            val collapsedStart = startCollapse > maxCollapsePx / 2f
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val change = event.changes.firstOrNull() ?: break
@@ -251,21 +252,31 @@ fun MonthCalendar(
                                 if (!decided) {
                                     if (abs(totalX) < viewConfiguration.touchSlop &&
                                         abs(totalY) < viewConfiguration.touchSlop
-                                    ) continue
+                                    ) {
+                                        // 收缩态未决期间也先消费：饿死 HorizontalPager，
+                                        // 防其 drag 先于判向启动（月份滑动与滑轨叠加的竞态源）
+                                        if (collapsedStart) change.consume()
+                                        continue
+                                    }
                                     decided = true
                                     verticalLocked = abs(totalY) > abs(totalX)
-                                    horizontalLocked = !verticalLocked &&
-                                        currentCollapse.value > maxCollapsePx / 2f
+                                    horizontalLocked = !verticalLocked && collapsedStart
                                 }
-                                if (verticalLocked) {
+                                if (collapsedStart) {
+                                    change.consume()
+                                    if (verticalLocked) {
+                                        currentOnCollapseChange.value(
+                                            (startCollapse - totalY).coerceIn(0f, maxCollapsePx)
+                                        )
+                                    } else {
+                                        // 横向滑轨预览：位移按页宽映射为滑轨比例（左滑=下一周从右侧滑入）
+                                        weekDragFraction = (-totalX / widthPx).coerceIn(-1f, 1f)
+                                    }
+                                } else if (verticalLocked) {
                                     change.consume()
                                     currentOnCollapseChange.value(
                                         (startCollapse - totalY).coerceIn(0f, maxCollapsePx)
                                     )
-                                } else if (horizontalLocked) {
-                                    change.consume()
-                                    // 横向滑轨预览：位移按页宽映射为滑轨比例（左滑=下一周从右侧滑入）
-                                    weekDragFraction = (-totalX / widthPx).coerceIn(-1f, 1f)
                                 }
                             }
                             if (verticalLocked) {
@@ -356,16 +367,25 @@ private fun MonthPager(
     // 否则 onMonthChange(过渡月) 会重启外部切月 LaunchedEffect 打断动画（"回今天卡在相邻月"根因）
     var programmaticScroll by remember { mutableStateOf(false) }
 
+    // 收缩态（切周场景）程序化换月用瞬移：横滑切月动画与滑轨预览视觉冲突
+    val density = LocalDensity.current
+    val collapsedNow = collapsePx > with(density) {
+        (EXPANDED_GRID_HEIGHT_DP - COLLAPSED_GRID_HEIGHT_DP).dp.toPx() / 2f
+    }
     // 外部切月：滑到目标页；距离过远先瞬移到相邻页再滑，避免一路连续滑过多个月
     LaunchedEffect(displayMonth) {
         val target = pageOf(displayMonth)
         if (pager.settledPage != target && !pager.isScrollInProgress) {
             programmaticScroll = true
             try {
-                if (abs(target - pager.currentPage) > 2) {
-                    pager.scrollToPage(if (target > pager.currentPage) target - 1 else target + 1)
+                if (collapsedNow) {
+                    pager.scrollToPage(target)
+                } else {
+                    if (abs(target - pager.currentPage) > 2) {
+                        pager.scrollToPage(if (target > pager.currentPage) target - 1 else target + 1)
+                    }
+                    pager.animateScrollToPage(target)
                 }
-                pager.animateScrollToPage(target)
             } finally {
                 programmaticScroll = false
             }
