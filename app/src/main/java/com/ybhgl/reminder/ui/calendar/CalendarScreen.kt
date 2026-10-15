@@ -30,10 +30,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.ReminderItem
@@ -62,7 +67,23 @@ fun CalendarScreen(
     var displayMonth by rememberSaveable { mutableStateOf(YearMonth.from(today)) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showAlmanac by rememberSaveable { mutableStateOf(false) }
+    var calendarExpanded by rememberSaveable { mutableStateOf(true) }
     val headerInteraction = remember { MutableInteractionSource() }
+
+    // 事件区向上滑动仅触发收缩（消费纵向增量，阻止列表上滚）
+    val currentExpanded = rememberUpdatedState(calendarExpanded)
+    val collapseOnUpScroll = remember {
+        object : NestedScrollConnection {
+            override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                return if (source == NestedScrollSource.Drag && available.y < 0f && currentExpanded.value) {
+                    calendarExpanded = false
+                    Offset(0f, available.y)
+                } else {
+                    Offset.Zero
+                }
+            }
+        }
+    }
 
     // 覆盖前后补位日：dayMap 窗口扩至前后各一个月
     val dayMap = remember(items, displayMonth) {
@@ -157,6 +178,8 @@ fun CalendarScreen(
             today = today,
             selectedDate = selectedDate,
             dayMap = dayMap,
+            expanded = calendarExpanded,
+            onToggleExpanded = { calendarExpanded = it },
             onDateSelected = { date ->
                 selectedDate = date
                 displayMonth = YearMonth.from(date)
@@ -177,6 +200,7 @@ fun CalendarScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                .nestedScroll(collapseOnUpScroll)
                 .padding(top = 12.dp),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(

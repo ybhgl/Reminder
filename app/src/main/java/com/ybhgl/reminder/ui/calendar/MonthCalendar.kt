@@ -1,5 +1,6 @@
 package com.ybhgl.reminder.ui.calendar
 
+import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
@@ -41,6 +42,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -148,6 +150,7 @@ fun WeekdayHeader(modifier: Modifier = Modifier) {
 /**
  * 月历网格：水平滑动切月，位移完全跟随手势进度（prev/current/next 三个月拼接的横向带），
  * 在 Initial pass 拦截并消费横向手势，屏蔽主页 pager 的左右切页冲突；纵向手势原样放行。
+ * [expanded]=false 时收缩为仅显示选中日所在的那一行（7 天），底部手柄可拖动/点击切换。
  */
 @Composable
 fun MonthCalendar(
@@ -155,6 +158,8 @@ fun MonthCalendar(
     today: LocalDate,
     selectedDate: LocalDate,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
+    expanded: Boolean,
+    onToggleExpanded: (Boolean) -> Unit,
     onDateSelected: (LocalDate) -> Unit,
     onMonthChange: (YearMonth) -> Unit,
     modifier: Modifier = Modifier
@@ -218,51 +223,77 @@ fun MonthCalendar(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
-        BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-            val monthWidth = maxWidth
-            val offsetPx = with(LocalDensity.current) { -monthWidth.toPx() } + dragPx
-            Row(
-                modifier = Modifier
-                    .requiredWidth(monthWidth * 3)
-                    .graphicsLayer { translationX = offsetPx },
-                verticalAlignment = Alignment.Top
-            ) {
-                MonthGrid(
-                    month = displayMonth.minusMonths(1),
-                    dayMap = dayMap,
-                    today = today,
-                    selectedDate = selectedDate,
-                    onDateSelected = onDateSelected,
-                    modifier = Modifier.width(monthWidth)
+        // 收缩/展开高度动画；联动项间距不放 spacedBy 容器（项目铁律）
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .animateContentSize(
+                    animationSpec = spring(
+                        dampingRatio = Spring.DampingRatioMediumBouncy,
+                        stiffness = Spring.StiffnessMediumLow
+                    )
                 )
-                MonthGrid(
-                    month = displayMonth,
-                    dayMap = dayMap,
-                    today = today,
-                    selectedDate = selectedDate,
-                    onDateSelected = onDateSelected,
-                    modifier = Modifier.width(monthWidth)
-                )
-                MonthGrid(
-                    month = displayMonth.plusMonths(1),
-                    dayMap = dayMap,
-                    today = today,
-                    selectedDate = selectedDate,
-                    onDateSelected = onDateSelected,
-                    modifier = Modifier.width(monthWidth)
-                )
+        ) {
+            // 收缩时仅展示选中日所在周（相邻月取同一周序号保持对齐）
+            val collapsedWeekIndex = if (expanded) null else weekIndexFor(selectedDate)
+            BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
+                val monthWidth = maxWidth
+                val offsetPx = with(LocalDensity.current) { -monthWidth.toPx() } + dragPx
+                Row(
+                    modifier = Modifier
+                        .requiredWidth(monthWidth * 3)
+                        .graphicsLayer { translationX = offsetPx },
+                    verticalAlignment = Alignment.Top
+                ) {
+                    MonthGrid(
+                        month = displayMonth.minusMonths(1),
+                        dayMap = dayMap,
+                        today = today,
+                        selectedDate = selectedDate,
+                        collapsedWeekIndex = collapsedWeekIndex,
+                        onDateSelected = onDateSelected,
+                        modifier = Modifier.width(monthWidth)
+                    )
+                    MonthGrid(
+                        month = displayMonth,
+                        dayMap = dayMap,
+                        today = today,
+                        selectedDate = selectedDate,
+                        collapsedWeekIndex = collapsedWeekIndex,
+                        onDateSelected = onDateSelected,
+                        modifier = Modifier.width(monthWidth)
+                    )
+                    MonthGrid(
+                        month = displayMonth.plusMonths(1),
+                        dayMap = dayMap,
+                        today = today,
+                        selectedDate = selectedDate,
+                        collapsedWeekIndex = collapsedWeekIndex,
+                        onDateSelected = onDateSelected,
+                        modifier = Modifier.width(monthWidth)
+                    )
+                }
             }
+            CollapseHandle(expanded = expanded, onToggle = onToggleExpanded)
         }
     }
 }
 
-/** 单月网格（5 或 6 行 × 7 列） */
+/** 选中日在当月网格中的周序号（周日首列，纯算术无需日历库） */
+internal fun weekIndexFor(date: LocalDate): Int {
+    val month = YearMonth.from(date)
+    val lead = month.atDay(1).dayOfWeek.value % 7
+    return (lead + date.dayOfMonth - 1) / 7
+}
+
+/** 单月网格（5 或 6 行 × 7 列）；[collapsedWeekIndex] 非空时仅渲染该周行 */
 @Composable
 private fun MonthGrid(
     month: YearMonth,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
     today: LocalDate,
     selectedDate: LocalDate,
+    collapsedWeekIndex: Int?,
     onDateSelected: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -270,7 +301,13 @@ private fun MonthGrid(
     Column(
         modifier = modifier.padding(horizontal = 8.dp, vertical = 10.dp)
     ) {
-        cells.chunked(7).forEach { row ->
+        val rows = cells.chunked(7)
+        val visibleRows = if (collapsedWeekIndex == null) {
+            rows
+        } else {
+            listOf(rows.getOrElse(collapsedWeekIndex) { rows.last() })
+        }
+        visibleRows.forEach { row ->
             Row(modifier = Modifier.fillMaxWidth()) {
                 row.forEach { cell ->
                     DayCell(
@@ -283,6 +320,53 @@ private fun MonthGrid(
                 }
             }
         }
+    }
+}
+
+/**
+ * 收缩/展开手柄：点击切换；上拖收缩、下拖展开（超过阈值才触发）。
+ */
+@Composable
+private fun CollapseHandle(
+    expanded: Boolean,
+    onToggle: (Boolean) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(20.dp)
+            .pointerInput(expanded) {
+                awaitEachGesture {
+                    var totalY = 0f
+                    while (true) {
+                        val event = awaitPointerEvent()
+                        val change = event.changes.firstOrNull() ?: break
+                        if (change.pressed) {
+                            totalY += change.positionChange().y
+                        } else {
+                            val threshold = 24.dp.toPx()
+                            when {
+                                totalY < -threshold -> onToggle(false)
+                                totalY > threshold -> onToggle(true)
+                                else -> onToggle(!expanded)
+                            }
+                            break
+                        }
+                    }
+                }
+            },
+        contentAlignment = Alignment.Center
+    ) {
+        Box(
+            modifier = Modifier
+                .width(36.dp)
+                .height(4.dp)
+                .background(
+                    MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
+                    RoundedCornerShape(2.dp)
+                )
+        )
     }
 }
 

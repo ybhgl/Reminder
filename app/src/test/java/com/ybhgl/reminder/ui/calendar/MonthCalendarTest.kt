@@ -92,6 +92,22 @@ class MonthCalendarTest {
     }
 
     @Test
+    fun `weekIndexFor matches buildMonthCells row placement`() {
+        // 2026-11：1日周日，首行=11/1~11/7；11/7 在第 0 周，11/8 在第 1 周
+        assertEquals(0, weekIndexFor(LocalDate.of(2026, 11, 7)))
+        assertEquals(1, weekIndexFor(LocalDate.of(2026, 11, 8)))
+        assertEquals(4, weekIndexFor(LocalDate.of(2026, 11, 30)))
+        // 2026-09：8/30 起首行（lead=2），9/30 在第 4 周
+        assertEquals(0, weekIndexFor(LocalDate.of(2026, 9, 1)))
+        assertEquals(4, weekIndexFor(LocalDate.of(2026, 9, 30)))
+        // 与网格实际行序号一致性校验
+        val cells = buildMonthCells(YearMonth.of(2026, 9), emptyMap())
+        val rows = cells.chunked(7)
+        val date = LocalDate.of(2026, 9, 17)
+        assertEquals(weekIndexFor(date), rows.indexOfFirst { row -> row.any { it.date == date } })
+    }
+
+    @Test
     fun `hasEvent reflects dayMap membership only for in-month dots`() {
         val dayMap = mapOf(
             LocalDate.of(2026, 11, 7) to listOf(
