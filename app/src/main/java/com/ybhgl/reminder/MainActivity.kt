@@ -1602,8 +1602,7 @@ fun ReminderListScreen(
                         onNavigateDetail = { id -> navController.navigate(Routes.detailReminder(id)) },
                         onAddReminder = { date ->
                             navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
-                        },
-                        onAlmanacClick = { /* C8: 黄历宜忌弹窗 */ }
+                        }
                     )
                     return@HorizontalPager
                 }

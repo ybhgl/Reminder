@@ -2,6 +2,7 @@ package com.ybhgl.reminder.ui.calendar
 
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.time.LocalDate
 
@@ -33,5 +34,14 @@ class CalendarDetailCardTest {
     fun `non term day has no term name`() {
         val a = dayAlmanac(LocalDate.of(2026, 11, 8), today = LocalDate.of(2026, 11, 8))
         assertNull(a.termName)
+    }
+
+    @Test
+    fun `dayTaboos returns valid recommends and avoids`() {
+        val (recommends, avoids) = dayTaboos(LocalDate.of(2026, 11, 7))
+        // 当日可能无宜或无忌事项（如 2026-11-07 忌为空），但两者不同时为空
+        assertTrue(recommends.isNotEmpty() || avoids.isNotEmpty())
+        assertTrue(recommends.all { it.isNotBlank() })
+        assertTrue(avoids.all { it.isNotBlank() })
     }
 }

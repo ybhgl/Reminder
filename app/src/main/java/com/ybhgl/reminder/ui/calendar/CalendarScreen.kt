@@ -55,13 +55,13 @@ fun CalendarScreen(
     items: List<ReminderItem>,
     onNavigateDetail: (Int) -> Unit,
     onAddReminder: (LocalDate) -> Unit,
-    onAlmanacClick: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val today = remember { LocalDate.now() }
     var selectedDate by rememberSaveable { mutableStateOf(today) }
     var displayMonth by rememberSaveable { mutableStateOf(YearMonth.from(today)) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    var showAlmanac by rememberSaveable { mutableStateOf(false) }
     val headerInteraction = remember { MutableInteractionSource() }
 
     // 覆盖前后补位日：dayMap 窗口扩至前后各一个月
@@ -168,7 +168,7 @@ fun CalendarScreen(
         CalendarDetailCard(
             date = selectedDate,
             today = today,
-            onClick = { onAlmanacClick(selectedDate) },
+            onClick = { showAlmanac = true },
             modifier = Modifier.padding(top = 12.dp)
         )
 
@@ -202,6 +202,14 @@ fun CalendarScreen(
                 displayMonth = YearMonth.from(date)
                 showDatePicker = false
             }
+        )
+    }
+
+    if (showAlmanac) {
+        AlmanacDialog(
+            date = selectedDate,
+            today = today,
+            onDismissRequest = { showAlmanac = false }
         )
     }
 }
