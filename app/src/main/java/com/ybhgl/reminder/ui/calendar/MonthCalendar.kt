@@ -274,26 +274,36 @@ private fun MonthPager(
     fun monthOf(p: Int): YearMonth = base.plusMonths((p - center).toLong())
 
     val pager = rememberPagerState(initialPage = pageOf(displayMonth)) { center * 2 }
+    // 程序化滚动标记：滚动途中的中间落页（长距离跳转的过渡页）不得回写 displayMonth，
+    // 否则 onMonthChange(过渡月) 会重启外部切月 LaunchedEffect 打断动画（"回今天卡在相邻月"根因）
+    var programmaticScroll by remember { mutableStateOf(false) }
 
     // 外部切月：滑到目标页；距离过远先瞬移到相邻页再滑，避免一路连续滑过多个月
     LaunchedEffect(displayMonth) {
         val target = pageOf(displayMonth)
         if (pager.settledPage != target && !pager.isScrollInProgress) {
-            if (abs(target - pager.currentPage) > 2) {
-                pager.scrollToPage(if (target > pager.currentPage) target - 1 else target + 1)
+            programmaticScroll = true
+            try {
+                if (abs(target - pager.currentPage) > 2) {
+                    pager.scrollToPage(if (target > pager.currentPage) target - 1 else target + 1)
+                }
+                pager.animateScrollToPage(target)
+            } finally {
+                programmaticScroll = false
             }
-            pager.animateScrollToPage(target)
         }
     }
     // 页停稳后上报月份（与外部切月的 LaunchedEffect 互斥收敛：target 已是 settledPage 时不再滚动）
     LaunchedEffect(pager.settledPage) {
-        val m = monthOf(pager.settledPage)
-        if (m != displayMonth) onMonthChange(m)
+        if (!programmaticScroll) {
+            val m = monthOf(pager.settledPage)
+            if (m != displayMonth) onMonthChange(m)
+        }
     }
 
     HorizontalPager(state = pager, beyondViewportPageCount = 1, key = { it }, modifier = modifier) { p ->
         val m = monthOf(p)
-        // ±1 月内的页渲染完整网格（dayMap 窗口也只覆盖 ±1 月）；更远页仅占位（快速甩动一闪而过）
+        // ±1 月内的页渲染完整网格；更远页仅占位（快速甩动一闪而过，事件数据窗口也不覆盖）
         if (abs(ChronoUnit.MONTHS.between(displayMonth.atDay(1), m.atDay(1)).toInt()) <= 1) {
             MonthGrid(
                 month = m,
@@ -332,7 +342,9 @@ private fun MonthGrid(
     onDateSelected: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val cells = remember(month, dayMap) { buildMonthCells(month, dayMap) }
+    // 标签/补位等静态内容仅随月份重建（逐格 tyme4kt 计算昂贵）；
+    // 事件点渲染时按 dayMap 现查，切月 dayMap 身份变化不再触发整批网格重建（滑动卡顿源）
+    val cells = remember(month) { buildMonthCells(month, emptyMap()) }
     val collapsed = collapsedWeekIndex != null
     Column(
         modifier = modifier
@@ -354,6 +366,7 @@ private fun MonthGrid(
                         cell = cell,
                         isSelected = cell.date == selectedDate,
                         isToday = cell.date == today,
+                        hasEvent = dayMap.containsKey(cell.date),
                         onClick = { onDateSelected(cell.date) },
                         modifier = Modifier.weight(1f)
                     )
@@ -428,6 +441,7 @@ private fun DayCell(
     cell: CalendarDayCell,
     isSelected: Boolean,
     isToday: Boolean,
+    hasEvent: Boolean,
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -489,7 +503,7 @@ private fun DayCell(
                 modifier = Modifier
                     .size(4.dp)
                     .background(
-                        color = if (cell.hasEvent && cell.inMonth) {
+                        color = if (hasEvent && cell.inMonth) {
                             dotColor
                         } else {
                             Color.Transparent

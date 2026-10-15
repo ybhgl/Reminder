@@ -31,6 +31,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberUpdatedState
+import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
@@ -49,6 +50,17 @@ import java.time.format.DateTimeFormatter
 import java.util.Locale
 
 private val HEADER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.CHINA)
+/** 浏览非选中日期所在月时，顶部指示器只显示年月（如 2026/09） */
+private val HEADER_MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM", Locale.CHINA)
+
+private val LocalDateSaver: Saver<LocalDate, Long> = Saver(
+    save = { it.toEpochDay() },
+    restore = { LocalDate.ofEpochDay(it) }
+)
+private val YearMonthSaver: Saver<YearMonth, Int> = Saver(
+    save = { it.year * 12 + it.monthValue },
+    restore = { YearMonth.of(it / 12, it % 12) }
+)
 
 /**
  * 日历视图页（主页 pager 第 0 页）：
@@ -63,10 +75,10 @@ fun CalendarScreen(
     modifier: Modifier = Modifier
 ) {
     val today = remember { LocalDate.now() }
-    // 选中日期与显示月份均不持久化：冷启动/再次进入日历视图始终回到今天，
-    // 避免上次会话选中/浏览的月份恢复后与"首次进入显示当前月"预期矛盾
-    var selectedDate by remember { mutableStateOf(today) }
-    var displayMonth by remember { mutableStateOf(YearMonth.from(selectedDate)) }
+    // 选中日期与显示月份持久化保存：应用内跳页（详情/添加）返回时保持离开前的浏览状态；
+    // 首屏错月问题已由 MonthPager"页码即状态"从根上消除，无需再靠不持久化规避
+    var selectedDate by rememberSaveable(stateSaver = LocalDateSaver) { mutableStateOf(today) }
+    var displayMonth by rememberSaveable(stateSaver = YearMonthSaver) { mutableStateOf(YearMonth.from(selectedDate)) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showAlmanac by rememberSaveable { mutableStateOf(false) }
     var calendarExpanded by rememberSaveable { mutableStateOf(true) }
@@ -87,13 +99,13 @@ fun CalendarScreen(
         }
     }
 
-    // 覆盖前后补位日：dayMap 窗口扩至前后各一个月
-    val dayMap = remember(items, displayMonth) {
-        CalendarEvents.dayMap(
-            items,
-            displayMonth.minusMonths(1).atDay(1),
-            displayMonth.plusMonths(1).atEndOfMonth()
-        )
+    // 覆盖前后补位日：窗口取 displayMonth±1 与选中日期所在月的并集，
+    // 保证划到远离选中月的月份时，选中日的事件卡片仍完整显示
+    val dayMap = remember(items, displayMonth, selectedDate) {
+        val selMonth = YearMonth.from(selectedDate)
+        val startMonth = minOf(displayMonth, selMonth).minusMonths(1)
+        val endMonth = maxOf(displayMonth, selMonth).plusMonths(1)
+        CalendarEvents.dayMap(items, startMonth.atDay(1), endMonth.atEndOfMonth())
     }
     val dayOccurrences = remember(dayMap, selectedDate) {
         (dayMap[selectedDate] ?: emptyList()).sortedWith(
@@ -115,7 +127,12 @@ fun CalendarScreen(
             verticalAlignment = Alignment.CenterVertically
         ) {
             Text(
-                text = selectedDate.format(HEADER_DATE_FORMAT),
+                // 浏览非选中日期所在月时显示年月（2026/09），否则显示选中日期全量（2026/10/15）
+                text = if (displayMonth != YearMonth.from(selectedDate)) {
+                    displayMonth.format(HEADER_MONTH_FORMAT)
+                } else {
+                    selectedDate.format(HEADER_DATE_FORMAT)
+                },
                 style = MaterialTheme.typography.headlineMedium,
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.onSurface,
