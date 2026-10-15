@@ -125,7 +125,8 @@ fun CalendarScreen(
                     )
             )
             Spacer(modifier = Modifier.weight(1f))
-            if (selectedDate != today) {
+            // 选中非今天，或页面显示月份已偏离选中日期所在月（滑动切月后）时，显示回今天按钮
+            if (selectedDate != today || displayMonth != YearMonth.from(selectedDate)) {
                 // "今"字圆形按钮：回到今天
                 Surface(
                     onClick = {

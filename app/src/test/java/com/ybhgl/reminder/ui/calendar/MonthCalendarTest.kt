@@ -92,6 +92,21 @@ class MonthCalendarTest {
     }
 
     @Test
+    fun `weekCountFor matches buildMonthCells row count`() {
+        // 用户报告问题月份：7/9/10 月为 5 周（此前被相邻 6 周月撑出空白行）
+        assertEquals(5, weekCountFor(YearMonth.of(2026, 7)))
+        assertEquals(6, weekCountFor(YearMonth.of(2026, 8)))
+        assertEquals(5, weekCountFor(YearMonth.of(2026, 9)))
+        assertEquals(5, weekCountFor(YearMonth.of(2026, 10)))
+        assertEquals(5, weekCountFor(YearMonth.of(2026, 11)))
+        // 与网格实际行数一致性抽查
+        for (m in listOf(7, 8, 9, 10, 11)) {
+            val cells = buildMonthCells(YearMonth.of(2026, m), emptyMap())
+            assertEquals(weekCountFor(YearMonth.of(2026, m)), cells.size / 7)
+        }
+    }
+
+    @Test
     fun `weekIndexFor matches buildMonthCells row placement`() {
         // 2026-11：1日周日，首行=11/1~11/7；11/7 在第 0 周，11/8 在第 1 周
         assertEquals(0, weekIndexFor(LocalDate.of(2026, 11, 7)))
