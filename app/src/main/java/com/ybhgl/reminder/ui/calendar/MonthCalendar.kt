@@ -152,6 +152,8 @@ fun WeekdayHeader(modifier: Modifier = Modifier) {
 private const val WEEK_ROW_HEIGHT_DP = 56f
 /** 月网格上下内边距 */
 private const val GRID_VERTICAL_PADDING_DP = 10f
+/** 展开态统一高度：固定 6 行（356dp）。5 行月富余空间由 SpaceEvenly 均匀分摊，跨月总高度恒定 */
+internal const val EXPANDED_GRID_HEIGHT_DP = 6 * WEEK_ROW_HEIGHT_DP + 2 * GRID_VERTICAL_PADDING_DP
 
 /** 覆盖 [month] 全部日期的完整周数（5 或 6），与 buildMonthCells 行数口径一致 */
 internal fun weekCountFor(month: YearMonth): Int {
@@ -162,7 +164,7 @@ internal fun weekCountFor(month: YearMonth): Int {
 /**
  * 月历网格：水平滑动切月，位移完全跟随手势进度（prev/current/next 三个月拼接的横向带），
  * 在 Initial pass 拦截并消费横向手势，屏蔽主页 pager 的左右切页冲突；纵向手势原样放行。
- * 容器高度钉死为**当月**行数（收缩态为一行），更高相邻月在拖拽过渡中被裁剪，避免底部空白行。
+ * 展开高度统一为 6 行（356dp）：5 行月由 SpaceEvenly 分摊富余空间，跨月总高度恒定，无空白/裁切差异。
  * [expanded]=false 时收缩为仅显示选中日所在的那一行（7 天），底部手柄可拖动实时跟手收展/点击切换。
  */
 @Composable
@@ -186,9 +188,8 @@ fun MonthCalendar(
     val currentMonth = rememberUpdatedState(displayMonth)
     val currentOnMonthChange = rememberUpdatedState(onMonthChange)
 
-    val fullHeightPx = with(density) {
-        (weekCountFor(displayMonth) * WEEK_ROW_HEIGHT_DP + 2 * GRID_VERTICAL_PADDING_DP).dp.toPx()
-    }
+    // 统一展开高度（6 行）：跨月恒定，不再随当月行数变化，避免切月时底部空白/裁切
+    val fullHeightPx = with(density) { EXPANDED_GRID_HEIGHT_DP.dp.toPx() }
     val collapsedHeightPx = with(density) {
         (WEEK_ROW_HEIGHT_DP + 2 * GRID_VERTICAL_PADDING_DP).dp.toPx()
     }
@@ -196,9 +197,13 @@ fun MonthCalendar(
     var settleJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var collapseJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    // 外部切月（日期选择器/回今天）复位横向偏移；月行数或展开态变化时高度动画到新目标
-    LaunchedEffect(displayMonth) { dragPx = 0f }
-    LaunchedEffect(displayMonth, expanded) {
+    // 外部切月（日期选择器/回今天/手势提交）：先取消进行中的抬手动画再复位横向偏移，
+    // 否则动画回调会继续写 dragPx，把条带停在偏移位置落到空白区（"下月空白"根因）
+    LaunchedEffect(displayMonth) {
+        settleJob?.cancel()
+        dragPx = 0f
+    }
+    LaunchedEffect(expanded) {
         if (dragHeightPx < 0f) {
             heightAnim.animateTo(
                 if (expanded) fullHeightPx else collapsedHeightPx,
@@ -238,7 +243,8 @@ fun MonthCalendar(
                             }
                         }
                         change.consume()
-                        dragPx += delta.x
+                        // 钳制位移带 [-w, w]：拖过一整月宽度后不再空拖，防止条带偏移落到空白区
+                        dragPx = (dragPx + delta.x).coerceIn(-widthPx, widthPx)
                         val now = change.uptimeMillis
                         if (now > lastMoveTime) velocity = delta.x * 1000f / (now - lastMoveTime)
                         lastMoveTime = now
@@ -347,7 +353,11 @@ internal fun weekIndexFor(date: LocalDate): Int {
     return (lead + date.dayOfMonth - 1) / 7
 }
 
-/** 单月网格（5 或 6 行 × 7 列）；[collapsedWeekIndex] 非空时仅渲染该周行 */
+/**
+ * 单月网格（5 或 6 行 × 7 列）；[collapsedWeekIndex] 非空时仅渲染该周行。
+ * 展开态固定 6 行高度（356dp），行间距由 SpaceEvenly 均匀分摊：
+ * 6 行月间距≈0、5 行月间距≈9dp，任何月份所有日期完整显示且总高恒定。
+ */
 @Composable
 private fun MonthGrid(
     month: YearMonth,
@@ -359,14 +369,19 @@ private fun MonthGrid(
     modifier: Modifier = Modifier
 ) {
     val cells = remember(month, dayMap) { buildMonthCells(month, dayMap) }
+    val collapsed = collapsedWeekIndex != null
     Column(
-        modifier = modifier.padding(horizontal = 8.dp, vertical = 10.dp)
+        modifier = modifier
+            .padding(horizontal = 8.dp)
+            .then(if (collapsed) Modifier else Modifier.height(EXPANDED_GRID_HEIGHT_DP.dp))
+            .padding(vertical = GRID_VERTICAL_PADDING_DP.dp),
+        verticalArrangement = if (collapsed) Arrangement.Top else Arrangement.SpaceEvenly
     ) {
         val rows = cells.chunked(7)
-        val visibleRows = if (collapsedWeekIndex == null) {
+        val visibleRows = if (!collapsed) {
             rows
         } else {
-            listOf(rows.getOrElse(collapsedWeekIndex) { rows.last() })
+            listOf(rows.getOrElse(collapsedWeekIndex!!) { rows.last() })
         }
         visibleRows.forEach { row ->
             Row(modifier = Modifier.fillMaxWidth()) {

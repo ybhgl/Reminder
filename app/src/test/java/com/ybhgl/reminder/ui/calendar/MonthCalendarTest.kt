@@ -142,4 +142,21 @@ class MonthCalendarTest {
         assertTrue(cells.first { it.date == LocalDate.of(2026, 11, 7) }.hasEvent)
         assertFalse(cells.first { it.date == LocalDate.of(2026, 11, 8) }.hasEvent)
     }
+
+    @Test
+    fun `expanded height is fixed 6 rows and covers every month natural height`() {
+        // 统一展开高度 = 6*56 + 2*10 = 356dp，跨月恒定不随当月行数变化
+        assertEquals(356f, EXPANDED_GRID_HEIGHT_DP, 0.001f)
+        // 任意月份的自然行高（行数*56+20）均不超过统一高度，SpaceEvenly 分摊后无裁切
+        for (y in 2025..2027) {
+            for (m in 1..12) {
+                val month = YearMonth.of(y, m)
+                val natural = weekCountFor(month) * 56f + 2 * 10f
+                assertTrue(
+                    "month $month natural height $natural exceeds $EXPANDED_GRID_HEIGHT_DP",
+                    natural <= EXPANDED_GRID_HEIGHT_DP
+                )
+            }
+        }
+    }
 }
