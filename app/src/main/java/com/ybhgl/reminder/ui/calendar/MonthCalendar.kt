@@ -469,7 +469,8 @@ private fun MonthGrid(
     val stripCells = remember(month, selectedDate) {
         if (isSelMonth) weekRowCells(selectedDate.minusDays(7)) to weekRowCells(selectedDate.plusDays(7)) else null
     }
-    val stripVisible = isSelMonth && collapsePx >= centeredCap - 1f
+    val collapsedFull = collapsePx >= centeredCap - 1f
+    val stripVisible = isSelMonth && collapsedFull
     Box(
         modifier = modifier
             .height(EXPANDED_GRID_HEIGHT_DP.dp)
@@ -485,8 +486,14 @@ private fun MonthGrid(
                 .padding(horizontal = 8.dp, vertical = GRID_VERTICAL_PADDING_DP.dp),
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
-            cells.chunked(7).forEach { row ->
-                WeekRow(row, selectedDate, today, dayMap, onDateSelected, Modifier.fillMaxWidth())
+            cells.chunked(7).forEachIndexed { index, row ->
+                if (collapsedFull && index != selRow) {
+                    // 完全收缩时把非选中行空白化（占位保几何不变）：76dp 窗口上下沿会露出相邻行日期碎片
+                    // （6 行月 gap≈0 尤其明显），横滑时碎片随主网格移动形成"叠加其他日期"、提交瞬间内容突变闪烁
+                    Spacer(modifier = Modifier.fillMaxWidth().height(WEEK_ROW_HEIGHT_DP.dp))
+                } else {
+                    WeekRow(row, selectedDate, today, dayMap, onDateSelected, Modifier.fillMaxWidth())
+                }
             }
         }
         if (stripVisible && stripCells != null) {

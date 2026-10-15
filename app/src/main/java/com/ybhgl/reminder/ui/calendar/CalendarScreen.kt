@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
@@ -29,12 +30,12 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
@@ -44,9 +45,10 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalViewConfiguration
-import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
@@ -57,6 +59,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import kotlin.math.abs
 
 private val HEADER_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.CHINA)
 /** 浏览非选中日期所在月时，顶部指示器只显示年月（如 2026/09） */
@@ -117,10 +120,10 @@ fun CalendarScreen(
         collapseConnection(maxCollapsePx, { collapsePx }, { collapsePx = it })
     }
 
-    // 零死区触摸配置：拖拽启动阈值完全去除，其余（fling 速度等）沿用系统值。
-    // 每次组合基于最新 LocalViewConfiguration.current 现场构造（不 remember）：
-    // 首帧 local 可能还是未关联窗口的静态实例，缓存会把过期基对象固化导致首访阈值未生效
-    val baseViewConfig = LocalViewConfiguration.current
+    // 列表区收缩驱动状态：Initial pass 以 ~2dp 近零阈值接管纵向手势（替代已撤销的
+    // ViewConfiguration 覆盖——每帧新对象会反复重启列表手势，导致纵向拖动不可用）
+    val currentCollapse = rememberUpdatedState(collapsePx)
+    val driverSlopPx = with(density) { 2.dp.toPx() }
 
     // 覆盖前后补位日：窗口取 displayMonth±1 与选中日期所在月的并集，
     // 保证划到远离选中月的月份时，选中日的事件卡片仍完整显示
@@ -238,38 +241,71 @@ fun CalendarScreen(
         )
 
         // ===== 农历详情卡 + 当日事件列表 =====
-        // 详情卡并入统一滚动容器：日历下方整块区域的上下拖动都能触发收展手势；
-        // 零死区 ViewConfiguration：拖拽启动阈值完全去除，滑动即时响应
-        CompositionLocalProvider(
-            LocalViewConfiguration provides object : ViewConfiguration by baseViewConfig {
-                override val touchSlop: Float = 0f
-            }
+        // 详情卡并入统一滚动容器：日历下方整块区域的上下拖动都能触发收展手势。
+        // 收缩驱动在 Initial pass 以 ~2dp 阈值接管纵向手势（近零死区）：
+        // 有收展空间时消费事件并实时驱动 collapsePx；无空间（如已收满继续上滑）时
+        // 放手交给列表自身滚动（含惯性与嵌套滚动衔接）
+        LazyColumn(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .pointerInput(maxCollapsePx) {
+                    awaitEachGesture {
+                        var totalX = 0f
+                        var totalY = 0f
+                        var decided = false
+                        var vertical = false
+                        var took = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            val d = change.positionChangeIgnoreConsumed()
+                            if (d.x == 0f && d.y == 0f) continue
+                            totalX += d.x
+                            totalY += d.y
+                            if (!decided) {
+                                if (abs(totalX) < driverSlopPx && abs(totalY) < driverSlopPx) continue
+                                decided = true
+                                vertical = abs(totalY) > abs(totalX)
+                                if (!vertical) break // 横向手势：整体放行给列表/主页 pager
+                            }
+                            val cur = currentCollapse.value
+                            val next = (cur - d.y).coerceIn(0f, maxCollapsePx)
+                            if (next == cur &&
+                                ((d.y < 0f && cur >= maxCollapsePx - 0.5f) || (d.y > 0f && cur <= 0.5f))
+                            ) {
+                                break // 收展已到边界：本手势余量交给列表滚动
+                            }
+                            change.consume()
+                            took = true
+                            if (next != cur) collapsePx = next
+                        }
+                        if (took) {
+                            animateCollapseTo(if (collapsePx > maxCollapsePx / 2f) maxCollapsePx else 0f)
+                        }
+                    }
+                }
+                .nestedScroll(calendarCollapseConnection),
+            verticalArrangement = Arrangement.spacedBy(10.dp),
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                top = 12.dp,
+                bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            )
         ) {
-            LazyColumn(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    .nestedScroll(calendarCollapseConnection),
-                verticalArrangement = Arrangement.spacedBy(10.dp),
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    top = 12.dp,
-                    bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            item(key = "almanac_detail_card") {
+                CalendarDetailCard(
+                    date = selectedDate,
+                    today = today,
+                    onClick = { showAlmanac = true }
                 )
-            ) {
-                item(key = "almanac_detail_card") {
-                    CalendarDetailCard(
-                        date = selectedDate,
-                        today = today,
-                        onClick = { showAlmanac = true }
-                    )
-                }
-                items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
-                    CalendarEventCard(
-                        occurrence = occurrence,
-                        today = today,
-                        onClick = { onNavigateDetail(occurrence.item.id) }
-                    )
-                }
+            }
+            items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
+                CalendarEventCard(
+                    occurrence = occurrence,
+                    today = today,
+                    onClick = { onNavigateDetail(occurrence.item.id) }
+                )
             }
         }
     }
