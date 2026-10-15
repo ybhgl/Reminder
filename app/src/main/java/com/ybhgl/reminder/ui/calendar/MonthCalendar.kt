@@ -3,23 +3,22 @@ package com.ybhgl.reminder.ui.calendar
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.spring
-import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
@@ -32,19 +31,14 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.graphicsLayer
-import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChange
-import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
-import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
@@ -54,6 +48,7 @@ import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
 import java.time.YearMonth
+import java.time.temporal.ChronoUnit
 import kotlin.math.abs
 
 /** 月历格子副标签类型（决定颜色语义） */
@@ -162,8 +157,8 @@ internal fun weekCountFor(month: YearMonth): Int {
 }
 
 /**
- * 月历网格：水平滑动切月，位移完全跟随手势进度（prev/current/next 三个月拼接的横向带），
- * 在 Initial pass 拦截并消费横向手势，屏蔽主页 pager 的左右切页冲突；纵向手势原样放行。
+ * 月历网格：横向翻页切月（HorizontalPager，页码↔月份一一对应），
+ * 拖拽完全跟手且相邻月页预组合，杜绝手写条带的偏移竞态/空白问题。
  * 展开高度统一为 6 行（356dp）：5 行月由 SpaceEvenly 分摊富余空间，跨月总高度恒定，无空白/裁切差异。
  * [expanded]=false 时收缩为仅显示选中日所在的那一行（7 天），底部手柄可拖动实时跟手收展/点击切换。
  */
@@ -180,13 +175,9 @@ fun MonthCalendar(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    var dragPx by remember { mutableFloatStateOf(0f) }
-    var widthPx by remember { mutableFloatStateOf(1f) }
     // 手柄拖拽中的实时高度（-1 = 未拖拽，取 heightAnim）
     var dragHeightPx by remember { mutableFloatStateOf(-1f) }
     val scope = rememberCoroutineScope()
-    val currentMonth = rememberUpdatedState(displayMonth)
-    val currentOnMonthChange = rememberUpdatedState(onMonthChange)
 
     // 统一展开高度（6 行）：跨月恒定，不再随当月行数变化，避免切月时底部空白/裁切
     val fullHeightPx = with(density) { EXPANDED_GRID_HEIGHT_DP.dp.toPx() }
@@ -194,15 +185,9 @@ fun MonthCalendar(
         (WEEK_ROW_HEIGHT_DP + 2 * GRID_VERTICAL_PADDING_DP).dp.toPx()
     }
     val heightAnim = remember { Animatable(if (expanded) fullHeightPx else collapsedHeightPx) }
-    var settleJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     var collapseJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
 
-    // 外部切月（日期选择器/回今天/手势提交）：先取消进行中的抬手动画再复位横向偏移，
-    // 否则动画回调会继续写 dragPx，把条带停在偏移位置落到空白区（"下月空白"根因）
-    LaunchedEffect(displayMonth) {
-        settleJob?.cancel()
-        dragPx = 0f
-    }
+    // 展开态变化时高度动画到新目标（拖拽中由 dragHeightPx 实时接管）
     LaunchedEffect(expanded) {
         if (dragHeightPx < 0f) {
             heightAnim.animateTo(
@@ -217,60 +202,7 @@ fun MonthCalendar(
     Surface(
         modifier = modifier
             .fillMaxWidth()
-            .clipToBounds()
-            .pointerInput(displayMonth) {
-                awaitEachGesture {
-                    var locked = false
-                    var totalX = 0f
-                    var totalY = 0f
-                    var lastMoveTime = 0L
-                    var velocity = 0f
-                    while (true) {
-                        val event = awaitPointerEvent(PointerEventPass.Initial)
-                        val change = event.changes.firstOrNull() ?: break
-                        if (!change.pressed) break
-                        val delta = change.positionChangeIgnoreConsumed()
-                        if (delta.x == 0f && delta.y == 0f) continue
-                        totalX += delta.x
-                        totalY += delta.y
-                        if (!locked) {
-                            // 累计横向主导且越过 slop 才锁定接管；单事件抖动不足以触发（防点击误切月）
-                            if (abs(totalX) > viewConfiguration.touchSlop && abs(totalX) > abs(totalY)) {
-                                locked = true
-                                settleJob?.cancel() // 新手势打断上一次抬手动画，避免 dragPx 竞态
-                            } else {
-                                continue
-                            }
-                        }
-                        change.consume()
-                        // 钳制位移带 [-w, w]：拖过一整月宽度后不再空拖，防止条带偏移落到空白区
-                        dragPx = (dragPx + delta.x).coerceIn(-widthPx, widthPx)
-                        val now = change.uptimeMillis
-                        if (now > lastMoveTime) velocity = delta.x * 1000f / (now - lastMoveTime)
-                        lastMoveTime = now
-                    }
-                    if (!locked) return@awaitEachGesture
-                    val w = widthPx
-                    val drag = dragPx
-                    // 速度提交也要求最小位移，纯点击抖动不切月
-                    val commit = abs(drag) > w * 0.3f ||
-                        (abs(velocity) > 900f && abs(drag) > w * 0.12f)
-                    settleJob = scope.launch {
-                        // 抬手动画用局部 Animatable 驱动（手势受限作用域内不可调 suspend 动画）
-                        val anim = Animatable(dragPx)
-                        if (commit && drag != 0f) {
-                            val dir = if (drag < 0f) 1L else -1L
-                            // 位移带为 [-w, 0]：左滑(dir=+1)补到 -w，右滑补到 +w 前需先回正带内——
-                            // 拼接带 translationX = -w + dragPx，切到下月应继续向左到 -w
-                            anim.animateTo(if (dir > 0) -w else w, tween(180)) { dragPx = value }
-                            currentOnMonthChange.value(currentMonth.value.plusMonths(dir))
-                            dragPx = 0f
-                        } else {
-                            anim.animateTo(0f, spring(dampingRatio = Spring.DampingRatioMediumBouncy)) { dragPx = value }
-                        }
-                    }
-                }
-            },
+            .clipToBounds(),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
@@ -280,48 +212,19 @@ fun MonthCalendar(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .onSizeChanged { if (it.width > 0) widthPx = it.width.toFloat() }
                     .height(with(density) { currentHeightPx.toDp() })
                     .clipToBounds()
             ) {
-                BoxWithConstraints(modifier = Modifier.fillMaxWidth()) {
-                    val monthWidth = maxWidth
-                    val offsetPx = with(density) { -monthWidth.toPx() } + dragPx
-                    Row(
-                        modifier = Modifier
-                            .requiredWidth(monthWidth * 3)
-                            .graphicsLayer { translationX = offsetPx },
-                        verticalAlignment = Alignment.Top
-                    ) {
-                        MonthGrid(
-                            month = displayMonth.minusMonths(1),
-                            dayMap = dayMap,
-                            today = today,
-                            selectedDate = selectedDate,
-                            collapsedWeekIndex = collapsedWeekIndex,
-                            onDateSelected = onDateSelected,
-                            modifier = Modifier.width(monthWidth)
-                        )
-                        MonthGrid(
-                            month = displayMonth,
-                            dayMap = dayMap,
-                            today = today,
-                            selectedDate = selectedDate,
-                            collapsedWeekIndex = collapsedWeekIndex,
-                            onDateSelected = onDateSelected,
-                            modifier = Modifier.width(monthWidth)
-                        )
-                        MonthGrid(
-                            month = displayMonth.plusMonths(1),
-                            dayMap = dayMap,
-                            today = today,
-                            selectedDate = selectedDate,
-                            collapsedWeekIndex = collapsedWeekIndex,
-                            onDateSelected = onDateSelected,
-                            modifier = Modifier.width(monthWidth)
-                        )
-                    }
-                }
+                MonthPager(
+                    displayMonth = displayMonth,
+                    today = today,
+                    selectedDate = selectedDate,
+                    dayMap = dayMap,
+                    collapsedWeekIndex = collapsedWeekIndex,
+                    onDateSelected = onDateSelected,
+                    onMonthChange = onMonthChange,
+                    modifier = Modifier.fillMaxWidth()
+                )
             }
             CollapseHandle(
                 expanded = expanded,
@@ -342,6 +245,67 @@ fun MonthCalendar(
                     }
                 }
             )
+        }
+    }
+}
+
+/**
+ * 跟手翻页的月历（移植 riji 的 MonthPager 模式）：无限页码中心偏移，页码与月份一一对应，
+ * 停在哪页就显示哪个月；`beyondViewportPageCount=1` 预组合相邻月，拖拽期间相邻月内容完整。
+ * 外部改月（日期选择器/回今天/选中他月日期）→ 滑到目标页；页停稳 → 上报 onMonthChange。
+ * 页码即状态，从根上消除手写条带 dragPx 与切月状态的竞态（"下月空白"/"首屏偏一月"问题源）。
+ */
+@Composable
+private fun MonthPager(
+    displayMonth: YearMonth,
+    today: LocalDate,
+    selectedDate: LocalDate,
+    dayMap: Map<LocalDate, List<CalendarOccurrence>>,
+    collapsedWeekIndex: Int?,
+    onDateSelected: (LocalDate) -> Unit,
+    onMonthChange: (YearMonth) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val center = 1200
+    // 基准月只在首次组合捕获一次：页码相对基准月线性映射，跨任意月切换均成立
+    val base = remember { displayMonth }
+    fun pageOf(m: YearMonth): Int =
+        center + ChronoUnit.MONTHS.between(base.atDay(1), m.atDay(1)).toInt()
+    fun monthOf(p: Int): YearMonth = base.plusMonths((p - center).toLong())
+
+    val pager = rememberPagerState(initialPage = pageOf(displayMonth)) { center * 2 }
+
+    // 外部切月：滑到目标页；距离过远先瞬移到相邻页再滑，避免一路连续滑过多个月
+    LaunchedEffect(displayMonth) {
+        val target = pageOf(displayMonth)
+        if (pager.settledPage != target && !pager.isScrollInProgress) {
+            if (abs(target - pager.currentPage) > 2) {
+                pager.scrollToPage(if (target > pager.currentPage) target - 1 else target + 1)
+            }
+            pager.animateScrollToPage(target)
+        }
+    }
+    // 页停稳后上报月份（与外部切月的 LaunchedEffect 互斥收敛：target 已是 settledPage 时不再滚动）
+    LaunchedEffect(pager.settledPage) {
+        val m = monthOf(pager.settledPage)
+        if (m != displayMonth) onMonthChange(m)
+    }
+
+    HorizontalPager(state = pager, beyondViewportPageCount = 1, key = { it }, modifier = modifier) { p ->
+        val m = monthOf(p)
+        // ±1 月内的页渲染完整网格（dayMap 窗口也只覆盖 ±1 月）；更远页仅占位（快速甩动一闪而过）
+        if (abs(ChronoUnit.MONTHS.between(displayMonth.atDay(1), m.atDay(1)).toInt()) <= 1) {
+            MonthGrid(
+                month = m,
+                dayMap = dayMap,
+                today = today,
+                selectedDate = selectedDate,
+                collapsedWeekIndex = collapsedWeekIndex,
+                onDateSelected = onDateSelected,
+                modifier = Modifier.fillMaxWidth()
+            )
+        } else {
+            Spacer(modifier = Modifier.fillMaxWidth().height(EXPANDED_GRID_HEIGHT_DP.dp))
         }
     }
 }

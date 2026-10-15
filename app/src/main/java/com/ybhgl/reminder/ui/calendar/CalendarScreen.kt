@@ -63,9 +63,9 @@ fun CalendarScreen(
     modifier: Modifier = Modifier
 ) {
     val today = remember { LocalDate.now() }
-    var selectedDate by rememberSaveable { mutableStateOf(today) }
-    // 显示月份不持久化：进入日历视图始终显示选中日期所在月（默认当月），
-    // 避免冷启动恢复上次浏览月份导致"选中日期对、网格月份错"
+    // 选中日期与显示月份均不持久化：冷启动/再次进入日历视图始终回到今天，
+    // 避免上次会话选中/浏览的月份恢复后与"首次进入显示当前月"预期矛盾
+    var selectedDate by remember { mutableStateOf(today) }
     var displayMonth by remember { mutableStateOf(YearMonth.from(selectedDate)) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showAlmanac by rememberSaveable { mutableStateOf(false) }
