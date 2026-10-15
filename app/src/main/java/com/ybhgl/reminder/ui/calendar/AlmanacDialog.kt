@@ -113,7 +113,8 @@ internal fun TabooBlock(
     if (items.isEmpty()) return
     Row(
         modifier = modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.Top
+        // 徽标与文字垂直居中对齐（卡片与弹窗共用此组件，一处修复两处生效）
+        verticalAlignment = Alignment.CenterVertically
     ) {
         Box(
             modifier = Modifier

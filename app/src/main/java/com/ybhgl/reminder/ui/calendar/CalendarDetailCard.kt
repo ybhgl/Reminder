@@ -1,5 +1,6 @@
 package com.ybhgl.reminder.ui.calendar
 
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -14,7 +15,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.tyme.solar.SolarDay
 import com.ybhgl.reminder.util.CalendarUtil
@@ -123,18 +126,57 @@ fun CalendarDetailCard(
                     )
                 }
             }
-            // 底部宜忌预览（前 3 条，样式与黄历弹窗统一）；完整内容点击进弹窗查看
+            // 底部宜忌预览（横向单排，宽度不足时两侧各 3→2→1 条递减）；完整内容点击进弹窗查看
+            TabooPreviewRow(
+                recommends = recommends,
+                avoids = avoids,
+                modifier = Modifier.padding(top = 12.dp)
+            )
+        }
+    }
+}
+
+/**
+ * 宜/忌横向单排：优先两侧各 3 条，用文本实测宽度按 2、1 递减直至放得下。
+ */
+@Composable
+private fun TabooPreviewRow(
+    recommends: List<String>,
+    avoids: List<String>,
+    modifier: Modifier = Modifier
+) {
+    if (recommends.isEmpty() && avoids.isEmpty()) return
+    val bodyStyle = MaterialTheme.typography.bodyMedium
+    val measurer = rememberTextMeasurer()
+    BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
+        val availablePx = with(LocalDensity.current) { maxWidth.toPx() }
+        // 每组占位 = 28dp 圆形徽标 + 12dp 间距；两组之间 16dp
+        val chromePx = with(LocalDensity.current) { ((28.dp + 12.dp) * 2 + 16.dp).toPx() }
+        val count = remember(availablePx, recommends, avoids, bodyStyle) {
+            var picked = 1
+            for (c in 3 downTo 1) {
+                val recW = measurer.measure(recommends.take(c).joinToString(" "), style = bodyStyle).size.width.toFloat()
+                val avoidW = measurer.measure(avoids.take(c).joinToString(" "), style = bodyStyle).size.width.toFloat()
+                if (chromePx + recW + avoidW <= availablePx) {
+                    picked = c
+                    break
+                }
+            }
+            picked
+        }
+        Row(modifier = Modifier.fillMaxWidth()) {
             TabooBlock(
                 label = "宜",
                 color = MaterialTheme.colorScheme.error,
-                items = recommends.take(3),
-                modifier = Modifier.padding(top = 12.dp)
+                items = recommends.take(count),
+                modifier = Modifier.weight(1f)
             )
+            Spacer(modifier = Modifier.width(16.dp))
             TabooBlock(
                 label = "忌",
                 color = MaterialTheme.colorScheme.onSurface,
-                items = avoids.take(3),
-                modifier = Modifier.padding(top = 8.dp)
+                items = avoids.take(count),
+                modifier = Modifier.weight(1f)
             )
         }
     }
