@@ -89,6 +89,11 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import com.ybhgl.reminder.ui.calendar.CalendarScreen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowBack
@@ -1548,6 +1553,18 @@ fun ReminderListScreen(
             hasSetDefaultPage = true
         }
     }
+    // 日历页（第 0 页）与列表页间的滑动进度：1=日历完全展示，0=列表页
+    val calendarProgress = when (pagerState.currentPage) {
+        0 -> 1f - pagerState.currentPageOffsetFraction.coerceIn(0f, 1f)
+        1 -> (-pagerState.currentPageOffsetFraction).coerceIn(0f, 1f)
+        else -> 0f
+    }
+    // 搜索/选择模式依赖顶栏与底栏，激活时若停在日历页则弹回列表页
+    LaunchedEffect(isSelectionMode, isSearchActive) {
+        if ((isSelectionMode || isSearchActive) && pagerState.currentPage == 0) {
+            pagerState.animateScrollToPage(1)
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp.dp
@@ -1580,8 +1597,14 @@ fun ReminderListScreen(
                 beyondViewportPageCount = 1
             ) { page ->
                 if (page == 0) {
-                    // 日历视图占位（C7 接入 CalendarScreen）
-                    Box(modifier = Modifier.fillMaxSize())
+                    CalendarScreen(
+                        items = reminderListUiState.itemList,
+                        onNavigateDetail = { id -> navController.navigate(Routes.detailReminder(id)) },
+                        onAddReminder = { date ->
+                            navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
+                        },
+                        onAlmanacClick = { /* C8: 黄历宜忌弹窗 */ }
+                    )
                     return@HorizontalPager
                 }
                 val listPage = page - 1
@@ -1753,7 +1776,9 @@ fun ReminderListScreen(
                     }
                     .graphicsLayer {
                         translationY = titleOffsetPx
+                        alpha = 1f - calendarProgress
                     }
+                    .consumeTouchWhen(calendarProgress >= 0.99f)
                     .then(topAppBarModifier)
             ) {
                 if (isSelectionMode) {
@@ -1924,6 +1949,16 @@ fun ReminderListScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         FabMenuItem(
+                            icon = Icons.Default.CalendarMonth,
+                            label = "日历视图",
+                            onClick = {
+                                fabMenuExpanded = false
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(0)
+                                }
+                            }
+                        )
+                        FabMenuItem(
                             icon = Icons.Default.Calculate,
                             label = "日期计算",
                             onClick = {
@@ -1958,7 +1993,11 @@ fun ReminderListScreen(
                     .onSizeChanged {
                         bottomBarHeightPx = it.height.toFloat()
                     }
-                    .graphicsLayer { translationY = bottomBarOffsetPx }
+                    .graphicsLayer {
+                        translationY = bottomBarOffsetPx
+                        alpha = 1f - calendarProgress
+                    }
+                    .consumeTouchWhen(calendarProgress >= 0.99f)
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
             ) {
@@ -2161,6 +2200,20 @@ fun ReminderListScreen(
     }
 
 
+
+/**
+ * 日历页完全展示时顶/底栏 alpha=0 但仍可命中，用此修饰吞掉触摸防止误触。
+ */
+private fun Modifier.consumeTouchWhen(active: Boolean): Modifier = pointerInput(active) {
+    if (!active) return@pointerInput
+    awaitEachGesture {
+        awaitFirstDown()
+        do {
+            val event = awaitPointerEvent()
+            event.changes.forEach { it.consume() }
+        } while (event.changes.any { it.pressed })
+    }
+}
 
 /**
  * FAB 扩展菜单中的单个操作项：pill 形状的 secondaryContainer，含图标与文字标签。
