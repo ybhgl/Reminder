@@ -10,14 +10,51 @@ import java.time.YearMonth
 class MonthCalendarTest {
 
     @Test
-    fun `november 2026 grid starts on sunday nov 1 with 42 cells`() {
-        // 2026-11-01 恰为周日
+    fun `grid covers whole weeks sunday-first with dynamic row count`() {
+        // 2026-11-01 恰为周日、30天 → 5 周（11-01 ~ 12-05），无前置补位
         val cells = buildMonthCells(YearMonth.of(2026, 11), emptyMap())
-        assertEquals(42, cells.size)
+        assertEquals(35, cells.size)
         assertEquals(LocalDate.of(2026, 11, 1), cells.first().date)
         assertTrue(cells.first().inMonth)
-        assertEquals(LocalDate.of(2026, 12, 12), cells.last().date)
+        assertEquals(LocalDate.of(2026, 12, 5), cells.last().date)
         assertFalse(cells.last().inMonth)
+    }
+
+    @Test
+    fun `september 2026 spans 8-30 to 10-3 per requirement example`() {
+        // 9/1 周二、9/30 周三 → 起始回退到周日 8-30，收尾补到周六 10-3（5 周）
+        val cells = buildMonthCells(YearMonth.of(2026, 9), emptyMap())
+        assertEquals(35, cells.size)
+        assertEquals(LocalDate.of(2026, 8, 30), cells.first().date)
+        assertEquals(LocalDate.of(2026, 10, 3), cells.last().date)
+    }
+
+    @Test
+    fun `month ending on saturday needs no trailing days`() {
+        // 2026-10-31 恰为周六 → 末格即 10-31，不展示次月日期（9-27 周日起，5 周）
+        val cells = buildMonthCells(YearMonth.of(2026, 10), emptyMap())
+        assertEquals(35, cells.size)
+        assertEquals(LocalDate.of(2026, 9, 27), cells.first().date)
+        assertEquals(LocalDate.of(2026, 10, 31), cells.last().date)
+        assertTrue(cells.last().inMonth)
+    }
+
+    @Test
+    fun `february 2027 five-week case`() {
+        // 2027-02-01 周一、28 天 → lead=1，1+28=29 → 5 周（1-31 周日 ~ 3-6 周六）
+        val cells = buildMonthCells(YearMonth.of(2027, 2), emptyMap())
+        assertEquals(35, cells.size)
+        assertEquals(LocalDate.of(2027, 1, 31), cells.first().date)
+        assertEquals(LocalDate.of(2027, 3, 6), cells.last().date)
+    }
+
+    @Test
+    fun `august 2026 six-week case`() {
+        // 2026-08-01 恰为周六、31 天 → lead=6，6+31=37 → 6 周（7-26 周日 ~ 9-5 周六）
+        val cells = buildMonthCells(YearMonth.of(2026, 8), emptyMap())
+        assertEquals(42, cells.size)
+        assertEquals(LocalDate.of(2026, 7, 26), cells.first().date)
+        assertEquals(LocalDate.of(2026, 9, 5), cells.last().date)
     }
 
     @Test

@@ -90,7 +90,11 @@ internal object DayCellFormatter {
     }
 }
 
-/** 构建 [month] 的 42 格（6 行 × 7 列，周日首列，含前后补位日） */
+/**
+ * 构建 [month] 的网格（周日首列、周六收尾，行数=覆盖当月所有日期的完整周数，5 或 6 行）。
+ * 例：2026-09（1日周二/30日周三）→ 8/30(日)~10/3(六) 共 5 周；
+ * 2026-10（31日恰为周六）→ 9/27(日)~10/31(六) 共 5 周，不补次月日期。
+ */
 fun buildMonthCells(
     month: YearMonth,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>
@@ -99,7 +103,8 @@ fun buildMonthCells(
     // 周日为首列：回退到当月 1 日所在周的周日（SUN=7 -> 0，MON=1 -> 1 … SAT=6 -> 6）
     val lead = firstDay.dayOfWeek.value % 7
     val start = firstDay.minusDays(lead.toLong())
-    return (0 until 42).map { i ->
+    val totalCells = ((lead + month.lengthOfMonth()) + 6) / 7 * 7
+    return (0 until totalCells).map { i ->
         val date = start.plusDays(i.toLong())
         val (label, kind) = DayCellFormatter.subLabel(date)
         CalendarDayCell(
