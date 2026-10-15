@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -45,6 +46,7 @@ import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
 import com.tyme.solar.SolarDay
 import com.ybhgl.reminder.util.CalendarUtil
@@ -54,6 +56,7 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.temporal.ChronoUnit
 import kotlin.math.abs
+import kotlin.math.roundToInt
 
 /** 月历格子副标签类型（决定颜色语义） */
 enum class DayCellLabelKind { TERM, FESTIVAL, HOLIDAY, LUNAR }
@@ -92,7 +95,14 @@ internal object DayCellFormatter {
         }
         val legalHoliday = solar.getLegalHoliday()
         if (legalHoliday != null && !legalHoliday.isWork()) {
-            return legalHoliday.getName() to DayCellLabelKind.HOLIDAY
+            // 法定节假日按调休连休区间逐日返回同名 → 仅在连休首日（节日当天）显示，
+            // 其余补休日照常显示农历（如国庆 10/1 显示，10/2-7 不重复显示）
+            val prev = date.minusDays(1)
+            val prevHoliday = SolarDay.fromYmd(prev.year, prev.monthValue, prev.dayOfMonth).getLegalHoliday()
+            val isRunStart = prevHoliday == null || prevHoliday.isWork() || prevHoliday.getName() != legalHoliday.getName()
+            if (isRunStart) {
+                return legalHoliday.getName() to DayCellLabelKind.HOLIDAY
+            }
         }
         return if (lunar.day == 1) {
             CalendarUtil.getMappedMonthName(lunar.getLunarMonth()!!.getName()) to DayCellLabelKind.LUNAR
@@ -254,7 +264,7 @@ fun MonthCalendar(
                                     )
                                 } else if (horizontalLocked) {
                                     change.consume()
-                                    // 跟手预览：横向位移按页宽映射为纵向滑移比例（左滑=下一周从下方滑入）
+                                    // 横向滑轨预览：位移按页宽映射为滑轨比例（左滑=下一周从右侧滑入）
                                     weekDragFraction = (-totalX / widthPx).coerceIn(-1f, 1f)
                                 }
                             }
@@ -297,6 +307,7 @@ fun MonthCalendar(
                         dayMap = dayMap,
                         collapsePx = collapsePx,
                         weekDragFraction = weekDragFraction,
+                        widthPx = widthPx,
                         onDateSelected = onDateSelected,
                         onMonthChange = onMonthChange,
                         modifier = Modifier.fillMaxWidth()
@@ -328,6 +339,7 @@ private fun MonthPager(
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
     collapsePx: Float,
     weekDragFraction: Float,
+    widthPx: Float,
     onDateSelected: (LocalDate) -> Unit,
     onMonthChange: (YearMonth) -> Unit,
     modifier: Modifier = Modifier
@@ -378,6 +390,7 @@ private fun MonthPager(
                 selectedDate = selectedDate,
                 collapsePx = collapsePx,
                 weekDragFraction = weekDragFraction,
+                widthPx = widthPx,
                 onDateSelected = onDateSelected,
                 modifier = Modifier.fillMaxWidth()
             )
@@ -397,8 +410,9 @@ internal fun weekIndexFor(date: LocalDate): Int {
 /**
  * 单月网格（5 或 6 行 × 7 列），固定 6 行高度（356dp），行间距由 SpaceEvenly 均匀分摊：
  * 6 行月间距≈0、5 行月间距≈9dp，任何月份所有日期完整显示且总高恒定。
- * 收缩时整网格经 translationY 上移（封顶=选中行在容器内垂直居中），使选中行保持可见；
- * [weekDragFraction] 非零时叠加一个行步长的纵向滑移，实现收缩态横滑切周的跟手预览；
+ * 收缩时整网格经 translationY 上移（封顶=选中行在容器内垂直居中），使选中行保持可见。
+ * 收缩态横滑切周为**横向滑轨**：上一周/下一周行摆放于选中行左右 ±1 页宽处，
+ * [weekDragFraction] 驱动整层 translationX 跟手横移；切日期后新行恰在原位置居中，无跳变。
  * 非选中月无选中行，按首行对齐（与 riji 行为一致）。
  */
 @Composable
@@ -409,6 +423,7 @@ private fun MonthGrid(
     selectedDate: LocalDate,
     collapsePx: Float,
     weekDragFraction: Float,
+    widthPx: Float,
     onDateSelected: (LocalDate) -> Unit,
     modifier: Modifier = Modifier
 ) {
@@ -419,42 +434,94 @@ private fun MonthGrid(
     val rowCount = cells.size / 7
     // SpaceEvenly：n 行产生 n+1 段等距空隙，每段 =（内容区高 - n*行高）/(n+1)
     val gapDp = (EXPANDED_GRID_HEIGHT_DP - 2 * GRID_VERTICAL_PADDING_DP - rowCount * WEEK_ROW_HEIGHT_DP) / (rowCount + 1)
-    val selRow = if (YearMonth.from(selectedDate) == month) weekIndexFor(selectedDate) else 0
+    val isSelMonth = YearMonth.from(selectedDate) == month
+    val selRow = if (isSelMonth) weekIndexFor(selectedDate) else 0
     // 选中行顶部在网格内的偏移：上内边距 + (行序号+1) 段间距 + 行序号 整行高
     val selRowTopPx = with(density) {
         (GRID_VERTICAL_PADDING_DP + gapDp * (selRow + 1) + WEEK_ROW_HEIGHT_DP * selRow).dp.toPx()
     }
-    // 完全收缩时让选中行在 76dp 容器内垂直居中：封顶位移=行中心-容器半高；
-    // 若对齐到行顶（旧公式），行会贴容器上沿、下方留出整段富余，视觉偏上
+    // 完全收缩时让选中行在 76dp 容器内垂直居中：封顶位移=行中心-容器半高
     val centeredCap = with(density) {
         ((selRowTopPx + (WEEK_ROW_HEIGHT_DP / 2f).dp.toPx()) - (COLLAPSED_GRID_HEIGHT_DP / 2f).dp.toPx())
             .coerceAtLeast(0f).toDp().toPx()
     }
-    // 相邻周之间的纵向步长（行高+间距），收缩态横滑切周的跟手预览按此滑移
-    val rowStepPx = with(density) { (WEEK_ROW_HEIGHT_DP + gapDp).dp.toPx() }
-    Column(
+    // 上/下一周行格：跨月从对应月网格取行；仅随月份/选中日重建，避免拖拽每帧计算
+    val stripCells = remember(month, selectedDate) {
+        if (isSelMonth) weekRowCells(selectedDate.minusDays(7)) to weekRowCells(selectedDate.plusDays(7)) else null
+    }
+    val stripVisible = isSelMonth && collapsePx >= centeredCap - 1f
+    Box(
         modifier = modifier
-            .padding(horizontal = 8.dp)
             .height(EXPANDED_GRID_HEIGHT_DP.dp)
             .graphicsLayer {
-                translationY = -collapsePx.coerceAtMost(centeredCap) - weekDragFraction * rowStepPx
+                translationY = -collapsePx.coerceAtMost(centeredCap)
+                translationX = -weekDragFraction * widthPx
             }
-            .padding(vertical = GRID_VERTICAL_PADDING_DP.dp),
-        verticalArrangement = Arrangement.SpaceEvenly
     ) {
-        cells.chunked(7).forEach { row ->
-            Row(modifier = Modifier.fillMaxWidth()) {
-                row.forEach { cell ->
-                    DayCell(
-                        cell = cell,
-                        isSelected = cell.date == selectedDate,
-                        isToday = cell.date == today,
-                        hasEvent = dayMap.containsKey(cell.date),
-                        onClick = { onDateSelected(cell.date) },
-                        modifier = Modifier.weight(1f)
-                    )
-                }
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(EXPANDED_GRID_HEIGHT_DP.dp)
+                .padding(horizontal = 8.dp, vertical = GRID_VERTICAL_PADDING_DP.dp),
+            verticalArrangement = Arrangement.SpaceEvenly
+        ) {
+            cells.chunked(7).forEach { row ->
+                WeekRow(row, selectedDate, today, dayMap, onDateSelected, Modifier.fillMaxWidth())
             }
+        }
+        if (stripVisible && stripCells != null) {
+            WeekRow(
+                cells = stripCells.first,
+                selectedDate = selectedDate,
+                today = today,
+                dayMap = dayMap,
+                onDateSelected = onDateSelected,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .offset { IntOffset(-widthPx.roundToInt(), selRowTopPx.roundToInt()) }
+            )
+            WeekRow(
+                cells = stripCells.second,
+                selectedDate = selectedDate,
+                today = today,
+                dayMap = dayMap,
+                onDateSelected = onDateSelected,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 8.dp)
+                    .offset { IntOffset(widthPx.roundToInt(), selRowTopPx.roundToInt()) }
+            )
+        }
+    }
+}
+
+/** [date] 所在周的行格（收缩态横滑预览行，跨月时取对应月的网格） */
+private fun weekRowCells(date: LocalDate): List<CalendarDayCell> {
+    val cells = buildMonthCells(YearMonth.from(date), emptyMap())
+    return cells.chunked(7).getOrElse(weekIndexFor(date)) { emptyList() }
+}
+
+/** 单周行（7 格），主网格与横滑预览滑轨共用 */
+@Composable
+private fun WeekRow(
+    cells: List<CalendarDayCell>,
+    selectedDate: LocalDate,
+    today: LocalDate,
+    dayMap: Map<LocalDate, List<CalendarOccurrence>>,
+    onDateSelected: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Row(modifier = modifier) {
+        cells.forEach { cell ->
+            DayCell(
+                cell = cell,
+                isSelected = cell.date == selectedDate,
+                isToday = cell.date == today,
+                hasEvent = dayMap.containsKey(cell.date),
+                onClick = { onDateSelected(cell.date) },
+                modifier = Modifier.weight(1f)
+            )
         }
     }
 }

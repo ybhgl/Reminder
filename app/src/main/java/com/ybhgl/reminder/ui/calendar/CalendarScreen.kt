@@ -117,12 +117,11 @@ fun CalendarScreen(
         collapseConnection(maxCollapsePx, { collapsePx }, { collapsePx = it })
     }
 
-    // 低死区触摸配置：仅把拖拽启动阈值降为 4dp，其余（fling 速度等）沿用系统值
+    // 零死区触摸配置：拖拽启动阈值完全去除，其余（fling 速度等）沿用系统值
     val baseViewConfig = LocalViewConfiguration.current
-    val lowSlopViewConfig = remember(density, baseViewConfig) {
-        val slopPx = with(density) { 4.dp.toPx() }
+    val lowSlopViewConfig = remember(baseViewConfig) {
         object : ViewConfiguration by baseViewConfig {
-            override val touchSlop: Float = slopPx
+            override val touchSlop: Float = 0f
         }
     }
 

@@ -144,6 +144,17 @@ class MonthCalendarTest {
     }
 
     @Test
+    fun `legal holiday label only shows on first day of holiday run`() {
+        // 10/1 当天走公历节日分支=国庆节
+        assertEquals("国庆节" to DayCellLabelKind.FESTIVAL, DayCellFormatter.subLabel(LocalDate.of(2026, 10, 1)))
+        // 10/3 处于国庆连休内但非节日当天 → 不应再显示国庆节，回退农历
+        val (label, kind) = DayCellFormatter.subLabel(LocalDate.of(2026, 10, 3))
+        org.junit.Assert.assertNotEquals(DayCellLabelKind.HOLIDAY, kind)
+        org.junit.Assert.assertNotEquals("国庆节", label)
+        assertTrue(label.isNotEmpty())
+    }
+
+    @Test
     fun `expanded height is fixed 6 rows and covers every month natural height`() {
         // 统一展开高度 = 6*56 + 2*10 = 356dp，跨月恒定不随当月行数变化
         assertEquals(356f, EXPANDED_GRID_HEIGHT_DP, 0.001f)
