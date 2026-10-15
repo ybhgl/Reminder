@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -205,9 +206,51 @@ fun MonthCalendar(
     val currentOnDateSelected = rememberUpdatedState(onDateSelected)
     var widthPx by remember { mutableFloatStateOf(1f) }
     val scope = rememberCoroutineScope()
-    // 收缩态横滑切周的跟手预览比例：-1..1（负=回看上一周），换算成网格纵向滑移
+    // 收缩态横滑切周的跟手预览比例：-1..1（负=回看上一周），换算成滑轨横向位移
     var weekDragFraction by remember { mutableFloatStateOf(0f) }
     var weekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
+    val currentDisplayMonth = rememberUpdatedState(displayMonth)
+
+    // ===== 月份 pager 状态（提升到本层：切周跨月提交需与日期变更同帧跳页，消除中间帧闪烁） =====
+    val center = 1200
+    // 基准月只在首次组合捕获一次：页码相对基准月线性映射，跨任意月切换均成立
+    val base = remember { displayMonth }
+    fun pageOf(m: YearMonth): Int =
+        center + ChronoUnit.MONTHS.between(base.atDay(1), m.atDay(1)).toInt()
+    fun monthOf(p: Int): YearMonth = base.plusMonths((p - center).toLong())
+    val pager = rememberPagerState(initialPage = pageOf(displayMonth)) { center * 2 }
+    // 程序化滚动标记：滚动途中的中间落页（长距离跳转的过渡页）不得回写 displayMonth，
+    // 否则 onMonthChange(过渡月) 会重启外部切月 LaunchedEffect 打断动画（"回今天卡在相邻月"根因）
+    var programmaticScroll by remember { mutableStateOf(false) }
+    val collapsedNow = collapsePx > maxCollapsePx / 2f
+
+    // 外部切月：滑到目标页；收缩态用瞬移（横滑动画与滑轨预览冲突）；
+    // 展开态距离过远先瞬移到相邻页再滑，避免一路连续滑过多个月
+    LaunchedEffect(displayMonth) {
+        val target = pageOf(displayMonth)
+        if (pager.settledPage != target && !pager.isScrollInProgress) {
+            programmaticScroll = true
+            try {
+                if (collapsedNow) {
+                    pager.scrollToPage(target)
+                } else {
+                    if (abs(target - pager.currentPage) > 2) {
+                        pager.scrollToPage(if (target > pager.currentPage) target - 1 else target + 1)
+                    }
+                    pager.animateScrollToPage(target)
+                }
+            } finally {
+                programmaticScroll = false
+            }
+        }
+    }
+    // 页停稳后上报月份（与外部切月的 LaunchedEffect 互斥收敛：target 已是 settledPage 时不再滚动）
+    LaunchedEffect(pager.settledPage) {
+        if (!programmaticScroll) {
+            val m = monthOf(pager.settledPage)
+            if (m != displayMonth) onMonthChange(m)
+        }
+    }
 
     Surface(
         modifier = modifier
@@ -291,9 +334,17 @@ fun MonthCalendar(
                                         Animatable(weekDragFraction).animateTo(sign, tween(150)) {
                                             weekDragFraction = value
                                         }
-                                        currentOnDateSelected.value(
-                                            currentSelectedDate.value.plusDays(if (sign > 0f) 7L else -7L)
-                                        )
+                                        val newDate = currentSelectedDate.value
+                                            .plusDays(if (sign > 0f) 7L else -7L)
+                                        val newMonth = YearMonth.from(newDate)
+                                        if (newMonth != currentDisplayMonth.value) {
+                                            // 跨月切周：同帧内先瞬移 pager 再改日期，
+                                            // 避免"旧页用新选中渲染"的中间帧（跨月切周结束闪烁）
+                                            programmaticScroll = true
+                                            pager.scrollToPage(pageOf(newMonth))
+                                            programmaticScroll = false
+                                        }
+                                        currentOnDateSelected.value(newDate)
                                         weekDragFraction = 0f
                                     } else {
                                         Animatable(weekDragFraction).animateTo(0f, tween(180)) {
@@ -312,6 +363,8 @@ fun MonthCalendar(
                         .wrapContentHeight(align = Alignment.Top, unbounded = true)
                 ) {
                     MonthPager(
+                        pagerState = pager,
+                        monthOf = { p -> monthOf(p) },
                         displayMonth = displayMonth,
                         today = today,
                         selectedDate = selectedDate,
@@ -321,7 +374,6 @@ fun MonthCalendar(
                         weekDragFraction = weekDragFraction,
                         widthPx = widthPx,
                         onDateSelected = onDateSelected,
-                        onMonthChange = onMonthChange,
                         modifier = Modifier.fillMaxWidth()
                     )
                 }
@@ -338,13 +390,14 @@ fun MonthCalendar(
 }
 
 /**
- * 跟手翻页的月历（移植 riji 的 MonthPager 模式）：无限页码中心偏移，页码与月份一一对应，
- * 停在哪页就显示哪个月；`beyondViewportPageCount=1` 预组合相邻月，拖拽期间相邻月内容完整。
- * 外部改月（日期选择器/回今天/选中他月日期）→ 滑到目标页；页停稳 → 上报 onMonthChange。
- * 页码即状态，从根上消除手写条带 dragPx 与切月状态的竞态（"下月空白"/"首屏偏一月"问题源）。
+ * 月历翻页视图（pager 状态由 MonthCalendar 持有）：无限页码中心偏移，页码与月份一一对应；
+ * `beyondViewportPageCount=1` 预组合相邻月，拖拽期间相邻月内容完整。
+ * 滑轨位移只作用于当前月页：相邻月页若同步平移，其首行会滑入视口与滑轨行叠加。
  */
 @Composable
 private fun MonthPager(
+    pagerState: PagerState,
+    monthOf: (Int) -> YearMonth,
     displayMonth: YearMonth,
     today: LocalDate,
     selectedDate: LocalDate,
@@ -354,54 +407,14 @@ private fun MonthPager(
     weekDragFraction: Float,
     widthPx: Float,
     onDateSelected: (LocalDate) -> Unit,
-    onMonthChange: (YearMonth) -> Unit,
     modifier: Modifier = Modifier
 ) {
-    val center = 1200
-    // 基准月只在首次组合捕获一次：页码相对基准月线性映射，跨任意月切换均成立
-    val base = remember { displayMonth }
-    fun pageOf(m: YearMonth): Int =
-        center + ChronoUnit.MONTHS.between(base.atDay(1), m.atDay(1)).toInt()
-    fun monthOf(p: Int): YearMonth = base.plusMonths((p - center).toLong())
-
-    val pager = rememberPagerState(initialPage = pageOf(displayMonth)) { center * 2 }
-    // 程序化滚动标记：滚动途中的中间落页（长距离跳转的过渡页）不得回写 displayMonth，
-    // 否则 onMonthChange(过渡月) 会重启外部切月 LaunchedEffect 打断动画（"回今天卡在相邻月"根因）
-    var programmaticScroll by remember { mutableStateOf(false) }
-
-    // 收缩态（切周场景）程序化换月用瞬移：横滑切月动画与滑轨预览视觉冲突
-    val density = LocalDensity.current
-    val collapsedNow = collapsePx > with(density) {
-        (EXPANDED_GRID_HEIGHT_DP - COLLAPSED_GRID_HEIGHT_DP).dp.toPx() / 2f
-    }
-    // 外部切月：滑到目标页；距离过远先瞬移到相邻页再滑，避免一路连续滑过多个月
-    LaunchedEffect(displayMonth) {
-        val target = pageOf(displayMonth)
-        if (pager.settledPage != target && !pager.isScrollInProgress) {
-            programmaticScroll = true
-            try {
-                if (collapsedNow) {
-                    pager.scrollToPage(target)
-                } else {
-                    if (abs(target - pager.currentPage) > 2) {
-                        pager.scrollToPage(if (target > pager.currentPage) target - 1 else target + 1)
-                    }
-                    pager.animateScrollToPage(target)
-                }
-            } finally {
-                programmaticScroll = false
-            }
-        }
-    }
-    // 页停稳后上报月份（与外部切月的 LaunchedEffect 互斥收敛：target 已是 settledPage 时不再滚动）
-    LaunchedEffect(pager.settledPage) {
-        if (!programmaticScroll) {
-            val m = monthOf(pager.settledPage)
-            if (m != displayMonth) onMonthChange(m)
-        }
-    }
-
-    HorizontalPager(state = pager, beyondViewportPageCount = 1, key = { it }, modifier = modifier) { p ->
+    HorizontalPager(
+        state = pagerState,
+        beyondViewportPageCount = 1,
+        key = { it },
+        modifier = modifier
+    ) { p ->
         val m = monthOf(p)
         // ±1 月内的页渲染完整网格；更远页仅占位（快速甩动一闪而过，事件数据窗口也不覆盖）
         if (abs(ChronoUnit.MONTHS.between(displayMonth.atDay(1), m.atDay(1)).toInt()) <= 1) {
@@ -412,7 +425,6 @@ private fun MonthPager(
                 selectedDate = selectedDate,
                 collapsePx = collapsePx,
                 maxCollapsePx = maxCollapsePx,
-                // 滑轨位移只作用于当前月页：相邻月页若同步平移，其首行会滑入视口与滑轨行叠加
                 weekDragFraction = if (m == displayMonth) weekDragFraction else 0f,
                 widthPx = widthPx,
                 onDateSelected = onDateSelected,
@@ -478,14 +490,22 @@ private fun MonthGrid(
     // 若按位移封顶（centeredCap）判定，收缩中途容器仍高、下方行已被空白 → "顶部到位下方变空白"
     val collapsedFull = collapsePx >= maxCollapsePx - 1f
     val stripVisible = isSelMonth && collapsePx >= centeredCap - 1f
+    // 外层裁剪盒=页视口：滑轨行摆在 ±1 页宽处，若不按页裁剪会渗入相邻月页视口
+    // （邻页收缩过半滑轨激活时，其 ±W 滑轨行恰好落在本页可见行带，表现为"邻页上滑出现叠加"）
     Box(
         modifier = modifier
             .height(EXPANDED_GRID_HEIGHT_DP.dp)
-            .graphicsLayer {
-                translationY = -collapsePx.coerceAtMost(centeredCap)
-                translationX = -weekDragFraction * widthPx
-            }
+            .clipToBounds()
     ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(EXPANDED_GRID_HEIGHT_DP.dp)
+                .graphicsLayer {
+                    translationY = -collapsePx.coerceAtMost(centeredCap)
+                    translationX = -weekDragFraction * widthPx
+                }
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -526,6 +546,7 @@ private fun MonthGrid(
                     .padding(horizontal = 8.dp)
                     .offset { IntOffset(widthPx.roundToInt(), selRowTopPx.roundToInt()) }
             )
+        }
         }
     }
 }
@@ -685,7 +706,8 @@ private fun DayCell(
                 modifier = Modifier
                     .size(4.dp)
                     .background(
-                        color = if (hasEvent && cell.inMonth) {
+                        // 补位日（视图中显示的其他月日期）有事件时同样标小点：可点击且有内容，不应隐藏
+                        color = if (hasEvent) {
                             dotColor
                         } else {
                             Color.Transparent
