@@ -134,8 +134,15 @@ fun CalendarScreen(
         }
     }
 
+    // 手动写入（日历面/手柄拖拽、列表嵌套滚动）统一入口：先取消在跑的吸附动画。
+    // 否则动画每帧覆写与手动值互踩——吸附中途再次上滑时会偶发"无动画直接收缩"跳变
+    fun setCollapseManual(value: Float) {
+        collapseJob?.cancel()
+        collapsePx = value
+    }
+
     val calendarCollapseConnection = remember(maxCollapsePx) {
-        collapseConnection(maxCollapsePx, { collapsePx }, { collapsePx = it })
+        collapseConnection(maxCollapsePx, { collapsePx }, { setCollapseManual(it) })
     }
 
     // 事件列表滚动状态：纵向手势由列表自身持有，收展衔接全部走 nestedScroll
@@ -258,7 +265,7 @@ fun CalendarScreen(
             dayMap = dayMap,
             collapsePx = collapsePx,
             maxCollapsePx = maxCollapsePx,
-            onCollapseChange = { collapsePx = it },
+            onCollapseChange = { setCollapseManual(it) },
             onCollapseSettle = {
                 animateCollapseTo(if (collapsePx > maxCollapsePx / 2f) maxCollapsePx else 0f)
             },
