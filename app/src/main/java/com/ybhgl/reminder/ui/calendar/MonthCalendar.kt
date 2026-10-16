@@ -707,29 +707,36 @@ private fun DayCell(
             ),
         contentAlignment = Alignment.Center
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            verticalArrangement = Arrangement.Center,
+        // 文字列与事件小点分层摆放：小点锚定格子底部固定 4dp，不参与 Column 纵向排布。
+        // 旧实现 Column 固定 52dp 且内容恰好占满（零余量），字体行高略增时最后一个子项
+        // （小点）被剩余空间压缩成 4dp×1~2dp 的"小横条"（6 行月底部行最明显）。
+        Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .height(52.dp)
-                .padding(vertical = 3.dp)
+                .height(52.dp),
+            contentAlignment = Alignment.TopCenter
         ) {
-            Text(
-                text = cell.date.dayOfMonth.toString(),
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
-                color = contentColor
-            )
-            Text(
-                text = cell.subLabel,
-                style = MaterialTheme.typography.labelSmall,
-                color = subColor,
-                maxLines = 1
-            )
-            Spacer(modifier = Modifier.height(2.dp))
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(top = 3.dp)
+            ) {
+                Text(
+                    text = cell.date.dayOfMonth.toString(),
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = if (isToday) FontWeight.Bold else FontWeight.Medium,
+                    color = contentColor
+                )
+                Text(
+                    text = cell.subLabel,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = subColor,
+                    maxLines = 1
+                )
+            }
             Box(
                 modifier = Modifier
+                    .align(Alignment.BottomCenter)
+                    .padding(bottom = 3.dp)
                     .size(4.dp)
                     .background(
                         // 补位日（视图中显示的其他月日期）有事件时同样标小点：可点击且有内容，不应隐藏
