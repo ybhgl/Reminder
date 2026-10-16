@@ -265,6 +265,9 @@ fun CalendarScreen(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
+                // 日历与滚动区之间的固定间距：加在 bounds 之外（非 contentPadding），
+                // 列表滚动后内容被 bounds 顶边裁剪，不再贴住日历底缘（收缩态尤其明显）
+                .padding(top = 10.dp)
                 .pointerInput(maxCollapsePx) {
                     awaitEachGesture {
                         var totalX = 0f
@@ -305,7 +308,8 @@ fun CalendarScreen(
                 .nestedScroll(calendarCollapseConnection),
             verticalArrangement = Arrangement.spacedBy(10.dp),
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                top = 12.dp,
+                // 10dp bounds 间距 + 2dp contentPadding = 原 12dp，未滚动时顶部观感不变
+                top = 2.dp,
                 bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
             )
         ) {
