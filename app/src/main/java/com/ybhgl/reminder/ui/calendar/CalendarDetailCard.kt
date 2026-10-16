@@ -138,6 +138,8 @@ fun CalendarDetailCard(
 
 /**
  * 宜/忌横向单排：优先两侧各 3 条，用文本实测宽度按 2、1 递减直至放得下。
+ * 两侧按"徽标+文本"的实测自然宽度比例分配权重（而非对半分）：判宽条件保证两侧
+ * 自然宽之和 ≤ 可用宽，故每侧必拿到 ≥ 自然宽的份额，单行不溢出。
  */
 @Composable
 private fun TabooPreviewRow(
@@ -146,37 +148,43 @@ private fun TabooPreviewRow(
     modifier: Modifier = Modifier
 ) {
     if (recommends.isEmpty() && avoids.isEmpty()) return
-    val bodyStyle = MaterialTheme.typography.bodyMedium
+    // 测量样式必须与 TabooBlock 实际渲染一致（bodyMedium + Medium 字重），
+    // 否则 Normal 字重测量值系统性偏小，长侧换行误判
+    val measureStyle = MaterialTheme.typography.bodyMedium.copy(fontWeight = FontWeight.Medium)
     val measurer = rememberTextMeasurer()
     BoxWithConstraints(modifier = modifier.fillMaxWidth()) {
         val availablePx = with(LocalDensity.current) { maxWidth.toPx() }
         // 每组占位 = 28dp 圆形徽标 + 12dp 间距；两组之间 16dp
-        val chromePx = with(LocalDensity.current) { ((28.dp + 12.dp) * 2 + 16.dp).toPx() }
-        val count = remember(availablePx, recommends, avoids, bodyStyle) {
+        val groupChromePx = with(LocalDensity.current) { (28.dp + 12.dp).toPx() }
+        val chromePx = groupChromePx * 2 + with(LocalDensity.current) { 16.dp.toPx() }
+        val (count, recW, avoidW) = remember(availablePx, recommends, avoids, measureStyle) {
             var picked = 1
+            var rw = 0f
+            var aw = 0f
             for (c in 3 downTo 1) {
-                val recW = measurer.measure(recommends.take(c).joinToString(" "), style = bodyStyle).size.width.toFloat()
-                val avoidW = measurer.measure(avoids.take(c).joinToString(" "), style = bodyStyle).size.width.toFloat()
-                if (chromePx + recW + avoidW <= availablePx) {
+                rw = measurer.measure(recommends.take(c).joinToString(" "), style = measureStyle).size.width.toFloat()
+                aw = measurer.measure(avoids.take(c).joinToString(" "), style = measureStyle).size.width.toFloat()
+                if (chromePx + rw + aw <= availablePx) {
                     picked = c
                     break
                 }
             }
-            picked
+            Triple(picked, rw, aw)
         }
         Row(modifier = Modifier.fillMaxWidth()) {
             TabooBlock(
                 label = "宜",
                 color = MaterialTheme.colorScheme.error,
                 items = recommends.take(count),
-                modifier = Modifier.weight(1f)
+                // 空侧不占权重（TabooBlock 空列表不渲染，避免留出死空间）
+                modifier = Modifier.weight(if (recommends.isEmpty()) 0.001f else groupChromePx + recW)
             )
             Spacer(modifier = Modifier.width(16.dp))
             TabooBlock(
                 label = "忌",
                 color = MaterialTheme.colorScheme.onSurface,
                 items = avoids.take(count),
-                modifier = Modifier.weight(1f)
+                modifier = Modifier.weight(if (avoids.isEmpty()) 0.001f else groupChromePx + avoidW)
             )
         }
     }
