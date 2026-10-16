@@ -290,7 +290,8 @@ fun MonthCalendar(
                             var decided = false
                             var verticalLocked = false
                             var horizontalLocked = false
-                            val startCollapse = currentCollapse.value
+                            var startCollapse = currentCollapse.value
+                            var anchorY = 0f
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val change = event.changes.firstOrNull() ?: break
@@ -317,12 +318,18 @@ fun MonthCalendar(
                                     decided = true
                                     verticalLocked = abs(totalY) > abs(totalX)
                                     horizontalLocked = !verticalLocked && collapsedNow
+                                    if (verticalLocked) {
+                                        // 判向成立瞬间重锚基线：DOWN 至今 collapsePx 可能已被列表 fling/
+                                        // 吸附动画改写，沿用起手值会让首帧写回旧基线 → 一帧跳变（无动画直收）
+                                        startCollapse = currentCollapse.value
+                                        anchorY = totalY
+                                    }
                                 }
                                 if (collapsedNow) {
                                     change.consume()
                                     if (verticalLocked) {
                                         currentOnCollapseChange.value(
-                                            (startCollapse - totalY).coerceIn(0f, maxCollapsePx)
+                                            (startCollapse - (totalY - anchorY)).coerceIn(0f, maxCollapsePx)
                                         )
                                     } else {
                                         // 横向滑轨预览：位移按页宽映射为滑轨比例（左滑=下一周从右侧滑入）
@@ -331,7 +338,7 @@ fun MonthCalendar(
                                 } else if (verticalLocked) {
                                     change.consume()
                                     currentOnCollapseChange.value(
-                                        (startCollapse - totalY).coerceIn(0f, maxCollapsePx)
+                                        (startCollapse - (totalY - anchorY)).coerceIn(0f, maxCollapsePx)
                                     )
                                 }
                             }
@@ -621,7 +628,8 @@ private fun CollapseHandle(
                 awaitEachGesture {
                     var totalY = 0f
                     var dragging = false
-                    val startCollapse = currentCollapse.value
+                    var startCollapse = currentCollapse.value
+                    var anchorY = 0f
                     while (true) {
                         // Initial pass + 越 slop 后无条件消费（不分方向）：
                         // 外层主页 pager 在 Main pass 只见已消费事件，纵向拖拉杆时手指横向漂移不再切页
@@ -631,10 +639,16 @@ private fun CollapseHandle(
                             val dy = change.positionChangeIgnoreConsumed().y
                             if (dy == 0f) continue
                             totalY += dy
-                            if (!dragging && abs(totalY) > viewConfiguration.touchSlop) dragging = true
+                            if (!dragging && abs(totalY) > viewConfiguration.touchSlop) {
+                                dragging = true
+                                // 越 slop 起拖瞬间重锚基线，同日历面手势：防 DOWN 后 collapsePx
+                                // 被 fling/动画改写导致首帧写回旧基线跳变
+                                startCollapse = currentCollapse.value
+                                anchorY = totalY
+                            }
                             if (dragging) {
                                 change.consume()
-                                onDragCollapse((startCollapse - totalY).coerceIn(0f, maxCollapsePx))
+                                onDragCollapse((startCollapse - (totalY - anchorY)).coerceIn(0f, maxCollapsePx))
                             }
                         } else {
                             if (!dragging) onTap() else onDragEnd()
