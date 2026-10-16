@@ -25,7 +25,6 @@ import androidx.compose.animation.expandVertically
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
-import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -45,22 +44,18 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
@@ -70,7 +65,6 @@ import java.time.LocalDate
 import java.time.YearMonth
 import java.time.format.DateTimeFormatter
 import java.util.Locale
-import kotlin.math.abs
 
 /** 顶部标题只显示年月（如 2026/10），不显示具体天数 */
 private val HEADER_MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM", Locale.CHINA)
@@ -144,13 +138,25 @@ fun CalendarScreen(
         collapseConnection(maxCollapsePx, { collapsePx }, { collapsePx = it })
     }
 
-    // 事件列表滚动状态：收缩态下拉手势需先判断列表是否已到顶（未到顶优先滚动列表，
-    // 到顶后的余量经 nestedScroll onPostScroll 无缝接管为日历展开）
+    // 事件列表滚动状态：纵向手势由列表自身持有，收展衔接全部走 nestedScroll
     val listState = rememberLazyListState()
 
-    // 列表区收缩驱动状态：Initial pass 以 ~2dp 近零阈值接管纵向手势
-    val currentCollapse = rememberUpdatedState(collapsePx)
-    val driverSlopPx = with(density) { 2.dp.toPx() }
+    // 列表滚动结束后的统一吸附：同时覆盖"慢拖无惯性"与"fling 结束"两种抬手场景
+    // （onPostFling 在纯拖拽无惯性时不保证回调，吸附不能只依赖它）；
+    // 新滚动开始即取消残留的吸附动画，避免与 onPre/onPostScroll 同帧双写 collapsePx
+    LaunchedEffect(listState) {
+        snapshotFlow { listState.isScrollInProgress }
+            .collect { scrolling ->
+                if (scrolling) {
+                    collapseJob?.cancel()
+                } else {
+                    val cur = collapsePx
+                    if (cur > 0f && cur < maxCollapsePx) {
+                        animateCollapseTo(if (cur > maxCollapsePx / 2f) maxCollapsePx else 0f)
+                    }
+                }
+            }
+    }
 
     // 覆盖前后补位日：窗口取 displayMonth±1 与选中日期所在月的并集，
     // 保证划到远离选中月的月份时，选中日的事件卡片仍完整显示
@@ -273,9 +279,9 @@ fun CalendarScreen(
 
         // ===== 农历详情卡 + 当日事件列表 =====
         // 详情卡并入统一滚动容器：日历下方整块区域的上下拖动都能触发收展手势。
-        // 收缩驱动在 Initial pass 以 ~2dp 阈值接管纵向手势（近零死区）：
-        // 有收展空间时消费事件并实时驱动 collapsePx；无空间（如已收满继续上滑）时
-        // 放手交给列表自身滚动（含惯性与嵌套滚动衔接）
+        // 纵向手势由列表自身（Main pass）唯一持有，收展完全交给 nestedScroll：
+        // onPreScroll 上滑优先消耗收缩日历、onPostScroll 到顶后的下拉余量展开；
+        // 不再自挂驱动手势，从根上消除"驱动 break → 列表重新累计 slop"的交接死区
         LazyColumn(
             state = listState,
             modifier = Modifier
@@ -284,48 +290,6 @@ fun CalendarScreen(
                 // 日历与滚动区之间的固定间距：加在 bounds 之外（非 contentPadding），
                 // 列表滚动后内容被 bounds 顶边裁剪，不再贴住日历底缘（收缩态尤其明显）
                 .padding(top = 10.dp)
-                .pointerInput(maxCollapsePx) {
-                    awaitEachGesture {
-                        var totalX = 0f
-                        var totalY = 0f
-                        var decided = false
-                        var vertical = false
-                        var took = false
-                        while (true) {
-                            val event = awaitPointerEvent(PointerEventPass.Initial)
-                            val change = event.changes.firstOrNull() ?: break
-                            if (!change.pressed) break
-                            val d = change.positionChangeIgnoreConsumed()
-                            if (d.x == 0f && d.y == 0f) continue
-                            totalX += d.x
-                            totalY += d.y
-                            if (!decided) {
-                                if (abs(totalX) < driverSlopPx && abs(totalY) < driverSlopPx) continue
-                                decided = true
-                                vertical = abs(totalY) > abs(totalX)
-                                if (!vertical) break // 横向手势：整体放行给列表/主页 pager
-                            }
-                            val cur = currentCollapse.value
-                            // 下拉（展开方向）且列表未到顶：放行给列表滚动（收缩态下用户想先看更早事件）；
-                            // 列表滚到顶后继续下拉，未消费余量由 nestedScroll onPostScroll 接管为展开
-                            if (d.y > 0f && cur > 0.5f && listState.canScrollBackward) {
-                                break
-                            }
-                            val next = (cur - d.y).coerceIn(0f, maxCollapsePx)
-                            if (next == cur &&
-                                ((d.y < 0f && cur >= maxCollapsePx - 0.5f) || (d.y > 0f && cur <= 0.5f))
-                            ) {
-                                break // 收展已到边界：本手势余量交给列表滚动
-                            }
-                            change.consume()
-                            took = true
-                            if (next != cur) collapsePx = next
-                        }
-                        if (took) {
-                            animateCollapseTo(if (collapsePx > maxCollapsePx / 2f) maxCollapsePx else 0f)
-                        }
-                    }
-                }
                 .nestedScroll(calendarCollapseConnection),
             // 卡间距改为各 item 内部 top padding：添加卡 AnimatedVisibility 收起后不留残余空隙
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
@@ -423,7 +387,7 @@ private fun AddEventCard(
  * 跟手收展嵌套滚动连接（移植 riji）：
  * 事件区上滑先消耗纵向增量收缩日历，收满后列表才开始滚动；
  * 列表在顶部下拉先展开日历，展开完毕列表再响应下拉；
- * 抬手停在"完全展开/完全收缩"中较近的一端（tween 220）。
+ * 抬手吸附由 CalendarScreen 侧的列表滚动状态观察统一负责（tween 220）。
  */
 private fun collapseConnection(
     max: Float,
@@ -448,14 +412,5 @@ private fun collapseConnection(
             return Offset(0f, consumedExpand)
         }
         return Offset.Zero
-    }
-
-    override suspend fun onPostFling(consumed: Velocity, available: Velocity): Velocity {
-        val cur = get()
-        if (cur > 0f && cur < max) {
-            val target = if (cur > max / 2f) max else 0f
-            Animatable(cur).animateTo(target, tween(220)) { set(value) }
-        }
-        return Velocity.Zero
     }
 }
