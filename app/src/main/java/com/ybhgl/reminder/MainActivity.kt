@@ -89,6 +89,8 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Calculate
+import androidx.compose.material.icons.filled.CalendarMonth
+import com.ybhgl.reminder.ui.calendar.CalendarScreen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowBack
@@ -139,6 +141,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -210,6 +213,7 @@ import com.ybhgl.reminder.data.BackupPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
 import com.ybhgl.reminder.ui.theme.ReminderTheme
+import com.ybhgl.reminder.ui.theme.getDefaultRawColor
 import com.ybhgl.reminder.util.CalendarUtil
 import com.ybhgl.reminder.util.FontManager
 import com.ybhgl.reminder.util.ReminderSectionData
@@ -1124,17 +1128,6 @@ private fun buildHeaderTitle(title: String, suffix: String): String {
     return parts.joinToString(" ")
 }
 
-private fun getDefaultRawColor(type: ReminderType, isDark: Boolean): Color {
-    return when {
-        !isDark && type == ReminderType.ANNUAL -> Color(0xFF1E88E5)
-        !isDark && type == ReminderType.COUNT_UP -> Color(0xFFF28C20)
-        !isDark && type == ReminderType.BIRTHDAY -> Color(0xFFE53935)
-        isDark && type == ReminderType.ANNUAL -> Color(0xFF64B5F6)
-        isDark && type == ReminderType.BIRTHDAY -> Color(0xFFEF5350)
-        else -> Color(0xFFF7A03A) // isDark && COUNT_UP
-    }
-}
-
 @Composable
 private fun reminderCardVisuals(type: ReminderType): ReminderCardVisuals {
     return reminderCardVisuals(
@@ -1367,6 +1360,23 @@ val StringSetSaver = androidx.compose.runtime.saveable.Saver<Set<String>, List<S
     restore = { list -> list.toSet() }
 )
 
+/**
+ * 测量期读取动态顶部偏移的 WindowInsets（material3 ScrollBehavior 同款模式）：
+ * getter 在布局测量阶段被调用，titleOffsetPx 逐帧变化只触发节点重测量，
+ * 不再重组整个页 lambda（含 beyondViewportPageCount 保留的离屏相邻分类页）。
+ */
+private class DynamicTopInsets(
+    val leftPx: Int = 0,
+    val rightPx: Int = 0,
+    val bottomPx: Int = 0,
+    val topPxProvider: () -> Float
+) : WindowInsets {
+    override fun getLeft(density: Density, layoutDirection: LayoutDirection): Int = leftPx
+    override fun getTop(density: Density): Int = topPxProvider().coerceAtLeast(0f).roundToInt()
+    override fun getRight(density: Density, layoutDirection: LayoutDirection): Int = rightPx
+    override fun getBottom(density: Density): Int = bottomPx
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReminderListScreen(
@@ -1476,10 +1486,16 @@ fun ReminderListScreen(
         }
     }
 
+    // 日历页（pager 第 0 页）标志：该页顶栏/底栏 alpha=0 完全不可见，
+    // 但 topBarHeightPx 保留最后测量值>0——若不排除，首访上滑会先被"隐藏隐形顶栏"
+    // 消费掉整个顶栏高度才轮到日历收缩/列表滚动（冷启动死区根因）
+    var calendarPageActive by remember { mutableStateOf(false) }
+
     val customNestedScrollConnection = remember(topBarHeightPx, bottomBarHeightPx, currentScrollBehavior, isSearchActive, isSelectionMode) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.NONE || isSelectionMode) {
+                if (calendarPageActive ||
+                    currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.NONE || isSelectionMode) {
                     return Offset.Zero
                 }
 
@@ -1541,7 +1557,13 @@ fun ReminderListScreen(
     val homeCategoryEnabled by remember(context) { com.ybhgl.reminder.data.homeCategoryFlow(context) }
         .collectAsState(initial = null)
     val showCategories = homeCategoryEnabled != false
-    val pagerState = rememberPagerState { if (showCategories) ReminderTab.entries.size else 1 }
+    // 日历视图占用 pager 第 0 页（主页右滑露出），列表页从第 1 页起：listPage = page - 1
+    val pagerState = rememberPagerState(initialPage = 1) {
+        if (showCategories) ReminderTab.entries.size + 1 else 2
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage == 0 }.collect { calendarPageActive = it }
+    }
     var hasSetDefaultPage by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(defaultPage, homeCategoryEnabled) {
         if (!hasSetDefaultPage && defaultPage != null && homeCategoryEnabled == true) {
@@ -1551,11 +1573,27 @@ fun ReminderListScreen(
                 AppDefaultPage.BIRTHDAY -> 2
                 else -> return@LaunchedEffect
             }
-            pagerState.scrollToPage(page)
+            pagerState.scrollToPage(page + 1)
             hasSetDefaultPage = true
         }
     }
+    // 日历页（第 0 页）与列表页间的滑动进度：1=日历完全展示，0=列表页
+    val calendarProgress = when (pagerState.currentPage) {
+        0 -> 1f - pagerState.currentPageOffsetFraction.coerceIn(0f, 1f)
+        1 -> (-pagerState.currentPageOffsetFraction).coerceIn(0f, 1f)
+        else -> 0f
+    }
+    // 搜索/选择模式依赖顶栏与底栏，激活时若停在日历页则弹回列表页
+    LaunchedEffect(isSelectionMode, isSearchActive) {
+        if ((isSelectionMode || isSearchActive) && pagerState.currentPage == 0) {
+            pagerState.animateScrollToPage(1)
+        }
+    }
     val coroutineScope = rememberCoroutineScope()
+    // 日历页（第 0 页）按返回键回到主列表页，而不是直接退出应用
+    BackHandler(enabled = pagerState.currentPage == 0) {
+        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+    }
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp.dp
     val columnsCount = kotlin.math.max(2, ((screenWidthDp - 16.dp) / 176.dp).toInt())
@@ -1583,11 +1621,22 @@ fun ReminderListScreen(
                 state = pagerState,
                 modifier = Modifier
                     .fillMaxSize(),
-                userScrollEnabled = showCategories,
+                userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
-                val filteredItems = remember(reminderListUiState.itemList, page, showCategories) {
-                    if (showCategories) reminderListUiState.itemList.filter(tabs[page].filter)
+                if (page == 0) {
+                    CalendarScreen(
+                        items = reminderListUiState.itemList,
+                        onNavigateDetail = { id -> navController.navigate(Routes.detailReminder(id)) },
+                        onAddReminder = { date ->
+                            navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
+                        }
+                    )
+                    return@HorizontalPager
+                }
+                val listPage = page - 1
+                val filteredItems = remember(reminderListUiState.itemList, listPage, showCategories) {
+                    if (showCategories) reminderListUiState.itemList.filter(tabs[listPage].filter)
                     else reminderListUiState.itemList
                 }
                 val sections = remember(filteredItems, reminderListUiState.tagsList) {
@@ -1616,29 +1665,37 @@ fun ReminderListScreen(
                     // 正在加载时不显示 EmptyStateCard，避免闪屏
                     Box(modifier = Modifier.fillMaxSize())
                 } else if (sections.isEmpty()) {
-                    val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
-                    val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)
+                    val density = LocalDensity.current
+                    val staticBottomPadding = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     EmptyStateCard(
                         modifier = Modifier
                             .padding(horizontal = 24.dp, vertical = 32.dp)
-                            .padding(top = dynamicTopPadding, bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                            // top 在测量期读收展状态：顶栏移动只触发重测，不逐帧重组页 lambda
+                            .windowInsetsPadding(
+                                DynamicTopInsets(
+                                    bottomPx = with(density) { staticBottomPadding.roundToPx() },
+                                    topPxProvider = { topBarHeightPx + titleOffsetPx }
+                                )
+                            )
                             .fillMaxWidth()
                     )
                 } else {
-                    val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
-                    val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)
+                    val density = LocalDensity.current
+                    val staticBottomPadding = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = 16.dp,
-                            top = dynamicTopPadding,
-                            bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                        )
+                        // top 在测量期读 titleOffsetPx：顶栏收展只触发列表重测，
+                        // 不再逐帧重组页 lambda（含离屏相邻分类页）
+                        contentPadding = DynamicTopInsets(
+                            leftPx = with(density) { 16.dp.roundToPx() },
+                            rightPx = with(density) { 16.dp.roundToPx() },
+                            bottomPx = with(density) { staticBottomPadding.roundToPx() },
+                            topPxProvider = { topBarHeightPx + titleOffsetPx }
+                        ).asPaddingValues()
                     ) {
                         sections.forEachIndexed { sectionIndex, section ->
-                            val collapsedKey = "${tabs[page].name}_${section.key}"
+                            val collapsedKey = "${tabs[listPage].name}_${section.key}"
                             item(key = "header_${section.key}_${viewMode.name}") {
                                 SectionHeader(
                                     title = section.title,
@@ -1723,9 +1780,11 @@ fun ReminderListScreen(
                 }
             }
 
-            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
+            // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)；日历页随顶栏一起淡出
             StatusBarScrim(
-                modifier = Modifier.align(Alignment.TopCenter)
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .graphicsLayer { alpha = 1f - calendarProgress }
             )
 
             // 标题栏 (Top Bar)
@@ -1750,14 +1809,17 @@ fun ReminderListScreen(
                 modifier = Modifier
                     .fillMaxWidth()
                     .onSizeChanged {
-                        topBarHeightPx = it.height.toFloat()
+                        // 日历页内容被跳过组合时高度为 0，保留最后测量值供列表页占位
+                        if (it.height > 0) topBarHeightPx = it.height.toFloat()
                     }
                     .graphicsLayer {
                         translationY = titleOffsetPx
+                        alpha = 1f - calendarProgress
                     }
                     .then(topAppBarModifier)
             ) {
-                if (isSelectionMode) {
+                // 日历页完全展示时不组合顶栏内容：既消除淡出浮层的误触，也让日历头部点击直达
+                if (isSelectionMode && calendarProgress < 0.999f) {
                     TopAppBar(
                         title = { Text("已选择 ${selectedIds.size} 项") },
                         windowInsets = TopAppBarDefaults.windowInsets,
@@ -1777,7 +1839,7 @@ fun ReminderListScreen(
                             }
                         }
                     )
-                } else {
+                } else if (calendarProgress < 0.999f) {
                     TopAppBar(
                         title = {
                             Icon(
@@ -1925,6 +1987,16 @@ fun ReminderListScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         FabMenuItem(
+                            icon = Icons.Default.CalendarMonth,
+                            label = "日历视图",
+                            onClick = {
+                                fabMenuExpanded = false
+                                coroutineScope.launch {
+                                    pagerState.animateScrollToPage(0)
+                                }
+                            }
+                        )
+                        FabMenuItem(
                             icon = Icons.Default.Calculate,
                             label = "日期计算",
                             onClick = {
@@ -1957,12 +2029,17 @@ fun ReminderListScreen(
                     .align(Alignment.BottomCenter)
                     .fillMaxWidth()
                     .onSizeChanged {
-                        bottomBarHeightPx = it.height.toFloat()
+                        if (it.height > 0) bottomBarHeightPx = it.height.toFloat()
                     }
-                    .graphicsLayer { translationY = bottomBarOffsetPx }
+                    .graphicsLayer {
+                        translationY = bottomBarOffsetPx
+                        alpha = 1f - calendarProgress
+                    }
                     .windowInsetsPadding(WindowInsets.navigationBars)
                     .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
             ) {
+                // 日历页完全展示时不组合底栏内容，避免淡出浮层误触并放行日历手势
+                if (calendarProgress < 0.999f) {
                     Row(
                         modifier = Modifier.fillMaxWidth(),
                         verticalAlignment = Alignment.CenterVertically
@@ -2007,10 +2084,10 @@ fun ReminderListScreen(
                                 FloatingSegmentedTabs(
                                     tabs = tabs,
                                     counts = tabCounts,
-                                    selectedIndex = pagerState.currentPage,
+                                    selectedIndex = pagerState.currentPage - 1,
                                     onTabSelected = { index ->
                                         coroutineScope.launch {
-                                            pagerState.animateScrollToPage(index)
+                                            pagerState.animateScrollToPage(index + 1)
                                         }
                                     },
                                     modifier = Modifier
@@ -2050,7 +2127,8 @@ fun ReminderListScreen(
                                         showDeleteDialog = true
                                     }
                                 } else {
-                                    val currentTab = tabs[pagerState.currentPage]
+                                    // 日历页（第 0 页）时底栏已淡出，此处钳制防越界
+                                    val currentTab = tabs[(pagerState.currentPage - 1).coerceAtLeast(0)]
                                     val currentType = when (currentTab) {
                                         ReminderTab.COUNTDOWN -> ReminderType.ANNUAL
                                         ReminderTab.COUNTUP -> ReminderType.COUNT_UP
@@ -2073,6 +2151,7 @@ fun ReminderListScreen(
                             )
                         }
                     }
+                }
                 }
             }
 

@@ -77,8 +77,8 @@ object CalendarUtil {
         return periodStart
     }
 
-    /** 周期开始日向前滚动一步（农历年/月用农历规则，日/周按公历） */
-    private fun advancePeriodStart(currentDate: LocalDate, repeatInfo: com.ybhgl.reminder.data.RepeatInfo, isLunar: Boolean): LocalDate {
+    /** 周期开始日向前滚动一步（农历年/月用农历规则，日/周按公历）。internal 供日历视图事件发生日迭代复用 */
+    internal fun advancePeriodStart(currentDate: LocalDate, repeatInfo: com.ybhgl.reminder.data.RepeatInfo, isLunar: Boolean): LocalDate {
         return if (!isLunar) {
             // Gregorian calculation
             when (repeatInfo.unit) {
