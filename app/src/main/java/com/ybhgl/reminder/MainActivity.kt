@@ -141,6 +141,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -1468,10 +1469,16 @@ fun ReminderListScreen(
         }
     }
 
+    // 日历页（pager 第 0 页）标志：该页顶栏/底栏 alpha=0 完全不可见，
+    // 但 topBarHeightPx 保留最后测量值>0——若不排除，首访上滑会先被"隐藏隐形顶栏"
+    // 消费掉整个顶栏高度才轮到日历收缩/列表滚动（冷启动死区根因）
+    var calendarPageActive by remember { mutableStateOf(false) }
+
     val customNestedScrollConnection = remember(topBarHeightPx, bottomBarHeightPx, currentScrollBehavior, isSearchActive, isSelectionMode) {
         object : NestedScrollConnection {
             override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-                if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.NONE || isSelectionMode) {
+                if (calendarPageActive ||
+                    currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.NONE || isSelectionMode) {
                     return Offset.Zero
                 }
 
@@ -1536,6 +1543,9 @@ fun ReminderListScreen(
     // 日历视图占用 pager 第 0 页（主页右滑露出），列表页从第 1 页起：listPage = page - 1
     val pagerState = rememberPagerState(initialPage = 1) {
         if (showCategories) ReminderTab.entries.size + 1 else 2
+    }
+    LaunchedEffect(pagerState) {
+        snapshotFlow { pagerState.currentPage == 0 }.collect { calendarPageActive = it }
     }
     var hasSetDefaultPage by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(defaultPage, homeCategoryEnabled) {
