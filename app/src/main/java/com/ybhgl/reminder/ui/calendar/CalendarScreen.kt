@@ -39,7 +39,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
@@ -57,8 +56,6 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
-import androidx.compose.ui.platform.LocalViewConfiguration
-import androidx.compose.ui.platform.ViewConfiguration
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.platform.LocalDensity
@@ -154,15 +151,6 @@ fun CalendarScreen(
     // 列表区收缩驱动状态：Initial pass 以 ~2dp 近零阈值接管纵向手势
     val currentCollapse = rememberUpdatedState(collapsePx)
     val driverSlopPx = with(density) { 2.dp.toPx() }
-
-    // 事件列表拖动阈值与收缩驱动对齐（2dp 近零）：消除"先过系统 touchSlop 才开始滚动"的卡顿感。
-    // 提供对象身份必须稳定（remember）：每帧新对象会反复重启列表手势（既往回归教训）
-    val defaultViewConfig = LocalViewConfiguration.current
-    val listViewConfig = remember(defaultViewConfig, driverSlopPx) {
-        object : ViewConfiguration by defaultViewConfig {
-            override val touchSlop: Float = driverSlopPx
-        }
-    }
 
     // 覆盖前后补位日：窗口取 displayMonth±1 与选中日期所在月的并集，
     // 保证划到远离选中月的月份时，选中日的事件卡片仍完整显示
@@ -288,93 +276,91 @@ fun CalendarScreen(
         // 收缩驱动在 Initial pass 以 ~2dp 阈值接管纵向手势（近零死区）：
         // 有收展空间时消费事件并实时驱动 collapsePx；无空间（如已收满继续上滑）时
         // 放手交给列表自身滚动（含惯性与嵌套滚动衔接）
-        CompositionLocalProvider(LocalViewConfiguration provides listViewConfig) {
-            LazyColumn(
-                state = listState,
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .weight(1f)
-                    // 日历与滚动区之间的固定间距：加在 bounds 之外（非 contentPadding），
-                    // 列表滚动后内容被 bounds 顶边裁剪，不再贴住日历底缘（收缩态尤其明显）
-                    .padding(top = 10.dp)
-                    .pointerInput(maxCollapsePx) {
-                        awaitEachGesture {
-                            var totalX = 0f
-                            var totalY = 0f
-                            var decided = false
-                            var vertical = false
-                            var took = false
-                            while (true) {
-                                val event = awaitPointerEvent(PointerEventPass.Initial)
-                                val change = event.changes.firstOrNull() ?: break
-                                if (!change.pressed) break
-                                val d = change.positionChangeIgnoreConsumed()
-                                if (d.x == 0f && d.y == 0f) continue
-                                totalX += d.x
-                                totalY += d.y
-                                if (!decided) {
-                                    if (abs(totalX) < driverSlopPx && abs(totalY) < driverSlopPx) continue
-                                    decided = true
-                                    vertical = abs(totalY) > abs(totalX)
-                                    if (!vertical) break // 横向手势：整体放行给列表/主页 pager
-                                }
-                                val cur = currentCollapse.value
-                                // 下拉（展开方向）且列表未到顶：放行给列表滚动（收缩态下用户想先看更早事件）；
-                                // 列表滚到顶后继续下拉，未消费余量由 nestedScroll onPostScroll 接管为展开
-                                if (d.y > 0f && cur > 0.5f && listState.canScrollBackward) {
-                                    break
-                                }
-                                val next = (cur - d.y).coerceIn(0f, maxCollapsePx)
-                                if (next == cur &&
-                                    ((d.y < 0f && cur >= maxCollapsePx - 0.5f) || (d.y > 0f && cur <= 0.5f))
-                                ) {
-                                    break // 收展已到边界：本手势余量交给列表滚动
-                                }
-                                change.consume()
-                                took = true
-                                if (next != cur) collapsePx = next
+        LazyColumn(
+            state = listState,
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                // 日历与滚动区之间的固定间距：加在 bounds 之外（非 contentPadding），
+                // 列表滚动后内容被 bounds 顶边裁剪，不再贴住日历底缘（收缩态尤其明显）
+                .padding(top = 10.dp)
+                .pointerInput(maxCollapsePx) {
+                    awaitEachGesture {
+                        var totalX = 0f
+                        var totalY = 0f
+                        var decided = false
+                        var vertical = false
+                        var took = false
+                        while (true) {
+                            val event = awaitPointerEvent(PointerEventPass.Initial)
+                            val change = event.changes.firstOrNull() ?: break
+                            if (!change.pressed) break
+                            val d = change.positionChangeIgnoreConsumed()
+                            if (d.x == 0f && d.y == 0f) continue
+                            totalX += d.x
+                            totalY += d.y
+                            if (!decided) {
+                                if (abs(totalX) < driverSlopPx && abs(totalY) < driverSlopPx) continue
+                                decided = true
+                                vertical = abs(totalY) > abs(totalX)
+                                if (!vertical) break // 横向手势：整体放行给列表/主页 pager
                             }
-                            if (took) {
-                                animateCollapseTo(if (collapsePx > maxCollapsePx / 2f) maxCollapsePx else 0f)
+                            val cur = currentCollapse.value
+                            // 下拉（展开方向）且列表未到顶：放行给列表滚动（收缩态下用户想先看更早事件）；
+                            // 列表滚到顶后继续下拉，未消费余量由 nestedScroll onPostScroll 接管为展开
+                            if (d.y > 0f && cur > 0.5f && listState.canScrollBackward) {
+                                break
                             }
+                            val next = (cur - d.y).coerceIn(0f, maxCollapsePx)
+                            if (next == cur &&
+                                ((d.y < 0f && cur >= maxCollapsePx - 0.5f) || (d.y > 0f && cur <= 0.5f))
+                            ) {
+                                break // 收展已到边界：本手势余量交给列表滚动
+                            }
+                            change.consume()
+                            took = true
+                            if (next != cur) collapsePx = next
+                        }
+                        if (took) {
+                            animateCollapseTo(if (collapsePx > maxCollapsePx / 2f) maxCollapsePx else 0f)
                         }
                     }
-                    .nestedScroll(calendarCollapseConnection),
-                // 卡间距改为各 item 内部 top padding：添加卡 AnimatedVisibility 收起后不留残余空隙
-                contentPadding = androidx.compose.foundation.layout.PaddingValues(
-                    // 10dp bounds 间距 + 2dp contentPadding = 原 12dp，未滚动时顶部观感不变
-                    top = 2.dp,
-                    bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                )
-            ) {
-                item(key = "almanac_detail_card") {
-                    CalendarDetailCard(
-                        date = selectedDate,
-                        today = today,
-                        onClick = { showAlmanac = true }
-                    )
                 }
-                items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
-                    CalendarEventCard(
-                        occurrence = occurrence,
-                        today = today,
-                        onClick = { onNavigateDetail(occurrence.item.id) },
+                .nestedScroll(calendarCollapseConnection),
+            // 卡间距改为各 item 内部 top padding：添加卡 AnimatedVisibility 收起后不留残余空隙
+            contentPadding = androidx.compose.foundation.layout.PaddingValues(
+                // 10dp bounds 间距 + 2dp contentPadding = 原 12dp，未滚动时顶部观感不变
+                top = 2.dp,
+                bottom = 24.dp + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
+            )
+        ) {
+            item(key = "almanac_detail_card") {
+                CalendarDetailCard(
+                    date = selectedDate,
+                    today = today,
+                    onClick = { showAlmanac = true }
+                )
+            }
+            items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
+                CalendarEventCard(
+                    occurrence = occurrence,
+                    today = today,
+                    onClick = { onNavigateDetail(occurrence.item.id) },
+                    modifier = Modifier.padding(top = 10.dp)
+                )
+            }
+            // 收缩态"添加事件"卡：常驻 item，可见性由 AnimatedVisibility 驱动流畅收放；
+            // 有事件时位于所有事件末尾，无事件时紧随详情卡
+            item(key = "add_event_card") {
+                AnimatedVisibility(
+                    visible = isCollapsed,
+                    enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                    exit = fadeOut(tween(140)) + shrinkVertically(tween(220))
+                ) {
+                    AddEventCard(
+                        onClick = { onAddReminder(selectedDate) },
                         modifier = Modifier.padding(top = 10.dp)
                     )
-                }
-                // 收缩态"添加事件"卡：常驻 item，可见性由 AnimatedVisibility 驱动流畅收放；
-                // 有事件时位于所有事件末尾，无事件时紧随详情卡
-                item(key = "add_event_card") {
-                    AnimatedVisibility(
-                        visible = isCollapsed,
-                        enter = fadeIn(tween(180)) + expandVertically(tween(220)),
-                        exit = fadeOut(tween(140)) + shrinkVertically(tween(220))
-                    ) {
-                        AddEventCard(
-                            onClick = { onAddReminder(selectedDate) },
-                            modifier = Modifier.padding(top = 10.dp)
-                        )
-                    }
                 }
             }
         }
@@ -426,8 +412,8 @@ private fun AddEventCard(
             Icon(
                 imageVector = Icons.Filled.AddCircle,
                 contentDescription = "添加提醒",
-                modifier = Modifier.size(24.dp),
-                tint = MaterialTheme.colorScheme.primary
+                modifier = Modifier.size(28.dp),
+                tint = MaterialTheme.colorScheme.onSurfaceVariant
             )
         }
     }
