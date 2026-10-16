@@ -22,6 +22,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
@@ -134,6 +135,10 @@ fun CalendarScreen(
     val calendarCollapseConnection = remember(maxCollapsePx) {
         collapseConnection(maxCollapsePx, { collapsePx }, { collapsePx = it })
     }
+
+    // 事件列表滚动状态：收缩态下拉手势需先判断列表是否已到顶（未到顶优先滚动列表，
+    // 到顶后的余量经 nestedScroll onPostScroll 无缝接管为日历展开）
+    val listState = rememberLazyListState()
 
     // 列表区收缩驱动状态：Initial pass 以 ~2dp 近零阈值接管纵向手势（替代已撤销的
     // ViewConfiguration 覆盖——每帧新对象会反复重启列表手势，导致纵向拖动不可用）
@@ -262,6 +267,7 @@ fun CalendarScreen(
         // 有收展空间时消费事件并实时驱动 collapsePx；无空间（如已收满继续上滑）时
         // 放手交给列表自身滚动（含惯性与嵌套滚动衔接）
         LazyColumn(
+            state = listState,
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f)
@@ -290,6 +296,11 @@ fun CalendarScreen(
                                 if (!vertical) break // 横向手势：整体放行给列表/主页 pager
                             }
                             val cur = currentCollapse.value
+                            // 下拉（展开方向）且列表未到顶：放行给列表滚动（收缩态下用户想先看更早事件）；
+                            // 列表滚到顶后继续下拉，未消费余量由 nestedScroll onPostScroll 接管为展开
+                            if (d.y > 0f && cur > 0.5f && listState.canScrollBackward) {
+                                break
+                            }
                             val next = (cur - d.y).coerceIn(0f, maxCollapsePx)
                             if (next == cur &&
                                 ((d.y < 0f && cur >= maxCollapsePx - 0.5f) || (d.y > 0f && cur <= 0.5f))
