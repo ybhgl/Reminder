@@ -3,6 +3,7 @@ package com.ybhgl.reminder.ui.calendar
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -17,13 +18,19 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material3.Icon
@@ -158,6 +165,9 @@ fun CalendarScreen(
             compareBy({ it.kind != OccurrenceKind.EVENT }, { it.item.id })
         )
     }
+
+    // 收缩态判定（与收展吸附口径一致：过半即视为收缩）：驱动事件区末尾"添加事件"卡的显隐
+    val isCollapsed = collapsePx > maxCollapsePx / 2f
 
     Column(
         modifier = modifier
@@ -317,7 +327,7 @@ fun CalendarScreen(
                     }
                 }
                 .nestedScroll(calendarCollapseConnection),
-            verticalArrangement = Arrangement.spacedBy(10.dp),
+            // 卡间距改为各 item 内部 top padding：添加卡 AnimatedVisibility 收起后不留残余空隙
             contentPadding = androidx.compose.foundation.layout.PaddingValues(
                 // 10dp bounds 间距 + 2dp contentPadding = 原 12dp，未滚动时顶部观感不变
                 top = 2.dp,
@@ -335,8 +345,23 @@ fun CalendarScreen(
                 CalendarEventCard(
                     occurrence = occurrence,
                     today = today,
-                    onClick = { onNavigateDetail(occurrence.item.id) }
+                    onClick = { onNavigateDetail(occurrence.item.id) },
+                    modifier = Modifier.padding(top = 10.dp)
                 )
+            }
+            // 收缩态"添加事件"卡：常驻 item，可见性由 AnimatedVisibility 驱动流畅收放；
+            // 有事件时位于所有事件末尾，无事件时紧随详情卡
+            item(key = "add_event_card") {
+                AnimatedVisibility(
+                    visible = isCollapsed,
+                    enter = fadeIn(tween(180)) + expandVertically(tween(220)),
+                    exit = fadeOut(tween(140)) + shrinkVertically(tween(220))
+                ) {
+                    AddEventCard(
+                        onClick = { onAddReminder(selectedDate) },
+                        modifier = Modifier.padding(top = 10.dp)
+                    )
+                }
             }
         }
     }
@@ -360,6 +385,37 @@ fun CalendarScreen(
             today = today,
             onDismissRequest = { showAlmanac = false }
         )
+    }
+}
+
+/**
+ * 收缩态"添加事件"卡：与事件卡同款卡面（surfaceVariant 半透明大圆角），无文字、
+ * 中央 filled add 图标；点击进入添加页并预填选中日期。
+ */
+@Composable
+private fun AddEventCard(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        modifier = modifier.fillMaxWidth(),
+        shape = RoundedCornerShape(24.dp),
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+    ) {
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(56.dp),
+            contentAlignment = Alignment.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "添加提醒",
+                modifier = Modifier.size(24.dp),
+                tint = MaterialTheme.colorScheme.primary
+            )
+        }
     }
 }
 
