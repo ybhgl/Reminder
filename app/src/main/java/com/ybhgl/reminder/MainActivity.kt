@@ -1360,6 +1360,23 @@ val StringSetSaver = androidx.compose.runtime.saveable.Saver<Set<String>, List<S
     restore = { list -> list.toSet() }
 )
 
+/**
+ * 测量期读取动态顶部偏移的 WindowInsets（material3 ScrollBehavior 同款模式）：
+ * getter 在布局测量阶段被调用，titleOffsetPx 逐帧变化只触发节点重测量，
+ * 不再重组整个页 lambda（含 beyondViewportPageCount 保留的离屏相邻分类页）。
+ */
+private class DynamicTopInsets(
+    val leftPx: Int = 0,
+    val rightPx: Int = 0,
+    val bottomPx: Int = 0,
+    val topPxProvider: () -> Float
+) : WindowInsets {
+    override fun getLeft(density: Density, layoutDirection: LayoutDirection): Int = leftPx
+    override fun getTop(density: Density): Int = topPxProvider().coerceAtLeast(0f).roundToInt()
+    override fun getRight(density: Density, layoutDirection: LayoutDirection): Int = rightPx
+    override fun getBottom(density: Density): Int = bottomPx
+}
+
 @OptIn(ExperimentalMaterial3Api::class, ExperimentalFoundationApi::class)
 @Composable
 fun ReminderListScreen(
@@ -1648,26 +1665,34 @@ fun ReminderListScreen(
                     // 正在加载时不显示 EmptyStateCard，避免闪屏
                     Box(modifier = Modifier.fillMaxSize())
                 } else if (sections.isEmpty()) {
-                    val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
-                    val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)
+                    val density = LocalDensity.current
+                    val staticBottomPadding = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     EmptyStateCard(
                         modifier = Modifier
                             .padding(horizontal = 24.dp, vertical = 32.dp)
-                            .padding(top = dynamicTopPadding, bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding())
+                            // top 在测量期读收展状态：顶栏移动只触发重测，不逐帧重组页 lambda
+                            .windowInsetsPadding(
+                                DynamicTopInsets(
+                                    bottomPx = with(density) { staticBottomPadding.roundToPx() },
+                                    topPxProvider = { topBarHeightPx + titleOffsetPx }
+                                )
+                            )
                             .fillMaxWidth()
                     )
                 } else {
-                    val topBarHeightDp = with(LocalDensity.current) { topBarHeightPx.toDp() }
-                    val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { titleOffsetPx.toDp() }).coerceAtLeast(0.dp)
+                    val density = LocalDensity.current
+                    val staticBottomPadding = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     LazyColumn(
                         modifier = Modifier
                             .fillMaxSize(),
-                        contentPadding = PaddingValues(
-                            start = 16.dp,
-                            end = 16.dp,
-                            top = dynamicTopPadding,
-                            bottom = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
-                        )
+                        // top 在测量期读 titleOffsetPx：顶栏收展只触发列表重测，
+                        // 不再逐帧重组页 lambda（含离屏相邻分类页）
+                        contentPadding = DynamicTopInsets(
+                            leftPx = with(density) { 16.dp.roundToPx() },
+                            rightPx = with(density) { 16.dp.roundToPx() },
+                            bottomPx = with(density) { staticBottomPadding.roundToPx() },
+                            topPxProvider = { topBarHeightPx + titleOffsetPx }
+                        ).asPaddingValues()
                     ) {
                         sections.forEachIndexed { sectionIndex, section ->
                             val collapsedKey = "${tabs[listPage].name}_${section.key}"
