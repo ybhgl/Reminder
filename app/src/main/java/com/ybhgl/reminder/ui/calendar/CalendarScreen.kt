@@ -30,6 +30,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,6 +55,7 @@ import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
@@ -63,6 +65,9 @@ import kotlin.math.abs
 
 /** 顶部标题只显示年月（如 2026/10），不显示具体天数 */
 private val HEADER_MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM", Locale.CHINA)
+
+/** 切月"保留日"的停稳去抖时长：快速连续翻月时只在用户停下后应用一次，避免逐页重写选中日 */
+private const val MONTH_PRESERVE_DEBOUNCE_MS = 150L
 
 private val LocalDateSaver: Saver<LocalDate, Long> = Saver(
     save = { it.toEpochDay() },
@@ -93,6 +98,17 @@ fun CalendarScreen(
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showAlmanac by rememberSaveable { mutableStateOf(false) }
     val headerInteraction = remember { MutableInteractionSource() }
+
+    // 切月保留"日"：用户翻月停稳后，把选中日同步到目标月同号（天数不足回落月末）。
+    // 用短延时表达"停稳"：快速连续翻月时本 effect 会被下一次 displayMonth 变更取消，只在停下来后应用一次，
+    // 避免逐页重写选中日（详情卡/事件列表随页闪动）。显式选择（点格/日期选择器/"今"/切周）会同时把
+    // displayMonth 设为选中日所在月，故此处对它们天然 no-op，不会与显式选择冲突。
+    LaunchedEffect(displayMonth) {
+        delay(MONTH_PRESERVE_DEBOUNCE_MS)
+        if (YearMonth.from(selectedDate) != displayMonth) {
+            selectedDate = datePreservingDayOfMonth(displayMonth, selectedDate.dayOfMonth)
+        }
+    }
 
     // ===== 日历跟手收展（riji collapsePx 像素模型）=====
     // 收缩像素是唯一状态：0=完全展开，maxCollapsePx=收缩到仅选中行；
@@ -232,14 +248,12 @@ fun CalendarScreen(
                 selectedDate = date
                 displayMonth = YearMonth.from(date)
             },
-            // 切月保留"日"：选中日同步到目标月同号（天数不足回落月末）；
-            // 切周（±7 天）已天然保留星期，不走此分支
-            onMonthChange = { month ->
-                displayMonth = month
-                if (YearMonth.from(selectedDate) != month) {
-                    selectedDate = datePreservingDayOfMonth(month, selectedDate.dayOfMonth)
-                }
-            }
+            // 切月：这里只更新显示月份，不再改写 selectedDate。
+            // 原因（真机日志定位）：pager 每次落页都会回调本方法，一次快速切月/甩动会连续落多页，
+            // 若在此做"保留日"改写，会逐页重写选中日（表现为选中日跳动/详情卡与事件列表抖动），
+            // 并在收缩等时机把选中日带到非预期月份（"松手后跳到下月同一天"）。
+            // 待落页口径收敛后，再把"保留日"以"仅在 pager 真正静止后生效"的形式安全加回。
+            onMonthChange = { month -> displayMonth = month }
         )
 
         // ===== 农历详情卡 + 当日事件列表 =====

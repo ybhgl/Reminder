@@ -280,9 +280,9 @@ fun MonthCalendar(
                     .clipToBounds()
                     // 日历面手势三态判定（Initial pass）：
                     // ①纵向主导→消费全部后续事件实时收展（pager 在 Main 只见已消费事件，不切月）；
-                    // ②收缩态（过半）横向主导→消费并整周切换选中日期（±7 天，跨月由上层跟随），
-                    //   屏蔽 HorizontalPager 的切月手势；
-                    // ③展开态横向主导→不消费，原样放行给 MonthPager 切月
+                    // ②收缩态（任意收缩量 collapsePx>1px）横向主导→消费并整周切换选中日期（±7 天，
+                    //   跨月由上层跟随），屏蔽内层切月手势与外层主页切页手势；
+                    // ③展开态（collapsePx==0）横向主导→不消费，原样放行给 MonthPager 切月
                     .pointerInput(maxCollapsePx) {
                         awaitEachGesture {
                             var totalX = 0f
@@ -291,7 +291,6 @@ fun MonthCalendar(
                             var verticalLocked = false
                             var horizontalLocked = false
                             val startCollapse = currentCollapse.value
-                            val collapsedStart = startCollapse > maxCollapsePx / 2f
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val change = event.changes.firstOrNull() ?: break
@@ -300,20 +299,26 @@ fun MonthCalendar(
                                 if (delta.x == 0f && delta.y == 0f) continue
                                 totalX += delta.x
                                 totalY += delta.y
+                                // 收缩态门控：每次 move 现读（不缓存起手值，避免收缩动画/组合未就绪时用到旧值）。
+                                // 阈值取"任意收缩量(>1px)"而非"过半"：展开态 collapsePx 恰为 0 → 横向放行给内层
+                                // pager 切月；只要收缩中或已收缩 → 本手势从首个 move 起消费横向并走"切周"。
+                                // 旧阈值 >max/2 与内层 pager 的 userScrollEnabled 阈值相同，两者之间无重叠覆盖，
+                                // 会形成"谁都不管"的真空 → 横滑漏给外层主页 pager（主页↔日历切页）。
+                                val collapsedNow = currentCollapse.value > 1f
                                 if (!decided) {
                                     if (abs(totalX) < viewConfiguration.touchSlop &&
                                         abs(totalY) < viewConfiguration.touchSlop
                                     ) {
-                                        // 收缩态未决期间也先消费：饿死 HorizontalPager，
+                                        // 收缩态未决期间也先消费：饿死内外两层 pager，
                                         // 防其 drag 先于判向启动（月份滑动与滑轨叠加的竞态源）
-                                        if (collapsedStart) change.consume()
+                                        if (collapsedNow) change.consume()
                                         continue
                                     }
                                     decided = true
                                     verticalLocked = abs(totalY) > abs(totalX)
-                                    horizontalLocked = !verticalLocked && collapsedStart
+                                    horizontalLocked = !verticalLocked && collapsedNow
                                 }
-                                if (collapsedStart) {
+                                if (collapsedNow) {
                                     change.consume()
                                     if (verticalLocked) {
                                         currentOnCollapseChange.value(
@@ -419,28 +424,33 @@ private fun MonthPager(
 ) {
     HorizontalPager(
         state = pagerState,
+        // 收缩态禁止 pager 响应用户横滑/残余惯性：
+        // 收缩态的横滑语义是"切周"（由日历面手势在 Initial pass 接管并饿死 pager），
+        // 但若手势起手时 collapsePx 尚未过半（收缩动画未完成/未真正收满）被判为"展开分支"，
+        // 横滑就会漏给 pager → 显示月被推走一月 → 选中行不在该月（渲染该月首行、滑轨预览为空）。
+        // 程序化 scrollToPage（跨月切周提交、外部收敛）不受 userScrollEnabled 影响，照常可用。
+        userScrollEnabled = collapsePx <= maxCollapsePx / 2f,
         beyondViewportPageCount = 1,
         key = { it },
         modifier = modifier
     ) { p ->
         val m = monthOf(p)
-        // ±1 月内的页渲染完整网格；更远页仅占位（快速甩动一闪而过，事件数据窗口也不覆盖）
-        if (abs(ChronoUnit.MONTHS.between(displayMonth.atDay(1), m.atDay(1)).toInt()) <= 1) {
-            MonthGrid(
-                month = m,
-                dayMap = dayMap,
-                today = today,
-                selectedDate = selectedDate,
-                collapsePx = collapsePx,
-                maxCollapsePx = maxCollapsePx,
-                weekDragFraction = if (m == displayMonth) weekDragFraction else 0f,
-                widthPx = widthPx,
-                onDateSelected = onDateSelected,
-                modifier = Modifier.fillMaxWidth()
-            )
-        } else {
-            Spacer(modifier = Modifier.fillMaxWidth().height(EXPANDED_GRID_HEIGHT_DP.dp))
-        }
+        // 所有已组合页都渲染完整网格（不再按 displayMonth±1 做 Spacer 占位）：
+        // 旧占位判定依赖 displayMonth，而它落后于快速甩动时的 pager 实际位置，
+        // 目标月未落稳即被判为占位 → 连续快切时上/下月短暂空白、不跟手。
+        // beyondViewportPageCount=1 已限制组合量；MonthGrid 内 remember(month) 复用骨架。
+        MonthGrid(
+            month = m,
+            dayMap = dayMap,
+            today = today,
+            selectedDate = selectedDate,
+            collapsePx = collapsePx,
+            maxCollapsePx = maxCollapsePx,
+            weekDragFraction = if (m == displayMonth) weekDragFraction else 0f,
+            widthPx = widthPx,
+            onDateSelected = onDateSelected,
+            modifier = Modifier.fillMaxWidth()
+        )
     }
 }
 
