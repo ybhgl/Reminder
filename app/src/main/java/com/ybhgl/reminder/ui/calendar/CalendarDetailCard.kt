@@ -30,6 +30,8 @@ data class DayAlmanac(
     val lunarMonthDay: String,
     /** 交节当天的节气名，如"立冬"；非交节日为 null */
     val termName: String?,
+    /** 节日名（公历/农历/法定节假日连休首日），与日历格 subLabel 同口径；交节日当天只显示节气、与 termName 互斥 */
+    val festivalName: String?,
     /** 干支三柱（立春分界口径），如"丙午马年 己亥月 乙酉日" */
     val ganzhiLine: String,
     /** 距今天数文本（主题色显示）；今天为 null 不显示 */
@@ -48,6 +50,12 @@ fun dayAlmanac(date: LocalDate, today: LocalDate = LocalDate.now()): DayAlmanac 
     val term = solar.getTerm()
     val termName = if (term != null && term.getSolarDay() == solar) term.getName() else null
 
+    // 节日口径复用日历格 DayCellFormatter（公历节日>农历节日>法定节假日连休首日；
+    // 交节日节气优先于节日，subLabel 返回节气名，此处自然得 null，两行互斥不重复）
+    val (subLabel, subKind) = DayCellFormatter.subLabel(date)
+    val festivalName =
+        if (subKind == DayCellLabelKind.FESTIVAL || subKind == DayCellLabelKind.HOLIDAY) subLabel else null
+
     val sixtyCycleDay = solar.getSixtyCycleDay()
     val yearCycle = sixtyCycleDay.getYear()
     val zodiac = yearCycle.getEarthBranch().getZodiac().getName()
@@ -61,7 +69,7 @@ fun dayAlmanac(date: LocalDate, today: LocalDate = LocalDate.now()): DayAlmanac 
         days > 0L -> "${days}天后"
         else -> "${-days}天前"
     }
-    return DayAlmanac(lunarMonthDay, termName, ganzhiLine, daysText)
+    return DayAlmanac(lunarMonthDay, termName, festivalName, ganzhiLine, daysText)
 }
 
 /**
@@ -94,7 +102,17 @@ fun CalendarDetailCard(
                 fontWeight = FontWeight.Bold,
                 color = MaterialTheme.colorScheme.primary
             )
+            // 节气行与节日行互斥（交节日显示节气），样式一致
             almanac.termName?.let {
+                Text(
+                    text = it,
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    modifier = Modifier.padding(top = 2.dp)
+                )
+            }
+            almanac.festivalName?.let {
                 Text(
                     text = it,
                     style = MaterialTheme.typography.titleMedium,

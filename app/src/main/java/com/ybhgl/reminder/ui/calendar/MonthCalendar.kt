@@ -690,7 +690,8 @@ private fun DayCell(
     val subColor = when {
         isToday -> onAccent.copy(alpha = 0.9f)
         !cell.inMonth -> MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.35f)
-        cell.subKind == DayCellLabelKind.TERM -> MaterialTheme.colorScheme.primary
+        // 节气/公历节日/农历节日/法定节假日一律强调色，仅普通农历日保持灰色
+        cell.subKind != DayCellLabelKind.LUNAR -> MaterialTheme.colorScheme.primary
         else -> MaterialTheme.colorScheme.onSurfaceVariant
     }
     val dotColor = if (isToday) onAccent else MaterialTheme.colorScheme.onSurfaceVariant

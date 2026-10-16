@@ -69,6 +69,7 @@ fun AlmanacDialog(
                     text = buildString {
                         append(almanac.lunarMonthDay)
                         almanac.termName?.let { append(" · $it") }
+                        almanac.festivalName?.let { append(" · $it") }
                         almanac.daysFromTodayText?.let { append("   $it") }
                     },
                     style = MaterialTheme.typography.titleMedium,
