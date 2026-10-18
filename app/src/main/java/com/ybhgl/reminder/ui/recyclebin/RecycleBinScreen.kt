@@ -5,10 +5,8 @@ import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -440,9 +438,10 @@ fun RecycleBinScreen(
         val fabBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         AnimatedVisibility(
             visible = isSelectionMode && selectedIds.isNotEmpty(),
-            // 缩放+淡入淡出：slide 的 translationY 会让 elevation 阴影与按钮位移错位
-            enter = scaleIn(initialScale = 0.8f) + fadeIn(),
-            exit = scaleOut(targetScale = 0.8f) + fadeOut(),
+            // 纯 slide（布局偏移）不带 fade：fadeIn/fadeOut 的 alpha 会强制离屏图层，
+            // 把 FAB 的 elevation 阴影裁切到按钮方形 bounds 内，阴影显示不全
+            enter = slideInVertically(initialOffsetY = { it }),
+            exit = slideOutVertically(targetOffsetY = { it }),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = fabBottomPadding + 16.dp)
