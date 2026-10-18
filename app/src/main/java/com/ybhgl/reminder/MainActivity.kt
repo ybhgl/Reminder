@@ -2069,26 +2069,36 @@ fun ReminderListScreen(
                             ),
                             label = "MainFabIconRotation"
                         )
-                        FloatingActionButton(
-                            onClick = { fabMenuExpanded = !fabMenuExpanded },
-                            shape = CircleShape,
-                            containerColor = MaterialTheme.colorScheme.primary,
-                            contentColor = MaterialTheme.colorScheme.onPrimary,
-                            modifier = Modifier.size(segmentedHeight)
+                        // 进入选择模式时隐藏菜单 FAB，避免与底部操作按钮冲突
+                        AnimatedVisibility(
+                            visible = !isSelectionMode,
+                            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                            label = "MainMenuFabVisibility"
                         ) {
-                            Crossfade(
-                                targetState = fabMenuExpanded,
-                                animationSpec = tween(150),
-                                label = "MainFabIcon"
-                            ) { expanded ->
-                                Icon(
-                                    imageVector = if (expanded) Icons.Default.Close else Icons.Default.Category,
-                                    contentDescription = if (expanded) "收起菜单" else "更多操作",
-                                    modifier = Modifier.graphicsLayer { rotationZ = mainFabIconRotation }
-                                )
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                FloatingActionButton(
+                                    onClick = { fabMenuExpanded = !fabMenuExpanded },
+                                    shape = CircleShape,
+                                    containerColor = MaterialTheme.colorScheme.primary,
+                                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                                    modifier = Modifier.size(segmentedHeight)
+                                ) {
+                                    Crossfade(
+                                        targetState = fabMenuExpanded,
+                                        animationSpec = tween(150),
+                                        label = "MainFabIcon"
+                                    ) { expanded ->
+                                        Icon(
+                                            imageVector = if (expanded) Icons.Default.Close else Icons.Default.Category,
+                                            contentDescription = if (expanded) "收起菜单" else "更多操作",
+                                            modifier = Modifier.graphicsLayer { rotationZ = mainFabIconRotation }
+                                        )
+                                    }
+                                }
+                                Spacer(modifier = Modifier.width(16.dp))
                             }
                         }
-                        Spacer(modifier = Modifier.width(16.dp))
 
                         Box(
                             modifier = Modifier

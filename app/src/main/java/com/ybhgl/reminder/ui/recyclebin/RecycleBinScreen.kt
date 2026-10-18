@@ -393,15 +393,15 @@ fun RecycleBinScreen(
             }
         }
 
-        // 左下角横向 FAB 组：仅在选择模式下显示
+        // 右下角横向 FAB 组：仅在选择模式下显示
         val fabBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         AnimatedVisibility(
             visible = isSelectionMode && selectedIds.isNotEmpty(),
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier
-                .align(Alignment.BottomStart)
-                .padding(start = 16.dp, bottom = fabBottomPadding + 16.dp)
+                .align(Alignment.BottomEnd)
+                .padding(end = 16.dp, bottom = fabBottomPadding + 16.dp)
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 FloatingActionButton(
