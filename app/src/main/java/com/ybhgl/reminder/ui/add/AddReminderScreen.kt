@@ -4,6 +4,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Rect
+import androidx.compose.ui.layout.onGloballyPositioned
+import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -142,6 +145,8 @@ fun AddReminderScreen(
     var invalidEndDate by remember { mutableStateOf<LocalDate?>(null) }
     var showNotesSheet by remember { mutableStateOf(false) }
     var showTagSheet by remember { mutableStateOf(false) }
+    // 备注行在根坐标系中的范围：只读拦截层据此放行点击查看备注
+    val notesRowBounds = remember { mutableStateOf(Rect.Zero) }
     val uiState = viewModel.reminderUiState
     val isEditing = uiState.id != 0
     val readOnly = viewModel.isReadOnly
@@ -445,7 +450,18 @@ fun AddReminderScreen(
 
                 // 9. 备注
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .onGloballyPositioned { coordinates ->
+                            val rootPos = coordinates.localToRoot(Offset.Zero)
+                            val size = coordinates.size
+                            notesRowBounds.value = Rect(
+                                rootPos.x,
+                                rootPos.y,
+                                rootPos.x + size.width,
+                                rootPos.y + size.height
+                            )
+                        },
                     icon = Icons.AutoMirrored.Filled.Notes,
                     title = "备注",
                     value = uiState.notes.ifBlank { "未填写" },
@@ -497,7 +513,9 @@ fun AddReminderScreen(
                 }
             }
 
-            // 只读模式：拦截层吞掉内容区点击（不消费 down/拖拽事件，滚动照常放行），顶栏与底部按钮不受影响
+            // 只读模式：拦截层吞掉内容区点击（不消费 down/拖拽事件，滚动照常放行），顶栏与底部按钮不受影响；
+            // 备注行范围内的点击放行，允许打开只读备注查看
+            val currentNotesBounds = rememberUpdatedState(notesRowBounds.value)
             if (readOnly) {
                 Box(
                     modifier = Modifier
@@ -511,8 +529,10 @@ fun AddReminderScreen(
                                     val change = event.changes.firstOrNull { it.id == down.id } ?: break
                                     if (change.positionChange() != Offset.Zero) slopPassed = true
                                     if (!change.pressed) {
-                                        // 未发生拖拽的抬手视为点击，消费以阻断下层 clickable
-                                        if (!slopPassed) change.consume()
+                                        // 未发生拖拽的抬手视为点击，消费以阻断下层 clickable；备注行除外
+                                        if (!slopPassed && !currentNotesBounds.value.contains(change.position)) {
+                                            change.consume()
+                                        }
                                         break
                                     }
                                 }
@@ -531,13 +551,13 @@ fun AddReminderScreen(
                         .padding(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    OutlinedButton(
+                    Button(
                         onClick = { showReadOnlyDeleteConfirm = true },
                         modifier = Modifier.weight(1f),
-                        colors = ButtonDefaults.outlinedButtonColors(
-                            contentColor = MaterialTheme.colorScheme.error
-                        ),
-                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
                     ) {
                         Text("永久删除")
                     }
@@ -679,6 +699,7 @@ fun AddReminderScreen(
             if (showNotesSheet) {
                 NotesEditDialog(
                     initialNotes = uiState.notes,
+                    readOnly = readOnly,
                     onDismiss = { showNotesSheet = false },
                     onSave = { updatedNotes ->
                         viewModel.updateUiState(uiState.copy(notes = updatedNotes))
@@ -802,7 +823,8 @@ private fun String.toComposeColor(): Color {
 fun NotesEditDialog(
     initialNotes: String,
     onDismiss: () -> Unit,
-    onSave: (String) -> Unit
+    onSave: (String) -> Unit,
+    readOnly: Boolean = false
 ) {
     var notesText by rememberSaveable { mutableStateOf(initialNotes) }
     val focusRequester = remember { FocusRequester() }
@@ -810,6 +832,7 @@ fun NotesEditDialog(
     val isDirty = notesText != initialNotes
 
     LaunchedEffect(focusRequester) {
+        if (readOnly) return@LaunchedEffect
         delay(50) // 延迟 50ms，错开 Dialog 的进场动画，避免动画撞车卡顿
         focusRequester.requestFocus()
     }
@@ -854,7 +877,7 @@ fun NotesEditDialog(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "编辑备注",
+                        text = if (readOnly) "备注" else "编辑备注",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -867,7 +890,8 @@ fun NotesEditDialog(
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = 120.dp)
                             .focusRequester(focusRequester),
-                        placeholder = { Text("在此输入备注内容...") },
+                        placeholder = { Text(if (readOnly) "未填写" else "在此输入备注内容...") },
+                        readOnly = readOnly,
                         maxLines = 10,
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -877,22 +901,28 @@ fun NotesEditDialog(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(
-                            onClick = {
-                                if (isDirty) {
-                                    showConfirmCancelDialog = true
-                                } else {
-                                    onDismiss()
-                                }
+                        if (readOnly) {
+                            TextButton(onClick = onDismiss) {
+                                Text("关闭", fontWeight = FontWeight.Bold)
                             }
-                        ) {
-                            Text("取消")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(
-                            onClick = { onSave(notesText) }
-                        ) {
-                            Text("确定", fontWeight = FontWeight.Bold)
+                        } else {
+                            TextButton(
+                                onClick = {
+                                    if (isDirty) {
+                                        showConfirmCancelDialog = true
+                                    } else {
+                                        onDismiss()
+                                    }
+                                }
+                            ) {
+                                Text("取消")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextButton(
+                                onClick = { onSave(notesText) }
+                            ) {
+                                Text("确定", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
