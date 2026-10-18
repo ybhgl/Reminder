@@ -2953,7 +2953,11 @@ private fun String.toComposeColor(): Color {
 
 
 @Composable
-internal fun EmptyStateCard(modifier: Modifier = Modifier) {
+internal fun EmptyStateCard(
+    modifier: Modifier = Modifier,
+    title: String = "目前还没有提醒",
+    message: String = "点击右下角的加号添加第一个纪念日吧！"
+) {
     Card(
         modifier = modifier,
         shape = ReminderCardShape,
@@ -2966,11 +2970,11 @@ internal fun EmptyStateCard(modifier: Modifier = Modifier) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             Text(
-                text = "目前还没有提醒",
+                text = title,
                 style = MaterialTheme.typography.titleMedium
             )
             Text(
-                text = "点击右下角的加号添加第一个纪念日吧！",
+                text = message,
                 style = MaterialTheme.typography.bodyMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )

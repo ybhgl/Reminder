@@ -77,6 +77,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
@@ -354,7 +355,9 @@ fun RecycleBinScreen(
                         EmptyStateCard(
                             modifier = Modifier
                                 .padding(horizontal = 24.dp, vertical = 32.dp)
-                                .fillMaxWidth()
+                                .fillMaxWidth(),
+                            title = "回收站是空的",
+                            message = "删除的提醒会暂时存放在这里，可随时恢复或永久删除。"
                         )
                     }
                 }
@@ -383,7 +386,8 @@ fun RecycleBinScreen(
                                 viewModel.startSelection(reminder.id)
                             }
                         },
-                        onToggleSelection = { viewModel.toggleSelection(it) }
+                        onToggleSelection = { viewModel.toggleSelection(it) },
+                        footerText = "回收站内共有 ${uiState.itemList.size} 条提醒"
                     )
                 }
             }
@@ -626,7 +630,8 @@ private fun RecycleItemGrid(
     contentPadding: PaddingValues,
     onClick: (ReminderItem) -> Unit,
     onLongPress: (ReminderItem) -> Unit,
-    onToggleSelection: (Int) -> Unit
+    onToggleSelection: (Int) -> Unit,
+    footerText: String? = null
 ) {
     val configuration = LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp.dp
@@ -663,6 +668,19 @@ private fun RecycleItemGrid(
                         Spacer(modifier = Modifier.weight(1f))
                     }
                 }
+            }
+        }
+        if (footerText != null) {
+            item(key = "recycle_bin_footer") {
+                Text(
+                    text = footerText,
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(top = 24.dp)
+                )
             }
         }
     }
