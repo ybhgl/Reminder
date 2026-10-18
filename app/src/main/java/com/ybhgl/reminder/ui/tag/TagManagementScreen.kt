@@ -42,6 +42,7 @@ import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -163,7 +164,8 @@ fun TagManagementScreen(
     var dragOffsetY by remember { mutableStateOf(0f) }
 
     // 沉浸式滑动折叠顶栏逻辑
-    val topBarState = rememberCollapsingTopBarState()
+    val contentListState = rememberLazyListState()
+    val topBarState = rememberCollapsingTopBarState(contentListState)
 
     val topBarHeightDp = with(density) { topBarState.topBarHeightPx.toDp() }
     val titleOffsetDp = with(density) { topBarState.titleOffsetPx.toDp() }
@@ -214,6 +216,7 @@ fun TagManagementScreen(
                 }
             } else {
                 LazyColumn(
+                    state = contentListState,
                     modifier = Modifier.fillMaxSize(),
                     contentPadding = PaddingValues(
                         start = 16.dp,

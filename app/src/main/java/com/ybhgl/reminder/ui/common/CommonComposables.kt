@@ -12,6 +12,7 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.ScrollState
+import androidx.compose.foundation.gestures.ScrollableState
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -322,6 +323,8 @@ fun StatusBarScrim(modifier: Modifier = Modifier) {
  * 沉浸式可收起顶栏的状态持有者：
  * - [topBarHeightPx]：由调用方在顶栏 `onSizeChanged` 中测量写入
  * - [titleOffsetPx]：顶栏当前的垂直偏移（0 = 完全展开，-topBarHeightPx = 完全收起）
+ * - [scrollableState]：页面主滚动容器的状态（`ScrollState` / `LazyListState` 等），
+ *   用于判断页面是否真的还有可滚动余量；为空时视为"始终可滚动"，退化为旧行为
  * - [nestedScrollConnection]：在内容滚动前优先消费增量驱动顶栏收起/展开
  */
 @Stable
@@ -329,17 +332,36 @@ class CollapsingTopBarState {
     var titleOffsetPx by mutableStateOf(0f)
     var topBarHeightPx by mutableStateOf(0f)
 
+    /**
+     * 页面主滚动容器。为 null 时不启用"不可滚动不收起"的保护。
+     * 只在嵌套滚动回调里读取，不参与重组，故用普通 var 而非 mutableState。
+     */
+    var scrollableState: ScrollableState? = null
+
+    /** 页面内容是否还有可滚动余量；内容高度未超出视口时为 false */
+    val isContentScrollable: Boolean
+        get() {
+            val state = scrollableState ?: return true
+            return state.canScrollForward || state.canScrollBackward
+        }
+
     val nestedScrollConnection = object : NestedScrollConnection {
         override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
-            if (topBarHeightPx > 0f) {
-                val delta = available.y
-                val oldOffset = titleOffsetPx
-                val newOffset = (oldOffset + delta).coerceIn(-topBarHeightPx, 0f)
-                val consumed = newOffset - oldOffset
-                titleOffsetPx = newOffset
-                return Offset(0f, consumed)
-            }
-            return Offset.Zero
+            val barHeight = topBarHeightPx
+            if (barHeight <= 0f) return Offset.Zero
+
+            // 内容不可滚动（内容高度未超出视口）时页面没有任何可让位的空间，
+            // 此时上下滑动不应让顶栏凭空收起——否则用户看不到任何内容位移，顶栏却消失了。
+            // 只拦截"从展开态继续收起"的方向：顶栏若已处于收起态（例如内容在收起之后才变短），
+            // 仍允许用户滑回展开，避免顶栏卡在收起位置无法恢复。
+            if (titleOffsetPx >= 0f && !isContentScrollable) return Offset.Zero
+
+            val delta = available.y
+            val oldOffset = titleOffsetPx
+            val newOffset = (oldOffset + delta).coerceIn(-barHeight, 0f)
+            val consumed = newOffset - oldOffset
+            titleOffsetPx = newOffset
+            return Offset(0f, consumed)
         }
     }
 
@@ -351,9 +373,20 @@ class CollapsingTopBarState {
     }
 }
 
+/**
+ * 沉浸式可收起顶栏状态。
+ *
+ * @param scrollableState 页面主滚动容器。传入后，页面内容不足以滚动时上下滑动将不再收起顶栏；
+ *   不传则保持旧行为（始终响应滑动收起）。
+ */
 @Composable
-fun rememberCollapsingTopBarState(): CollapsingTopBarState =
-    rememberSaveable(saver = CollapsingTopBarState.Saver) { CollapsingTopBarState() }
+fun rememberCollapsingTopBarState(scrollableState: ScrollableState? = null): CollapsingTopBarState {
+    val state = rememberSaveable(saver = CollapsingTopBarState.Saver) { CollapsingTopBarState() }
+    // scrollableState 是稳定引用（rememberScrollState / rememberLazyListState 返回单例），
+    // 每次重组重复赋值不会引发重组；同时覆盖 Saver 恢复出的新实例需要重新挂载的场景。
+    state.scrollableState = scrollableState
+    return state
+}
 
 /**
  * 设置项联动展开/收起动画的统一实现。

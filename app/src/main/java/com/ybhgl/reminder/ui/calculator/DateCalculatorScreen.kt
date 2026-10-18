@@ -145,7 +145,8 @@ fun DateCalculatorScreen(
     modifier: Modifier = Modifier,
     viewModel: DateCalculatorViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
-    val topBarState = rememberCollapsingTopBarState()
+    val contentScrollState = rememberScrollState()
+    val topBarState = rememberCollapsingTopBarState(contentScrollState)
     var mode by rememberSaveable { mutableStateOf(CalcMode.OFFSET) }
     val reminders by viewModel.reminders.collectAsState()
 
@@ -182,7 +183,7 @@ fun DateCalculatorScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(contentScrollState)
                     .padding(horizontal = 16.dp)
                     .padding(
                         bottom = WindowInsets.navigationBars.asPaddingValues()

@@ -188,7 +188,8 @@ fun AddReminderScreen(
 
     BackHandler(enabled = true, onBack = handleBack)
 
-    val topBarState = rememberCollapsingTopBarState()
+    val contentScrollState = rememberScrollState()
+    val topBarState = rememberCollapsingTopBarState(contentScrollState)
 
     // 只读模式：不可交互条目逐个置灰；备注与提醒设置入口保持正常亮度且可点击
     val readOnlyFade: Modifier = if (readOnly) Modifier.graphicsLayer { alpha = 0.45f } else Modifier
@@ -206,7 +207,7 @@ fun AddReminderScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(contentScrollState)
                     .padding(horizontal = 16.dp)
                     .padding(top = 0.dp, bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + (if (readOnly) 88.dp else 16.dp))
             ) {

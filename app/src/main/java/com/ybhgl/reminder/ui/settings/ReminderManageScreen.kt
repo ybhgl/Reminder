@@ -135,7 +135,8 @@ fun ReminderManageScreen(
     val reminders by viewModel.getAllRemindersStream().collectAsState(initial = emptyList())
 
     // 沉浸式顶栏：滚动时跟随内容收起/展开（与 SettingsScreen 行为一致）
-    val topBarState = rememberCollapsingTopBarState()
+    val contentScrollState = rememberScrollState()
+    val topBarState = rememberCollapsingTopBarState(contentScrollState)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -148,7 +149,7 @@ fun ReminderManageScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(contentScrollState)
                     .padding(horizontal = 16.dp)
                     .padding(
                         bottom = WindowInsets.navigationBars.asPaddingValues()

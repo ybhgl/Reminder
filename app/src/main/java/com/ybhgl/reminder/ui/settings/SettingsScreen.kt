@@ -201,7 +201,7 @@ fun SettingsScreen(
     val isCheckingUpdate by UpdateManager.isChecking.collectAsState()
     var showUpdateDialog by rememberSaveable { mutableStateOf(false) }
 
-    val topBarState = rememberCollapsingTopBarState()
+    val topBarState = rememberCollapsingTopBarState(scrollState)
 
     val appWidgetManager = remember { AppWidgetManager.getInstance(context) }
     val active1x2Ids = remember { appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget1x2::class.java)) }

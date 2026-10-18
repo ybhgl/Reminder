@@ -31,7 +31,9 @@ import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
@@ -152,7 +154,8 @@ fun RecycleBinScreen(
     }
     BackHandler(enabled = isSelectionMode && !isSearchActive) { viewModel.exitSelectionMode() }
 
-    val topBarState = rememberCollapsingTopBarState()
+    val contentListState = rememberLazyListState()
+    val topBarState = rememberCollapsingTopBarState(contentListState)
 
     Box(modifier = modifier.fillMaxSize()) {
         Scaffold(
@@ -191,6 +194,7 @@ fun RecycleBinScreen(
                     val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() } + 8.dp).coerceAtLeast(0.dp)
                     RecycleItemGrid(
                         items = uiState.itemList,
+                        listState = contentListState,
                         isSelectionMode = isSelectionMode,
                         selectedIds = selectedIds,
                         contentPadding = PaddingValues(
@@ -589,6 +593,7 @@ fun RecycleBinScreen(
                     } else {
                         RecycleItemGrid(
                             items = searchedItems,
+                            listState = rememberLazyListState(),
                             isSelectionMode = isSelectionMode,
                             selectedIds = selectedIds,
                             contentPadding = PaddingValues(
@@ -674,6 +679,7 @@ fun RecycleBinScreen(
 @Composable
 private fun RecycleItemGrid(
     items: List<ReminderItem>,
+    listState: LazyListState,
     isSelectionMode: Boolean,
     selectedIds: Set<Int>,
     contentPadding: PaddingValues,
@@ -689,6 +695,7 @@ private fun RecycleItemGrid(
     val nowMillis = remember(items) { System.currentTimeMillis() }
 
     LazyColumn(
+        state = listState,
         modifier = Modifier.fillMaxSize(),
         contentPadding = contentPadding
     ) {

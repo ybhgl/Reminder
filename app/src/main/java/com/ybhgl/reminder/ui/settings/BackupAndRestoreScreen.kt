@@ -238,7 +238,7 @@ fun BackupAndRestoreScreen(
     }
 
     // 沉浸式可收起顶栏状态
-    val topBarState = rememberCollapsingTopBarState()
+    val topBarState = rememberCollapsingTopBarState(scrollState)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,

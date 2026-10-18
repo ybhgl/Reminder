@@ -118,7 +118,8 @@ fun ReminderSettingScreen(
 
     BackHandler(enabled = true, onBack = handleBack)
 
-    val topBarState = rememberCollapsingTopBarState()
+    val contentScrollState = rememberScrollState()
+    val topBarState = rememberCollapsingTopBarState(contentScrollState)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -136,7 +137,7 @@ fun ReminderSettingScreen(
                     .graphicsLayer {
                         if (readOnly) alpha = 0.45f
                     }
-                    .verticalScroll(rememberScrollState())
+                    .verticalScroll(contentScrollState)
                     .padding(
                         start = 16.dp,
                         end = 16.dp,

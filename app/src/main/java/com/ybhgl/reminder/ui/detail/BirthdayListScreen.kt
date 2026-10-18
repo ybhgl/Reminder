@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
@@ -64,7 +65,8 @@ fun BirthdayListScreen(
         }
     }
 
-    val topBarState = rememberCollapsingTopBarState()
+    val contentListState = rememberLazyListState()
+    val topBarState = rememberCollapsingTopBarState(contentListState)
 
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
@@ -93,6 +95,7 @@ fun BirthdayListScreen(
 
                 val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() } + 16.dp).coerceAtLeast(0.dp)
                 LazyColumn(
+                    state = contentListState,
                     modifier = Modifier
                         .fillMaxSize(),
                     contentPadding = PaddingValues(
