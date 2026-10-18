@@ -37,6 +37,9 @@ class AddReminderViewModel(
 
     private val reminderId: Int? = savedStateHandle.get<Int>("reminderId")
 
+    /** 只读模式（从回收站进入）：内容置灰不可编辑，底部提供恢复/永久删除 */
+    val isReadOnly: Boolean = savedStateHandle.get<Boolean>("readOnly") == true
+
     val tagSuggestions = tagRepository.getAllTagsFlow()
         .stateIn(
             scope = viewModelScope,
@@ -168,6 +171,20 @@ class AddReminderViewModel(
     suspend fun moveToRecycleBin(context: Context): Boolean {
         val id = reminderId ?: return false
         reminderRepository.moveToRecycleBin(setOf(id))
+        return true
+    }
+
+    /** 从回收站恢复事件（调度/日历重建与通知刷新由 Repository 统一处理） */
+    suspend fun restoreFromRecycleBin(): Boolean {
+        val id = reminderId ?: return false
+        reminderRepository.restoreReminders(setOf(id))
+        return true
+    }
+
+    /** 永久删除回收站事件（完整删除路径，含背景图清理） */
+    suspend fun permanentlyDeleteFromRecycleBin(): Boolean {
+        val id = reminderId ?: return false
+        reminderRepository.deleteRemindersByIds(setOf(id))
         return true
     }
 

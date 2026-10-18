@@ -17,10 +17,13 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -141,6 +144,7 @@ fun AddReminderScreen(
     var showTagSheet by remember { mutableStateOf(false) }
     val uiState = viewModel.reminderUiState
     val isEditing = uiState.id != 0
+    val readOnly = viewModel.isReadOnly
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showUnsavedChangesDialog by remember { mutableStateOf(false) }
     val tagOptions by viewModel.tagSuggestions.collectAsState()
@@ -200,9 +204,13 @@ fun AddReminderScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer {
+                        // 只读模式：内容整体置灰
+                        if (readOnly) alpha = 0.45f
+                    }
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
-                    .padding(top = 0.dp, bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp)
+                    .padding(top = 0.dp, bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + (if (readOnly) 88.dp else 16.dp))
             ) {
                 Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
 
@@ -442,7 +450,7 @@ fun AddReminderScreen(
                     onClick = { showNotesSheet = true }
                 )
 
-                if (isEditing) {
+                if (isEditing && !readOnly) {
                     OutlinedButton(
                         onClick = { showDeleteConfirmDialog = true },
                         modifier = Modifier
@@ -485,6 +493,71 @@ fun AddReminderScreen(
                 }
             }
 
+            // 只读模式：拦截层吞掉内容区点击（不消费 down/拖拽事件，滚动照常放行），顶栏与底部按钮不受影响
+            if (readOnly) {
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .pointerInput(Unit) {
+                            awaitEachGesture {
+                                val down = awaitFirstDown(requireUnconsumed = false)
+                                var slopPassed = false
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                                    if (change.positionChange() != Offset.Zero) slopPassed = true
+                                    if (!change.pressed) {
+                                        // 未发生拖拽的抬手视为点击，消费以阻断下层 clickable
+                                        if (!slopPassed) change.consume()
+                                        break
+                                    }
+                                }
+                            }
+                        }
+                )
+            }
+
+            // 只读模式：底部固定"永久删除"+"恢复"按钮（组合顺序在拦截层之后，可正常接收点击）
+            if (readOnly && viewModel.isInitialized) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    OutlinedButton(
+                        onClick = {
+                            coroutineScope.launch {
+                                if (viewModel.permanentlyDeleteFromRecycleBin()) {
+                                    onDeleted()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.outlinedButtonColors(
+                            contentColor = MaterialTheme.colorScheme.error
+                        ),
+                        border = BorderStroke(1.dp, MaterialTheme.colorScheme.error)
+                    ) {
+                        Text("永久删除")
+                    }
+                    Button(
+                        onClick = {
+                            coroutineScope.launch {
+                                if (viewModel.restoreFromRecycleBin()) {
+                                    onDeleted()
+                                }
+                            }
+                        },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("恢复")
+                    }
+                }
+            }
+
             // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
             StatusBarScrim(
                 modifier = Modifier.align(Alignment.TopCenter)
@@ -520,7 +593,7 @@ fun AddReminderScreen(
                     .then(topAppBarModifier)
             ) {
                 TopAppBar(
-                    title = { Text(if (isEditing) "编辑提醒" else "新增提醒") },
+                    title = { Text(when { readOnly -> "回收站事件"; isEditing -> "编辑提醒"; else -> "新增提醒" }) },
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = topAppBarColors,
                     navigationIcon = {
@@ -532,17 +605,19 @@ fun AddReminderScreen(
                         }
                     },
                     actions = {
-                        IconButton(
-                            onClick = {
-                                viewModel.saveReminder(context)
-                                onNavigateUp()
-                            },
-                            enabled = viewModel.isInitialized && uiState.title.isNotBlank() && viewModel.hasUnsavedChanges()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = "保存"
-                            )
+                        if (!readOnly) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.saveReminder(context)
+                                    onNavigateUp()
+                                },
+                                enabled = viewModel.isInitialized && uiState.title.isNotBlank() && viewModel.hasUnsavedChanges()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Save,
+                                    contentDescription = "保存"
+                                )
+                            }
                         }
                     }
                 )

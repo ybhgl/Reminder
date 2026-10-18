@@ -630,7 +630,7 @@ object Routes {
     const val ADD_REMINDER = ADD_REMINDER_BASE
     const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}&initialDate={initialDate}&initialEndDate={initialEndDate}"
     private const val EDIT_REMINDER_BASE = "edit_reminder"
-    const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}"
+    const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}?readOnly={readOnly}"
     const val SETTINGS = "settings"
     const val BACKUP_AND_RESTORE = "backup_and_restore"
     const val GESTURE_SETUP = "gesture_setup"
@@ -650,7 +650,7 @@ object Routes {
     const val RECYCLE_BIN = "recycle_bin"
     const val OPEN_SOURCE_LICENSES = "open_source_licenses"
 
-    fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
+    fun editReminder(reminderId: Int, readOnly: Boolean = false): String = "$EDIT_REMINDER_BASE/$reminderId?readOnly=$readOnly"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
     fun shareReminder(reminderId: Int): String = "$SHARE_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
@@ -821,7 +821,10 @@ fun ReminderApp() {
             }
             composable(
                 route = Routes.EDIT_REMINDER_PATTERN,
-                arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
+                arguments = listOf(
+                    navArgument("reminderId") { type = NavType.IntType },
+                    navArgument("readOnly") { type = NavType.BoolType; defaultValue = false }
+                )
             ) {
                 AddReminderScreen(
                     onNavigateUp = { navController.navigateUp() },

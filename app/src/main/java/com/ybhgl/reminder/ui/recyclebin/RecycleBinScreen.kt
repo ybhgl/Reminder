@@ -370,7 +370,7 @@ fun RecycleBinScreen(
                             if (isSelectionMode) {
                                 viewModel.toggleSelection(reminder.id)
                             } else {
-                                navController.navigate(Routes.editReminder(reminder.id))
+                                navController.navigate(Routes.editReminder(reminder.id, readOnly = true))
                             }
                         },
                         onLongPress = { reminder ->
@@ -548,7 +548,7 @@ fun RecycleBinScreen(
                                 } else {
                                     isSearchActive = false
                                     searchQuery = ""
-                                    navController.navigate(Routes.editReminder(reminder.id))
+                                    navController.navigate(Routes.editReminder(reminder.id, readOnly = true))
                                 }
                             },
                             onLongPress = { reminder ->
