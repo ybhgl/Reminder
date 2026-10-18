@@ -2175,13 +2175,8 @@ fun ReminderListScreen(
                     onDismissRequest = { showDeleteDialog = false },
                     title = "删除提醒",
                     text = "已选 ${selectedIds.size} 条提醒。删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复。",
-                    neutralText = "回收",
+                    neutralText = "永久删除",
                     onNeutral = {
-                        showDeleteDialog = false
-                        viewModel.moveSelectedToRecycleBin()
-                    },
-                    confirmText = "永久删除",
-                    onConfirm = {
                         showDeleteDialog = false
                         val itemsToDelete = reminderListUiState.itemList.filter { it.id in reminderListUiState.selectedIds }
                         itemsToDelete.forEach { itemToDelete ->
@@ -2190,7 +2185,13 @@ fun ReminderListScreen(
                         }
                         viewModel.deleteSelected()
                     },
-                    destructive = true
+                    neutralDestructive = true,
+                    dismissText = "取消",
+                    confirmText = "回收",
+                    onConfirm = {
+                        showDeleteDialog = false
+                        viewModel.moveSelectedToRecycleBin()
+                    }
                 )
             }
 

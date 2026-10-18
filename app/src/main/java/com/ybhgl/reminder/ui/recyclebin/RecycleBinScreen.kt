@@ -106,6 +106,9 @@ fun RecycleBinScreen(
     val isSelectionMode = uiState.isSelectionMode
     val selectedIds = uiState.selectedIds
     var showClearDialog by remember { mutableStateOf(false) }
+    // FAB 组"永久删除/恢复"操作前的二次确认
+    var showFabDeleteConfirm by remember { mutableStateOf(false) }
+    var showFabRestoreConfirm by remember { mutableStateOf(false) }
 
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -398,7 +401,7 @@ fun RecycleBinScreen(
         ) {
             Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
                 FloatingActionButton(
-                    onClick = { viewModel.permanentlyDeleteSelected() },
+                    onClick = { showFabDeleteConfirm = true },
                     shape = CircleShape,
                     containerColor = MaterialTheme.colorScheme.error,
                     contentColor = MaterialTheme.colorScheme.onError
@@ -409,7 +412,7 @@ fun RecycleBinScreen(
                     )
                 }
                 FloatingActionButton(
-                    onClick = { viewModel.restoreSelected() },
+                    onClick = { showFabRestoreConfirm = true },
                     shape = CircleShape,
                     containerColor = MaterialTheme.colorScheme.primary,
                     contentColor = MaterialTheme.colorScheme.onPrimary
@@ -579,6 +582,37 @@ fun RecycleBinScreen(
             },
             dismissText = "取消",
             destructive = true
+        )
+    }
+
+    // 批量永久删除二次确认弹窗
+    if (showFabDeleteConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showFabDeleteConfirm = false },
+            title = "永久删除",
+            text = "已选 ${selectedIds.size} 条提醒将被永久删除，删除后不可恢复。",
+            confirmText = "永久删除",
+            onConfirm = {
+                showFabDeleteConfirm = false
+                viewModel.permanentlyDeleteSelected()
+            },
+            dismissText = "取消",
+            destructive = true
+        )
+    }
+
+    // 批量恢复二次确认弹窗
+    if (showFabRestoreConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showFabRestoreConfirm = false },
+            title = "恢复提醒",
+            text = "已选 ${selectedIds.size} 条提醒将恢复到主页列表中。",
+            confirmText = "恢复",
+            onConfirm = {
+                showFabRestoreConfirm = false
+                viewModel.restoreSelected()
+            },
+            dismissText = "取消"
         )
     }
 }

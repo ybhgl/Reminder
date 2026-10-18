@@ -147,6 +147,9 @@ fun AddReminderScreen(
     val readOnly = viewModel.isReadOnly
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showUnsavedChangesDialog by remember { mutableStateOf(false) }
+    // 只读模式底部"永久删除/恢复"操作前的二次确认
+    var showReadOnlyDeleteConfirm by remember { mutableStateOf(false) }
+    var showReadOnlyRestoreConfirm by remember { mutableStateOf(false) }
     val tagOptions by viewModel.tagSuggestions.collectAsState()
     val zoneId = ZoneId.systemDefault()
     val currentLunarLabel = remember(uiState.date) { CalendarUtil.getLunarMonthDayLabel(uiState.date) }
@@ -469,17 +472,8 @@ fun AddReminderScreen(
                             onDismissRequest = { showDeleteConfirmDialog = false },
                             title = "删除提醒",
                             text = "删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复。",
-                            neutralText = "回收",
+                            neutralText = "永久删除",
                             onNeutral = {
-                                showDeleteConfirmDialog = false
-                                coroutineScope.launch {
-                                    if (viewModel.moveToRecycleBin(context)) {
-                                        onDeleted()
-                                    }
-                                }
-                            },
-                            confirmText = "永久删除",
-                            onConfirm = {
                                 showDeleteConfirmDialog = false
                                 coroutineScope.launch {
                                     if (viewModel.deleteReminder(context)) {
@@ -487,7 +481,17 @@ fun AddReminderScreen(
                                     }
                                 }
                             },
-                            destructive = true
+                            neutralDestructive = true,
+                            dismissText = "取消",
+                            confirmText = "回收",
+                            onConfirm = {
+                                showDeleteConfirmDialog = false
+                                coroutineScope.launch {
+                                    if (viewModel.moveToRecycleBin(context)) {
+                                        onDeleted()
+                                    }
+                                }
+                            }
                         )
                     }
                 }
@@ -528,13 +532,7 @@ fun AddReminderScreen(
                     horizontalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
                     OutlinedButton(
-                        onClick = {
-                            coroutineScope.launch {
-                                if (viewModel.permanentlyDeleteFromRecycleBin()) {
-                                    onDeleted()
-                                }
-                            }
-                        },
+                        onClick = { showReadOnlyDeleteConfirm = true },
                         modifier = Modifier.weight(1f),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
@@ -544,18 +542,49 @@ fun AddReminderScreen(
                         Text("永久删除")
                     }
                     Button(
-                        onClick = {
-                            coroutineScope.launch {
-                                if (viewModel.restoreFromRecycleBin()) {
-                                    onDeleted()
-                                }
-                            }
-                        },
+                        onClick = { showReadOnlyRestoreConfirm = true },
                         modifier = Modifier.weight(1f)
                     ) {
                         Text("恢复")
                     }
                 }
+            }
+
+            if (showReadOnlyDeleteConfirm) {
+                AppAlertDialog(
+                    onDismissRequest = { showReadOnlyDeleteConfirm = false },
+                    title = "永久删除",
+                    text = "该提醒将被永久删除，删除后不可恢复。",
+                    confirmText = "永久删除",
+                    onConfirm = {
+                        showReadOnlyDeleteConfirm = false
+                        coroutineScope.launch {
+                            if (viewModel.permanentlyDeleteFromRecycleBin()) {
+                                onDeleted()
+                            }
+                        }
+                    },
+                    dismissText = "取消",
+                    destructive = true
+                )
+            }
+
+            if (showReadOnlyRestoreConfirm) {
+                AppAlertDialog(
+                    onDismissRequest = { showReadOnlyRestoreConfirm = false },
+                    title = "恢复提醒",
+                    text = "恢复后该提醒将重新出现在主页列表中。",
+                    confirmText = "恢复",
+                    onConfirm = {
+                        showReadOnlyRestoreConfirm = false
+                        coroutineScope.launch {
+                            if (viewModel.restoreFromRecycleBin()) {
+                                onDeleted()
+                            }
+                        }
+                    },
+                    dismissText = "取消"
+                )
             }
 
             // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
