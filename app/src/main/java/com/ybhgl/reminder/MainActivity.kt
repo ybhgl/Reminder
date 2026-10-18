@@ -2074,13 +2074,11 @@ fun ReminderListScreen(
                             ),
                             label = "MainFabIconRotation"
                         )
-                        // 进入选择模式时隐藏菜单 FAB，避免与底部操作按钮冲突；
-                        // 纯 slide（布局偏移）不带 fade：fadeIn/fadeOut 的 alpha 会强制离屏图层，
-                        // 把 FAB 的 elevation 阴影裁切到按钮方形 bounds 内，阴影显示不全
+                        // 进入选择模式时隐藏菜单 FAB，避免与底部操作按钮冲突
                         AnimatedVisibility(
                             visible = !isSelectionMode,
-                            enter = slideInVertically(initialOffsetY = { it }),
-                            exit = slideOutVertically(targetOffsetY = { it }),
+                            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
+                            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                             label = "MainMenuFabVisibility"
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
