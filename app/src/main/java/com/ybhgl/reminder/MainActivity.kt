@@ -2167,8 +2167,13 @@ fun ReminderListScreen(
                 AppAlertDialog(
                     onDismissRequest = { showDeleteDialog = false },
                     title = "删除提醒",
-                    text = "确定要删除选中的 ${selectedIds.size} 条提醒吗？此操作不可恢复。",
-                    confirmText = "删除",
+                    text = "已选 ${selectedIds.size} 条提醒。删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复。",
+                    neutralText = "回收",
+                    onNeutral = {
+                        showDeleteDialog = false
+                        viewModel.moveSelectedToRecycleBin()
+                    },
+                    confirmText = "永久删除",
                     onConfirm = {
                         showDeleteDialog = false
                         val itemsToDelete = reminderListUiState.itemList.filter { it.id in reminderListUiState.selectedIds }
@@ -2178,7 +2183,6 @@ fun ReminderListScreen(
                         }
                         viewModel.deleteSelected()
                     },
-                    dismissText = "取消",
                     destructive = true
                 )
             }

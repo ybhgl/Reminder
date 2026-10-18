@@ -164,6 +164,13 @@ class AddReminderViewModel(
         return true
     }
 
+    /** 移入回收站（软删除，可恢复）；闹钟取消与系统日历事件清理由 Repository 统一处理 */
+    suspend fun moveToRecycleBin(context: Context): Boolean {
+        val id = reminderId ?: return false
+        reminderRepository.moveToRecycleBin(setOf(id))
+        return true
+    }
+
     private fun validateInput(uiState: ReminderUiState = reminderUiState): Boolean {
         return with(uiState) {
             title.isNotBlank()

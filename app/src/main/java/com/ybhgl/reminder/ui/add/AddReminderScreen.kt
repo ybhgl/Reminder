@@ -459,9 +459,18 @@ fun AddReminderScreen(
                     if (showDeleteConfirmDialog) {
                         AppAlertDialog(
                             onDismissRequest = { showDeleteConfirmDialog = false },
-                            title = "确认删除",
-                            text = "确定要删除此提醒吗？",
-                            confirmText = "删除",
+                            title = "删除提醒",
+                            text = "删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复。",
+                            neutralText = "回收",
+                            onNeutral = {
+                                showDeleteConfirmDialog = false
+                                coroutineScope.launch {
+                                    if (viewModel.moveToRecycleBin(context)) {
+                                        onDeleted()
+                                    }
+                                }
+                            },
+                            confirmText = "永久删除",
                             onConfirm = {
                                 showDeleteConfirmDialog = false
                                 coroutineScope.launch {
@@ -470,7 +479,6 @@ fun AddReminderScreen(
                                     }
                                 }
                             },
-                            dismissText = "取消",
                             destructive = true
                         )
                     }
