@@ -150,7 +150,8 @@ fun buildMonthCells(
 @Composable
 fun WeekdayHeader(modifier: Modifier = Modifier) {
     val labels = remember { listOf("日", "一", "二", "三", "四", "五", "六") }
-    Row(modifier = modifier.fillMaxWidth()) {
+    // 水平内边距与网格列共用常量，保证与下方日期列逐列对齐
+    Row(modifier = modifier.fillMaxWidth().padding(horizontal = GRID_HORIZONTAL_PADDING_DP.dp)) {
         labels.forEach { label ->
             Box(modifier = Modifier.weight(1f), contentAlignment = Alignment.Center) {
                 Text(
@@ -165,6 +166,11 @@ fun WeekdayHeader(modifier: Modifier = Modifier) {
 
 /** 单周行高：DayCell 内容 52dp + 上下 padding 2dp×2 */
 private const val WEEK_ROW_HEIGHT_DP = 56f
+/**
+ * 网格水平内边距：主网格 Column、滑轨 WeekRow、星期标题行四处共用同一常量，
+ * 保证星期指示器与日期列逐列垂直对齐（此前仅网格有 8dp、星期行铺满全宽而错位）。
+ */
+private const val GRID_HORIZONTAL_PADDING_DP = 8f
 /** 月网格上下内边距 */
 private const val GRID_VERTICAL_PADDING_DP = 10f
 /** 展开态统一高度：固定 6 行（356dp）。5 行月富余空间由 SpaceEvenly 均匀分摊，跨月总高度恒定 */
@@ -580,7 +586,7 @@ private fun MonthGrid(
             modifier = Modifier
                 .fillMaxWidth()
                 .height(EXPANDED_GRID_HEIGHT_DP.dp)
-                .padding(horizontal = 8.dp, vertical = GRID_VERTICAL_PADDING_DP.dp),
+                .padding(horizontal = GRID_HORIZONTAL_PADDING_DP.dp, vertical = GRID_VERTICAL_PADDING_DP.dp),
             verticalArrangement = Arrangement.SpaceEvenly
         ) {
             cells.chunked(7).forEachIndexed { index, row ->
@@ -602,7 +608,7 @@ private fun MonthGrid(
                 onDateSelected = onDateSelected,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = GRID_HORIZONTAL_PADDING_DP.dp)
                     .offset { IntOffset(-widthPx.roundToInt(), selRowTopPx.roundToInt()) }
             )
             WeekRow(
@@ -613,7 +619,7 @@ private fun MonthGrid(
                 onDateSelected = onDateSelected,
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(horizontal = 8.dp)
+                    .padding(horizontal = GRID_HORIZONTAL_PADDING_DP.dp)
                     .offset { IntOffset(widthPx.roundToInt(), selRowTopPx.roundToInt()) }
             )
         }
