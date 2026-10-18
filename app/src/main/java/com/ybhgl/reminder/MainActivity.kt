@@ -2056,12 +2056,16 @@ fun ReminderListScreen(
                         alpha = 1f - calendarProgress
                     }
                     .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(bottom = segmentedBottomSpacing, start = 24.dp, end = 24.dp)
+                    .padding(bottom = segmentedBottomSpacing, start = 8.dp, end = 24.dp)
             ) {
                 // 日历页完全展示时不组合底栏内容，避免淡出浮层误触并放行日历手势
                 if (calendarProgress < 0.999f) {
+                    // 固定高度：菜单 FAB 的 AnimatedVisibility 内容带 16dp 透明留白（撑开动画离屏图层
+                    // 边界以容纳 elevation 阴影），溢出上下不被裁剪，底栏高度与按钮位置均不变
                     Row(
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .height(segmentedHeight),
                         verticalAlignment = Alignment.CenterVertically
                     ) {
                         // 左侧 FAB：点击展开操作菜单（浮层见下方 FabExpandedMenu）
@@ -2081,7 +2085,10 @@ fun ReminderListScreen(
                             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
                             label = "MainMenuFabVisibility"
                         ) {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
+                            Row(
+                                modifier = Modifier.padding(16.dp),
+                                verticalAlignment = Alignment.CenterVertically
+                            ) {
                                 FloatingActionButton(
                                     onClick = { fabMenuExpanded = !fabMenuExpanded },
                                     shape = CircleShape,
@@ -2101,7 +2108,6 @@ fun ReminderListScreen(
                                         )
                                     }
                                 }
-                                Spacer(modifier = Modifier.width(16.dp))
                             }
                         }
 

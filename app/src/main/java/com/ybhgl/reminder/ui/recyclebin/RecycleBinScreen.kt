@@ -444,9 +444,14 @@ fun RecycleBinScreen(
             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
-                .padding(end = 16.dp, bottom = fabBottomPadding + 16.dp)
+                .padding(bottom = fabBottomPadding)
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(16.dp)) {
+            // 16dp 透明留白：撑开动画离屏图层边界，让 elevation 阴影在动画期间完整渲染
+            // （外层不再加 end/bottom 边距，由留白提供，按钮视觉位置不变）
+            Row(
+                modifier = Modifier.padding(16.dp),
+                horizontalArrangement = Arrangement.spacedBy(16.dp)
+            ) {
                 FloatingActionButton(
                     onClick = { showFabDeleteConfirm = true },
                     shape = CircleShape,
