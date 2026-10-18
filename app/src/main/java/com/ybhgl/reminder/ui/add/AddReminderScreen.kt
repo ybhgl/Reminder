@@ -3,10 +3,6 @@ package com.ybhgl.reminder.ui.add
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.geometry.Rect
-import androidx.compose.ui.layout.onGloballyPositioned
-import androidx.compose.runtime.rememberUpdatedState
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -20,13 +16,10 @@ import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -145,8 +138,6 @@ fun AddReminderScreen(
     var invalidEndDate by remember { mutableStateOf<LocalDate?>(null) }
     var showNotesSheet by remember { mutableStateOf(false) }
     var showTagSheet by remember { mutableStateOf(false) }
-    // 备注行在根坐标系中的范围：只读拦截层据此放行点击查看备注
-    val notesRowBounds = remember { mutableStateOf(Rect.Zero) }
     val uiState = viewModel.reminderUiState
     val isEditing = uiState.id != 0
     val readOnly = viewModel.isReadOnly
@@ -199,6 +190,9 @@ fun AddReminderScreen(
 
     val topBarState = rememberCollapsingTopBarState()
 
+    // 只读模式：不可交互条目逐个置灰；备注与提醒设置入口保持正常亮度且可点击
+    val readOnlyFade: Modifier = if (readOnly) Modifier.graphicsLayer { alpha = 0.45f } else Modifier
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -212,10 +206,6 @@ fun AddReminderScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
-                    .graphicsLayer {
-                        // 只读模式：内容整体置灰
-                        if (readOnly) alpha = 0.45f
-                    }
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
                     .padding(top = 0.dp, bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + (if (readOnly) 88.dp else 16.dp))
@@ -228,6 +218,7 @@ fun AddReminderScreen(
                         SegmentedButton(
                             selected = uiState.type == type,
                             onClick = { viewModel.onTypeChange(type) },
+                            enabled = !readOnly,
                             shape = SegmentedButtonDefaults.itemShape(
                                 index = index,
                                 count = ReminderType.entries.size
@@ -251,14 +242,18 @@ fun AddReminderScreen(
                     label = { Text(if (uiState.type == ReminderType.BIRTHDAY) "寿星名字" else "标题") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp),
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     singleLine = true,
+                    readOnly = readOnly,
                     shape = MaterialTheme.shapes.large
                 )
 
                 // 3. 时间（副标题跟随所选历制：公历显示数字日期，农历显示农历日期）
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     icon = Icons.Default.Event,
                     title = "日期",
                     subtitle = if (uiState.isLunar) {
@@ -267,7 +262,9 @@ fun AddReminderScreen(
                         uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE)
                     },
                     showChevron = true,
-                    onClick = { showDatePicker = true }
+                    onClick = if (readOnly) null else {
+                        { showDatePicker = true }
+                    }
                 )
 
                 if (showDatePicker) {
@@ -285,14 +282,18 @@ fun AddReminderScreen(
                 // 3.5 结束日期（仅倒数日；设置后进入"还有x天→就是今天→第x天→已过x天"区间模式）
                 SettingsLinkedVisibility(visible = uiState.type == ReminderType.ANNUAL) {
                     TonalCardRow(
-                        modifier = Modifier.padding(top = 16.dp),
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .then(readOnlyFade),
                         icon = Icons.Default.EventAvailable,
                         title = "结束日期",
                         subtitle = uiState.endDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "未设置",
                         showChevron = true,
                         trailingBeforeChevron = true,
-                        onClick = { showEndDatePicker = true },
-                        trailing = if (uiState.endDate != null) {
+                        onClick = if (readOnly) null else {
+                            { showEndDatePicker = true }
+                        },
+                        trailing = if (uiState.endDate != null && !readOnly) {
                             {
                                 // 与箭头同规格的裸图标（24dp、同色），替代 IconButton 避免过大触摸盒造成宽间距
                                 Icon(
@@ -332,7 +333,9 @@ fun AddReminderScreen(
                         (uiState.type == ReminderType.ANNUAL && uiState.endDate != null)
                 ) {
                     TonalCardRow(
-                        modifier = Modifier.padding(top = 16.dp),
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .then(readOnlyFade),
                         icon = Icons.Default.ExposurePlus1,
                         title = "包含起始日（+1）",
                         subtitle = "开启后起始日计为 1，关闭则计为 0",
@@ -343,21 +346,25 @@ fun AddReminderScreen(
                                 onCheckedChange = null
                             )
                         },
-                        onClick = {
-                            viewModel.updateUiState(
-                                uiState.copy(
-                                    notificationConfig = uiState.notificationConfig.copy(
-                                        includeStartDay = !uiState.notificationConfig.includeStartDay
+                        onClick = if (readOnly) null else {
+                            {
+                                viewModel.updateUiState(
+                                    uiState.copy(
+                                        notificationConfig = uiState.notificationConfig.copy(
+                                            includeStartDay = !uiState.notificationConfig.includeStartDay
+                                        )
                                     )
                                 )
-                            )
+                            }
                         }
                     )
                 }
 
                 // 4. 置顶
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     icon = Icons.Default.PushPin,
                     title = "置顶",
                     subtitle = "在列表中优先显示",
@@ -367,30 +374,38 @@ fun AddReminderScreen(
                             onCheckedChange = null
                         )
                     },
-                    onClick = {
-                        viewModel.updateUiState(uiState.copy(isPinned = !uiState.isPinned))
+                    onClick = if (readOnly) null else {
+                        { viewModel.updateUiState(uiState.copy(isPinned = !uiState.isPinned)) }
                     }
                 )
 
                 // 5. 标签（独立入口，点击打开标签选择对话框）
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     icon = Icons.Default.Label,
                     title = "标签",
                     value = uiState.tag.ifBlank { "未设置" },
                     showChevron = true,
-                    onClick = { showTagSheet = true }
+                    onClick = if (readOnly) null else {
+                        { showTagSheet = true }
+                    }
                 )
 
                 // 6. 重复（仅倒数日，随类型联动展开/收起）
                 SettingsLinkedVisibility(visible = uiState.type == ReminderType.ANNUAL) {
                     TonalCardRow(
-                        modifier = Modifier.padding(top = 16.dp),
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .then(readOnlyFade),
                         icon = Icons.Default.Repeat,
                         title = "重复",
                         value = repeatInfoToString(uiState.repeatInfo),
                         showChevron = true,
-                        onClick = { viewModel.onShowRepeatDialog(true) }
+                        onClick = if (readOnly) null else {
+                            { viewModel.onShowRepeatDialog(true) }
+                        }
                     )
                 }
 
@@ -426,42 +441,36 @@ fun AddReminderScreen(
                             reminderId = if (isEditing) uiState.id else null,
                             initialConfig = configJson,
                             reminderType = uiState.type.name,
-                            eventDate = uiState.date.toString()
+                            eventDate = uiState.date.toString(),
+                            readOnly = readOnly
                         ))
                     }
                 )
 
                 // 8. 个性化（独立 Activity：卡片实时预览 + 设置面板）
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     icon = Icons.Default.AutoAwesome,
                     title = "个性化",
                     value = if (uiState.isCustomized) "已定制" else "默认",
                     showChevron = true,
-                    onClick = {
-                        personalizationLauncher.launch(
-                            PersonalizationInput(
-                                config = uiState.toPersonalizationConfig(),
-                                reminderType = uiState.type.name
+                    onClick = if (readOnly) null else {
+                        {
+                            personalizationLauncher.launch(
+                                PersonalizationInput(
+                                    config = uiState.toPersonalizationConfig(),
+                                    reminderType = uiState.type.name
+                                )
                             )
-                        )
+                        }
                     }
                 )
 
-                // 9. 备注
+                // 9. 备注（只读模式下仍可点击查看，内容不可修改）
                 TonalCardRow(
-                    modifier = Modifier
-                        .padding(top = 16.dp)
-                        .onGloballyPositioned { coordinates ->
-                            val rootPos = coordinates.localToRoot(Offset.Zero)
-                            val size = coordinates.size
-                            notesRowBounds.value = Rect(
-                                rootPos.x,
-                                rootPos.y,
-                                rootPos.x + size.width,
-                                rootPos.y + size.height
-                            )
-                        },
+                    modifier = Modifier.padding(top = 16.dp),
                     icon = Icons.AutoMirrored.Filled.Notes,
                     title = "备注",
                     value = uiState.notes.ifBlank { "未填写" },
@@ -513,35 +522,7 @@ fun AddReminderScreen(
                 }
             }
 
-            // 只读模式：拦截层吞掉内容区点击（不消费 down/拖拽事件，滚动照常放行），顶栏与底部按钮不受影响；
-            // 备注行范围内的点击放行，允许打开只读备注查看
-            val currentNotesBounds = rememberUpdatedState(notesRowBounds.value)
-            if (readOnly) {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .pointerInput(Unit) {
-                            awaitEachGesture {
-                                val down = awaitFirstDown(requireUnconsumed = false)
-                                var slopPassed = false
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull { it.id == down.id } ?: break
-                                    if (change.positionChange() != Offset.Zero) slopPassed = true
-                                    if (!change.pressed) {
-                                        // 未发生拖拽的抬手视为点击，消费以阻断下层 clickable；备注行除外
-                                        if (!slopPassed && !currentNotesBounds.value.contains(change.position)) {
-                                            change.consume()
-                                        }
-                                        break
-                                    }
-                                }
-                            }
-                        }
-                )
-            }
-
-            // 只读模式：底部固定"永久删除"+"恢复"按钮（组合顺序在拦截层之后，可正常接收点击）
+            // 只读模式：底部固定"永久删除"+"恢复"按钮
             if (readOnly && viewModel.isInitialized) {
                 Row(
                     modifier = Modifier
@@ -642,7 +623,15 @@ fun AddReminderScreen(
                     .then(topAppBarModifier)
             ) {
                 TopAppBar(
-                    title = { Text(when { readOnly -> "回收站事件"; isEditing -> "编辑提醒"; else -> "新增提醒" }) },
+                    title = {
+                        Text(
+                            when {
+                                readOnly -> uiState.title.ifBlank { "回收站事件" }
+                                isEditing -> "编辑提醒"
+                                else -> "新增提醒"
+                            }
+                        )
+                    },
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = topAppBarColors,
                     navigationIcon = {

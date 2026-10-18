@@ -644,7 +644,7 @@ object Routes {
     const val BIRTHDAY_LIST_BASE = "birthday_list"
     const val BIRTHDAY_LIST_PATTERN = "$BIRTHDAY_LIST_BASE/{reminderId}"
     const val REMINDER_SETTING_BASE = "reminder_setting"
-    const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}&fromManage={fromManage}"
+    const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}&fromManage={fromManage}&readOnly={readOnly}"
     const val REMINDER_MANAGE = "reminder_manage"
     const val DATE_CALCULATOR = "date_calculator"
     const val RECYCLE_BIN = "recycle_bin"
@@ -662,14 +662,15 @@ object Routes {
         )
         return if (parts.isEmpty()) ADD_REMINDER_BASE else "$ADD_REMINDER_BASE?" + parts.joinToString("&")
     }
-    fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null, eventDate: String? = null, fromManage: Boolean = false): String {
+    fun reminderSetting(reminderId: Int? = null, initialConfig: String? = null, reminderType: String? = null, eventDate: String? = null, fromManage: Boolean = false, readOnly: Boolean = false): String {
         val base = "$REMINDER_SETTING_BASE?"
         val idPart = if (reminderId != null) "reminderId=$reminderId" else ""
         val configPart = if (initialConfig != null) "initialConfig=$initialConfig" else ""
         val typePart = if (reminderType != null) "reminderType=$reminderType" else ""
         val datePart = if (eventDate != null) "eventDate=$eventDate" else ""
         val managePart = if (fromManage) "fromManage=true" else ""
-        return base + listOf(idPart, configPart, typePart, datePart, managePart).filter { it.isNotEmpty() }.joinToString("&")
+        val readOnlyPart = if (readOnly) "readOnly=true" else ""
+        return base + listOf(idPart, configPart, typePart, datePart, managePart, readOnlyPart).filter { it.isNotEmpty() }.joinToString("&")
     }
     fun tagManagement(isSortMode: Boolean = false): String = "$TAG_MANAGEMENT?isSortMode=$isSortMode"
 }
@@ -858,6 +859,10 @@ fun ReminderApp() {
                         defaultValue = null
                     },
                     navArgument("fromManage") {
+                        type = NavType.BoolType
+                        defaultValue = false
+                    },
+                    navArgument("readOnly") {
                         type = NavType.BoolType
                         defaultValue = false
                     }
