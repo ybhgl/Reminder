@@ -78,6 +78,55 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
         BackupPreferences.triggerAutoBackup(context, this)
     }
 
+    /**
+     * 移入回收站：与删除路径一致地取消闹钟调度并移除系统日历事件，
+     * 但保留背景图文件（恢复后仍可用），并记录进入回收站时间。
+     * 数据变更后的 widget 刷新与自动备份触发链与删除保持一致。
+     */
+    suspend fun moveToRecycleBin(ids: Set<Int>) {
+        if (ids.isEmpty()) return
+        val app = context.applicationContext
+        ids.forEach { id ->
+            val item = getReminderById(id)
+            if (item != null) {
+                ReminderScheduler.cancelReminder(app, item)
+                CalendarManager.deleteEvent(app, item)
+            }
+        }
+        reminderDao.moveToRecycleBin(ids.toList(), System.currentTimeMillis())
+        WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, this)
+    }
+
+    /**
+     * 从回收站恢复：清除回收标记后重建闹钟调度、系统日历事件与常驻通知，
+     * 调度链与 AddReminderViewModel.saveReminder 保持一致。
+     */
+    suspend fun restoreReminders(ids: Set<Int>) {
+        if (ids.isEmpty()) return
+        val app = context.applicationContext
+        reminderDao.restoreFromRecycleBin(ids.toList())
+        ids.forEach { id ->
+            val item = getReminderById(id)
+            if (item != null) {
+                ReminderScheduler.scheduleReminder(app, item)
+                CalendarManager.addOrUpdateEvent(app, item)
+                ReminderScheduler.updateActiveNotification(app, item)
+            }
+        }
+        WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, this)
+    }
+
+    /** 永久删除回收站内全部事件（复用完整删除路径，含背景图清理与备份触发） */
+    suspend fun clearRecycleBin() {
+        val items = getRecycleBinRemindersList()
+        if (items.isEmpty()) return
+        deleteRemindersByIds(items.map { it.id }.toSet())
+    }
+
     suspend fun deleteAllReminders() {
         val app = context.applicationContext
         val items = getAllRemindersList()
