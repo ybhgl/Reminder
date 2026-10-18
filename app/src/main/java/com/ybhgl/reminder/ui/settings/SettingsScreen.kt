@@ -1033,28 +1033,44 @@ private fun HomePageSettingsCard(
                 )
             }
 
-            SettingsLinkedVisibility(visible = homeCategoryEnabled) {
-                Column(
-                    modifier = Modifier.padding(top = 16.dp),
-                    verticalArrangement = Arrangement.spacedBy(4.dp)
-                ) {
-                    Text(
-                        text = "默认起始页面",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurface
+            Column(
+                modifier = Modifier.padding(top = 16.dp),
+                verticalArrangement = Arrangement.spacedBy(4.dp)
+            ) {
+                Text(
+                    text = "默认起始页面",
+                    style = MaterialTheme.typography.bodyLarge,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Text(
+                    text = "选择启动应用后默认显示的页面",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                val showCategories = homeCategoryEnabled ?: true
+                val pageOptions = if (showCategories) {
+                    listOf(
+                        AppDefaultPage.CALENDAR,
+                        AppDefaultPage.COUNTDOWN,
+                        AppDefaultPage.COUNTUP,
+                        AppDefaultPage.BIRTHDAY
                     )
-                    Text(
-                        text = "选择启动应用后默认显示的页面",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    DefaultPageSegmentedControl(
-                        options = listOf(AppDefaultPage.COUNTDOWN, AppDefaultPage.COUNTUP, AppDefaultPage.BIRTHDAY),
-                        selectedOption = selectedPage,
-                        onOptionSelected = onPageSelected
-                    )
+                } else {
+                    listOf(AppDefaultPage.CALENDAR, AppDefaultPage.EVENTS)
                 }
+                // 选中态归一化：存量值不属于当前选项集时按等价选项显示，不篡改用户存量设置
+                val displayPage = when {
+                    selectedPage == AppDefaultPage.CALENDAR -> AppDefaultPage.CALENDAR
+                    showCategories && selectedPage == AppDefaultPage.EVENTS -> AppDefaultPage.COUNTDOWN
+                    !showCategories -> AppDefaultPage.EVENTS
+                    else -> selectedPage
+                }
+                DefaultPageSegmentedControl(
+                    options = pageOptions,
+                    selectedOption = displayPage,
+                    onOptionSelected = onPageSelected
+                )
             }
 
             Row(
@@ -1104,9 +1120,11 @@ private fun DefaultPageSegmentedControl(
     onOptionSelected: (AppDefaultPage) -> Unit
 ) {
     val optionLabels = mapOf(
+        AppDefaultPage.CALENDAR to "日历",
         AppDefaultPage.COUNTDOWN to "倒数",
         AppDefaultPage.COUNTUP to "正数",
-        AppDefaultPage.BIRTHDAY to "生日"
+        AppDefaultPage.BIRTHDAY to "生日",
+        AppDefaultPage.EVENTS to "事件"
     )
     val segmentCount = options.size.coerceAtLeast(1)
     val backgroundColor by animateColorAsState(

@@ -23,9 +23,11 @@ enum class AppThemeOption {
 
 @Serializable
 enum class AppDefaultPage {
+    CALENDAR,
     COUNTDOWN,
     COUNTUP,
-    BIRTHDAY
+    BIRTHDAY,
+    EVENTS
 }
 
 @Serializable

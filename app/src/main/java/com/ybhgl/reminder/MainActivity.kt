@@ -1564,16 +1564,21 @@ fun ReminderListScreen(
     LaunchedEffect(pagerState) {
         snapshotFlow { pagerState.currentPage == 0 }.collect { calendarPageActive = it }
     }
+    // 首页是否为日历页（第 0 页）：返回手势以此锚定，在首页返回退出应用
+    val homeIsCalendar = defaultPage == AppDefaultPage.CALENDAR
     var hasSetDefaultPage by rememberSaveable { mutableStateOf(false) }
     LaunchedEffect(defaultPage, homeCategoryEnabled) {
-        if (!hasSetDefaultPage && defaultPage != null && homeCategoryEnabled == true) {
-            val page = when (defaultPage) {
-                AppDefaultPage.COUNTDOWN -> 0
-                AppDefaultPage.COUNTUP -> 1
-                AppDefaultPage.BIRTHDAY -> 2
-                else -> return@LaunchedEffect
+        if (!hasSetDefaultPage && defaultPage != null && homeCategoryEnabled != null) {
+            val page = when {
+                defaultPage == AppDefaultPage.CALENDAR -> 0
+                showCategories -> when (defaultPage) {
+                    AppDefaultPage.COUNTUP -> 2
+                    AppDefaultPage.BIRTHDAY -> 3
+                    else -> 1
+                }
+                else -> 1
             }
-            pagerState.scrollToPage(page + 1)
+            pagerState.scrollToPage(page)
             hasSetDefaultPage = true
         }
     }
@@ -1590,9 +1595,12 @@ fun ReminderListScreen(
         }
     }
     val coroutineScope = rememberCoroutineScope()
-    // 日历页（第 0 页）按返回键回到主列表页，而不是直接退出应用
-    BackHandler(enabled = pagerState.currentPage == 0) {
-        coroutineScope.launch { pagerState.animateScrollToPage(1) }
+    // 返回手势以首页为锚：在首页返回退出应用，在非首页返回回到另一页
+    // （三个事件分类均属事件页；首页=事件时从日历页返回落回第 1 个列表页）
+    BackHandler(enabled = (pagerState.currentPage == 0) != homeIsCalendar) {
+        coroutineScope.launch {
+            pagerState.animateScrollToPage(if (homeIsCalendar) 0 else 1)
+        }
     }
     val configuration = androidx.compose.ui.platform.LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp.dp
