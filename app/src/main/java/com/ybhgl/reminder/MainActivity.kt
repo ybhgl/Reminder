@@ -71,6 +71,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.requiredWidth
+import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -2078,12 +2079,15 @@ fun ReminderListScreen(
                             ),
                             label = "MainFabIconRotation"
                         )
-                        // 进入选择模式时隐藏菜单 FAB，避免与底部操作按钮冲突
+                        // 进入选择模式时隐藏菜单 FAB，避免与底部操作按钮冲突；
+                        // requiredHeight 绕过父 Row 的 54dp 高度约束：内容带 16dp 留白需 86dp，
+                        // 否则 FAB 会被压扁；溢出上下各 16dp 透明区，按钮视觉位置不变
                         AnimatedVisibility(
                             visible = !isSelectionMode,
                             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
                             exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
-                            label = "MainMenuFabVisibility"
+                            label = "MainMenuFabVisibility",
+                            modifier = Modifier.requiredHeight(segmentedHeight + 32.dp)
                         ) {
                             Row(
                                 modifier = Modifier.padding(16.dp),
