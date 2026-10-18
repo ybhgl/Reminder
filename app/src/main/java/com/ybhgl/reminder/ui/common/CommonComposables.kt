@@ -512,6 +512,7 @@ fun SettingsLinkedVisibility(
  * - 简单场景直接传 [text]；复杂内容（输入框、选择器等）用 [content] 槽，二者至多传其一
  * - [confirmText] 传 null 表示无确认按钮（如仅靠内容区交互完成操作的弹窗）；
  *   [neutralText] 用于"管理"等中性第三操作，独立渲染在弹窗左下角（与右侧 dismiss/confirm 分离）；
+ *   [neutralDestructive] 为 true 时左下角 neutral 按钮使用 error 色（如"永久删除"置于左侧的场景）；
  *   [dismissText] 的点击行为默认回落到 [onDismissRequest]
  */
 @Composable
@@ -528,6 +529,7 @@ fun AppAlertDialog(
     neutralText: String? = null,
     onNeutral: (() -> Unit)? = null,
     destructive: Boolean = false,
+    neutralDestructive: Boolean = false,
     confirmEnabled: Boolean = true
 ) {
     AlertDialog(
@@ -553,7 +555,14 @@ fun AppAlertDialog(
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     TextButton(onClick = { onNeutral?.invoke() }) {
-                        Text(neutralText)
+                        Text(
+                            neutralText,
+                            color = if (neutralDestructive) {
+                                MaterialTheme.colorScheme.error
+                            } else {
+                                Color.Unspecified
+                            }
+                        )
                     }
                     Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         if (dismissText != null) {

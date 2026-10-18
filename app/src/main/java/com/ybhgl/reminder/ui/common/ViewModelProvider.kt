@@ -74,6 +74,14 @@ object AppViewModelProvider {
             )
         }
 
+        // Initializer for RecycleBinViewModel
+        initializer {
+            com.ybhgl.reminder.ui.recyclebin.RecycleBinViewModel(
+                reminderRepository = reminderApplication().container.reminderRepository,
+                appContext = reminderApplication().applicationContext
+            )
+        }
+
         // Initializer for SettingsViewModel
         initializer {
             SettingsViewModel(reminderApplication().container.reminderRepository)

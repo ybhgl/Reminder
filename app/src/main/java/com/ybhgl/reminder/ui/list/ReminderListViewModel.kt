@@ -86,6 +86,16 @@ class ReminderListViewModel(
         }
     }
 
+    /** 将选中提醒移入回收站（软删除，可恢复） */
+    fun moveSelectedToRecycleBin() {
+        val idsToMove = selectedIds.value
+        if (idsToMove.isEmpty()) return
+        viewModelScope.launch {
+            reminderRepository.moveToRecycleBin(idsToMove)
+            exitSelectionMode()
+        }
+    }
+
     companion object {
         private const val TIMEOUT_MILLIS = 5_000L
     }

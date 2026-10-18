@@ -3,7 +3,6 @@ package com.ybhgl.reminder.ui.add
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.input.nestedscroll.nestedScroll
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -141,8 +140,12 @@ fun AddReminderScreen(
     var showTagSheet by remember { mutableStateOf(false) }
     val uiState = viewModel.reminderUiState
     val isEditing = uiState.id != 0
+    val readOnly = viewModel.isReadOnly
     var showDeleteConfirmDialog by remember { mutableStateOf(false) }
     var showUnsavedChangesDialog by remember { mutableStateOf(false) }
+    // 只读模式底部"永久删除/恢复"操作前的二次确认
+    var showReadOnlyDeleteConfirm by remember { mutableStateOf(false) }
+    var showReadOnlyRestoreConfirm by remember { mutableStateOf(false) }
     val tagOptions by viewModel.tagSuggestions.collectAsState()
     val zoneId = ZoneId.systemDefault()
     val currentLunarLabel = remember(uiState.date) { CalendarUtil.getLunarMonthDayLabel(uiState.date) }
@@ -187,6 +190,9 @@ fun AddReminderScreen(
 
     val topBarState = rememberCollapsingTopBarState()
 
+    // 只读模式：不可交互条目逐个置灰；备注与提醒设置入口保持正常亮度且可点击
+    val readOnlyFade: Modifier = if (readOnly) Modifier.graphicsLayer { alpha = 0.45f } else Modifier
+
     Scaffold(
         containerColor = MaterialTheme.colorScheme.background,
         contentWindowInsets = WindowInsets(0, 0, 0, 0),
@@ -202,7 +208,7 @@ fun AddReminderScreen(
                     .fillMaxSize()
                     .verticalScroll(rememberScrollState())
                     .padding(horizontal = 16.dp)
-                    .padding(top = 0.dp, bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 16.dp)
+                    .padding(top = 0.dp, bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + (if (readOnly) 88.dp else 16.dp))
             ) {
                 Spacer(modifier = Modifier.height((topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() }).coerceAtLeast(0.dp)))
 
@@ -212,6 +218,7 @@ fun AddReminderScreen(
                         SegmentedButton(
                             selected = uiState.type == type,
                             onClick = { viewModel.onTypeChange(type) },
+                            enabled = !readOnly,
                             shape = SegmentedButtonDefaults.itemShape(
                                 index = index,
                                 count = ReminderType.entries.size
@@ -235,14 +242,18 @@ fun AddReminderScreen(
                     label = { Text(if (uiState.type == ReminderType.BIRTHDAY) "寿星名字" else "标题") },
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(top = 16.dp),
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     singleLine = true,
+                    readOnly = readOnly,
                     shape = MaterialTheme.shapes.large
                 )
 
                 // 3. 时间（副标题跟随所选历制：公历显示数字日期，农历显示农历日期）
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     icon = Icons.Default.Event,
                     title = "日期",
                     subtitle = if (uiState.isLunar) {
@@ -251,7 +262,9 @@ fun AddReminderScreen(
                         uiState.date.format(DateTimeFormatter.ISO_LOCAL_DATE)
                     },
                     showChevron = true,
-                    onClick = { showDatePicker = true }
+                    onClick = if (readOnly) null else {
+                        { showDatePicker = true }
+                    }
                 )
 
                 if (showDatePicker) {
@@ -269,14 +282,18 @@ fun AddReminderScreen(
                 // 3.5 结束日期（仅倒数日；设置后进入"还有x天→就是今天→第x天→已过x天"区间模式）
                 SettingsLinkedVisibility(visible = uiState.type == ReminderType.ANNUAL) {
                     TonalCardRow(
-                        modifier = Modifier.padding(top = 16.dp),
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .then(readOnlyFade),
                         icon = Icons.Default.EventAvailable,
                         title = "结束日期",
                         subtitle = uiState.endDate?.format(DateTimeFormatter.ISO_LOCAL_DATE) ?: "未设置",
                         showChevron = true,
                         trailingBeforeChevron = true,
-                        onClick = { showEndDatePicker = true },
-                        trailing = if (uiState.endDate != null) {
+                        onClick = if (readOnly) null else {
+                            { showEndDatePicker = true }
+                        },
+                        trailing = if (uiState.endDate != null && !readOnly) {
                             {
                                 // 与箭头同规格的裸图标（24dp、同色），替代 IconButton 避免过大触摸盒造成宽间距
                                 Icon(
@@ -316,7 +333,9 @@ fun AddReminderScreen(
                         (uiState.type == ReminderType.ANNUAL && uiState.endDate != null)
                 ) {
                     TonalCardRow(
-                        modifier = Modifier.padding(top = 16.dp),
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .then(readOnlyFade),
                         icon = Icons.Default.ExposurePlus1,
                         title = "包含起始日（+1）",
                         subtitle = "开启后起始日计为 1，关闭则计为 0",
@@ -327,21 +346,25 @@ fun AddReminderScreen(
                                 onCheckedChange = null
                             )
                         },
-                        onClick = {
-                            viewModel.updateUiState(
-                                uiState.copy(
-                                    notificationConfig = uiState.notificationConfig.copy(
-                                        includeStartDay = !uiState.notificationConfig.includeStartDay
+                        onClick = if (readOnly) null else {
+                            {
+                                viewModel.updateUiState(
+                                    uiState.copy(
+                                        notificationConfig = uiState.notificationConfig.copy(
+                                            includeStartDay = !uiState.notificationConfig.includeStartDay
+                                        )
                                     )
                                 )
-                            )
+                            }
                         }
                     )
                 }
 
                 // 4. 置顶
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     icon = Icons.Default.PushPin,
                     title = "置顶",
                     subtitle = "在列表中优先显示",
@@ -351,30 +374,38 @@ fun AddReminderScreen(
                             onCheckedChange = null
                         )
                     },
-                    onClick = {
-                        viewModel.updateUiState(uiState.copy(isPinned = !uiState.isPinned))
+                    onClick = if (readOnly) null else {
+                        { viewModel.updateUiState(uiState.copy(isPinned = !uiState.isPinned)) }
                     }
                 )
 
                 // 5. 标签（独立入口，点击打开标签选择对话框）
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     icon = Icons.Default.Label,
                     title = "标签",
                     value = uiState.tag.ifBlank { "未设置" },
                     showChevron = true,
-                    onClick = { showTagSheet = true }
+                    onClick = if (readOnly) null else {
+                        { showTagSheet = true }
+                    }
                 )
 
                 // 6. 重复（仅倒数日，随类型联动展开/收起）
                 SettingsLinkedVisibility(visible = uiState.type == ReminderType.ANNUAL) {
                     TonalCardRow(
-                        modifier = Modifier.padding(top = 16.dp),
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .then(readOnlyFade),
                         icon = Icons.Default.Repeat,
                         title = "重复",
                         value = repeatInfoToString(uiState.repeatInfo),
                         showChevron = true,
-                        onClick = { viewModel.onShowRepeatDialog(true) }
+                        onClick = if (readOnly) null else {
+                            { viewModel.onShowRepeatDialog(true) }
+                        }
                     )
                 }
 
@@ -410,29 +441,34 @@ fun AddReminderScreen(
                             reminderId = if (isEditing) uiState.id else null,
                             initialConfig = configJson,
                             reminderType = uiState.type.name,
-                            eventDate = uiState.date.toString()
+                            eventDate = uiState.date.toString(),
+                            readOnly = readOnly
                         ))
                     }
                 )
 
                 // 8. 个性化（独立 Activity：卡片实时预览 + 设置面板）
                 TonalCardRow(
-                    modifier = Modifier.padding(top = 16.dp),
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
                     icon = Icons.Default.AutoAwesome,
                     title = "个性化",
                     value = if (uiState.isCustomized) "已定制" else "默认",
                     showChevron = true,
-                    onClick = {
-                        personalizationLauncher.launch(
-                            PersonalizationInput(
-                                config = uiState.toPersonalizationConfig(),
-                                reminderType = uiState.type.name
+                    onClick = if (readOnly) null else {
+                        {
+                            personalizationLauncher.launch(
+                                PersonalizationInput(
+                                    config = uiState.toPersonalizationConfig(),
+                                    reminderType = uiState.type.name
+                                )
                             )
-                        )
+                        }
                     }
                 )
 
-                // 9. 备注
+                // 9. 备注（只读模式下仍可点击查看，内容不可修改）
                 TonalCardRow(
                     modifier = Modifier.padding(top = 16.dp),
                     icon = Icons.AutoMirrored.Filled.Notes,
@@ -442,7 +478,7 @@ fun AddReminderScreen(
                     onClick = { showNotesSheet = true }
                 )
 
-                if (isEditing) {
+                if (isEditing && !readOnly) {
                     OutlinedButton(
                         onClick = { showDeleteConfirmDialog = true },
                         modifier = Modifier
@@ -459,10 +495,10 @@ fun AddReminderScreen(
                     if (showDeleteConfirmDialog) {
                         AppAlertDialog(
                             onDismissRequest = { showDeleteConfirmDialog = false },
-                            title = "确认删除",
-                            text = "确定要删除此提醒吗？",
-                            confirmText = "删除",
-                            onConfirm = {
+                            title = "删除提醒",
+                            text = "删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复！",
+                            neutralText = "永久删除",
+                            onNeutral = {
                                 showDeleteConfirmDialog = false
                                 coroutineScope.launch {
                                     if (viewModel.deleteReminder(context)) {
@@ -470,11 +506,86 @@ fun AddReminderScreen(
                                     }
                                 }
                             },
+                            neutralDestructive = true,
                             dismissText = "取消",
-                            destructive = true
+                            confirmText = "回收",
+                            onConfirm = {
+                                showDeleteConfirmDialog = false
+                                coroutineScope.launch {
+                                    if (viewModel.moveToRecycleBin(context)) {
+                                        onDeleted()
+                                    }
+                                }
+                            }
                         )
                     }
                 }
+            }
+
+            // 只读模式：底部固定"永久删除"+"恢复"按钮
+            if (readOnly && viewModel.isInitialized) {
+                Row(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .fillMaxWidth()
+                        .windowInsetsPadding(WindowInsets.navigationBars)
+                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                ) {
+                    Button(
+                        onClick = { showReadOnlyDeleteConfirm = true },
+                        modifier = Modifier.weight(1f),
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.error,
+                            contentColor = MaterialTheme.colorScheme.onError
+                        )
+                    ) {
+                        Text("永久删除")
+                    }
+                    Button(
+                        onClick = { showReadOnlyRestoreConfirm = true },
+                        modifier = Modifier.weight(1f)
+                    ) {
+                        Text("恢复")
+                    }
+                }
+            }
+
+            if (showReadOnlyDeleteConfirm) {
+                AppAlertDialog(
+                    onDismissRequest = { showReadOnlyDeleteConfirm = false },
+                    title = "永久删除",
+                    text = "该提醒将被永久删除，删除后不可恢复。",
+                    confirmText = "永久删除",
+                    onConfirm = {
+                        showReadOnlyDeleteConfirm = false
+                        coroutineScope.launch {
+                            if (viewModel.permanentlyDeleteFromRecycleBin()) {
+                                onDeleted()
+                            }
+                        }
+                    },
+                    dismissText = "取消",
+                    destructive = true
+                )
+            }
+
+            if (showReadOnlyRestoreConfirm) {
+                AppAlertDialog(
+                    onDismissRequest = { showReadOnlyRestoreConfirm = false },
+                    title = "恢复提醒",
+                    text = "恢复后该提醒将重新出现在主页列表中。",
+                    confirmText = "恢复",
+                    onConfirm = {
+                        showReadOnlyRestoreConfirm = false
+                        coroutineScope.launch {
+                            if (viewModel.restoreFromRecycleBin()) {
+                                onDeleted()
+                            }
+                        }
+                    },
+                    dismissText = "取消"
+                )
             }
 
             // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)
@@ -512,7 +623,15 @@ fun AddReminderScreen(
                     .then(topAppBarModifier)
             ) {
                 TopAppBar(
-                    title = { Text(if (isEditing) "编辑提醒" else "新增提醒") },
+                    title = {
+                        Text(
+                            when {
+                                readOnly -> uiState.title.ifBlank { "回收站事件" }
+                                isEditing -> "编辑提醒"
+                                else -> "新增提醒"
+                            }
+                        )
+                    },
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = topAppBarColors,
                     navigationIcon = {
@@ -524,17 +643,19 @@ fun AddReminderScreen(
                         }
                     },
                     actions = {
-                        IconButton(
-                            onClick = {
-                                viewModel.saveReminder(context)
-                                onNavigateUp()
-                            },
-                            enabled = viewModel.isInitialized && uiState.title.isNotBlank() && viewModel.hasUnsavedChanges()
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Save,
-                                contentDescription = "保存"
-                            )
+                        if (!readOnly) {
+                            IconButton(
+                                onClick = {
+                                    viewModel.saveReminder(context)
+                                    onNavigateUp()
+                                },
+                                enabled = viewModel.isInitialized && uiState.title.isNotBlank() && viewModel.hasUnsavedChanges()
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Save,
+                                    contentDescription = "保存"
+                                )
+                            }
                         }
                     }
                 )
@@ -567,6 +688,7 @@ fun AddReminderScreen(
             if (showNotesSheet) {
                 NotesEditDialog(
                     initialNotes = uiState.notes,
+                    readOnly = readOnly,
                     onDismiss = { showNotesSheet = false },
                     onSave = { updatedNotes ->
                         viewModel.updateUiState(uiState.copy(notes = updatedNotes))
@@ -690,7 +812,8 @@ private fun String.toComposeColor(): Color {
 fun NotesEditDialog(
     initialNotes: String,
     onDismiss: () -> Unit,
-    onSave: (String) -> Unit
+    onSave: (String) -> Unit,
+    readOnly: Boolean = false
 ) {
     var notesText by rememberSaveable { mutableStateOf(initialNotes) }
     val focusRequester = remember { FocusRequester() }
@@ -698,6 +821,7 @@ fun NotesEditDialog(
     val isDirty = notesText != initialNotes
 
     LaunchedEffect(focusRequester) {
+        if (readOnly) return@LaunchedEffect
         delay(50) // 延迟 50ms，错开 Dialog 的进场动画，避免动画撞车卡顿
         focusRequester.requestFocus()
     }
@@ -742,7 +866,7 @@ fun NotesEditDialog(
                     verticalArrangement = Arrangement.spacedBy(16.dp)
                 ) {
                     Text(
-                        text = "编辑备注",
+                        text = if (readOnly) "备注" else "编辑备注",
                         style = MaterialTheme.typography.titleLarge,
                         fontWeight = FontWeight.Bold,
                         color = MaterialTheme.colorScheme.onSurface
@@ -755,7 +879,8 @@ fun NotesEditDialog(
                             .fillMaxWidth()
                             .defaultMinSize(minHeight = 120.dp)
                             .focusRequester(focusRequester),
-                        placeholder = { Text("在此输入备注内容...") },
+                        placeholder = { Text(if (readOnly) "未填写" else "在此输入备注内容...") },
+                        readOnly = readOnly,
                         maxLines = 10,
                         shape = RoundedCornerShape(12.dp)
                     )
@@ -765,22 +890,28 @@ fun NotesEditDialog(
                         horizontalArrangement = Arrangement.End,
                         verticalAlignment = Alignment.CenterVertically
                     ) {
-                        TextButton(
-                            onClick = {
-                                if (isDirty) {
-                                    showConfirmCancelDialog = true
-                                } else {
-                                    onDismiss()
-                                }
+                        if (readOnly) {
+                            TextButton(onClick = onDismiss) {
+                                Text("关闭", fontWeight = FontWeight.Bold)
                             }
-                        ) {
-                            Text("取消")
-                        }
-                        Spacer(modifier = Modifier.width(8.dp))
-                        TextButton(
-                            onClick = { onSave(notesText) }
-                        ) {
-                            Text("确定", fontWeight = FontWeight.Bold)
+                        } else {
+                            TextButton(
+                                onClick = {
+                                    if (isDirty) {
+                                        showConfirmCancelDialog = true
+                                    } else {
+                                        onDismiss()
+                                    }
+                                }
+                            ) {
+                                Text("取消")
+                            }
+                            Spacer(modifier = Modifier.width(8.dp))
+                            TextButton(
+                                onClick = { onSave(notesText) }
+                            ) {
+                                Text("确定", fontWeight = FontWeight.Bold)
+                            }
                         }
                     }
                 }
