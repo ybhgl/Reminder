@@ -2069,11 +2069,12 @@ fun ReminderListScreen(
                             ),
                             label = "MainFabIconRotation"
                         )
-                        // 进入选择模式时隐藏菜单 FAB，避免与底部操作按钮冲突
+                        // 进入选择模式时隐藏菜单 FAB，避免与底部操作按钮冲突；
+                        // 用缩放+淡入淡出而非 slide，slide 的 translationY 会让 elevation 阴影与按钮位移错位
                         AnimatedVisibility(
                             visible = !isSelectionMode,
-                            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                            enter = scaleIn(initialScale = 0.8f) + fadeIn(),
+                            exit = scaleOut(targetScale = 0.8f) + fadeOut(),
                             label = "MainMenuFabVisibility"
                         ) {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -2184,7 +2185,7 @@ fun ReminderListScreen(
                 AppAlertDialog(
                     onDismissRequest = { showDeleteDialog = false },
                     title = "删除提醒",
-                    text = "已选 ${selectedIds.size} 条提醒。删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复。",
+                    text = "已选 ${selectedIds.size} 条提醒。删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复！",
                     neutralText = "永久删除",
                     onNeutral = {
                         showDeleteDialog = false

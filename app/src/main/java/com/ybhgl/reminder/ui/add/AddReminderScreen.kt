@@ -487,7 +487,7 @@ fun AddReminderScreen(
                         AppAlertDialog(
                             onDismissRequest = { showDeleteConfirmDialog = false },
                             title = "删除提醒",
-                            text = "删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复。",
+                            text = "删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复！",
                             neutralText = "永久删除",
                             onNeutral = {
                                 showDeleteConfirmDialog = false

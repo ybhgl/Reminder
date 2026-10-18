@@ -7,8 +7,8 @@ import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInVertically
-import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -183,7 +183,7 @@ fun RecycleBinScreen(
                                 .padding(horizontal = 24.dp, vertical = 32.dp)
                                 .fillMaxWidth(),
                             title = "回收站是空的",
-                            message = "删除的提醒会暂时存放在这里，可随时恢复或永久删除。"
+                            message = "删除的提醒会暂时存放在这里，可随时恢复或永久删除"
                         )
                     }
                 }
@@ -315,7 +315,7 @@ fun RecycleBinScreen(
                                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                                 )
                                 Text(
-                                    text = "满足任一条件时，回收站内对应提醒将被自动永久删除。",
+                                    text = "满足任一条件时，回收站内对应提醒将被自动永久删除",
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant
                                 )
@@ -440,8 +440,9 @@ fun RecycleBinScreen(
         val fabBottomPadding = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
         AnimatedVisibility(
             visible = isSelectionMode && selectedIds.isNotEmpty(),
-            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+            // 缩放+淡入淡出：slide 的 translationY 会让 elevation 阴影与按钮位移错位
+            enter = scaleIn(initialScale = 0.8f) + fadeIn(),
+            exit = scaleOut(targetScale = 0.8f) + fadeOut(),
             modifier = Modifier
                 .align(Alignment.BottomEnd)
                 .padding(end = 16.dp, bottom = fabBottomPadding + 16.dp)
@@ -529,7 +530,7 @@ fun RecycleBinScreen(
                             onValueChange = { searchQuery = it },
                             placeholder = {
                                 Text(
-                                    text = "搜索回收站提醒标题...",
+                                    text = "搜索提醒标题...",
                                     style = MaterialTheme.typography.bodyLarge.copy(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                     )
@@ -576,7 +577,7 @@ fun RecycleBinScreen(
                             contentAlignment = Alignment.Center
                         ) {
                             Text(
-                                text = if (searchQuery.isBlank()) "回收站暂无提醒" else "未找到匹配「$searchQuery」的提醒",
+                                text = if (searchQuery.isBlank()) "回收站内暂无提醒" else "未找到匹配「$searchQuery」的提醒",
                                 style = MaterialTheme.typography.bodyLarge,
                                 color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
@@ -622,7 +623,7 @@ fun RecycleBinScreen(
         AppAlertDialog(
             onDismissRequest = { showClearDialog = false },
             title = "清空回收站",
-            text = "回收站内 ${uiState.itemList.size} 条提醒将被永久删除，清空后不可恢复。",
+            text = "回收站内 ${uiState.itemList.size} 条提醒将被永久删除，清空后不可恢复",
             confirmText = "清空",
             onConfirm = {
                 showClearDialog = false
@@ -638,7 +639,7 @@ fun RecycleBinScreen(
         AppAlertDialog(
             onDismissRequest = { showFabDeleteConfirm = false },
             title = "永久删除",
-            text = "已选 ${selectedIds.size} 条提醒将被永久删除，删除后不可恢复。",
+            text = "已选 ${selectedIds.size} 条提醒将被永久删除，删除后不可恢复",
             confirmText = "永久删除",
             onConfirm = {
                 showFabDeleteConfirm = false
@@ -654,7 +655,7 @@ fun RecycleBinScreen(
         AppAlertDialog(
             onDismissRequest = { showFabRestoreConfirm = false },
             title = "恢复提醒",
-            text = "已选 ${selectedIds.size} 条提醒将恢复到主页列表中。",
+            text = "已选 ${selectedIds.size} 条提醒将恢复到主页列表中",
             confirmText = "恢复",
             onConfirm = {
                 showFabRestoreConfirm = false
