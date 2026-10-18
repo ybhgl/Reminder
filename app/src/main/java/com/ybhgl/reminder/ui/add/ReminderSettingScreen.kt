@@ -77,6 +77,8 @@ fun ReminderSettingScreen(
     viewModel: ReminderSettingViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val uiState = viewModel.uiState
+    // 回收站只读预览：可滚动、所有内容不可交互且整体置灰
+    val readOnly = viewModel.isReadOnly
     var showExitDialog by remember { mutableStateOf(false) }
     var showTimeConfigDialog by remember { mutableStateOf(false) }
     var editingTimeIndex by remember { mutableIntStateOf(-1) }
@@ -131,6 +133,9 @@ fun ReminderSettingScreen(
             Column(
                 modifier = Modifier
                     .fillMaxSize()
+                    .graphicsLayer {
+                        if (readOnly) alpha = 0.45f
+                    }
                     .verticalScroll(rememberScrollState())
                     .padding(
                         start = 16.dp,
@@ -150,7 +155,9 @@ fun ReminderSettingScreen(
                             onCheckedChange = null
                         )
                     },
-                    onClick = { viewModel.updateIsEnabled(!uiState.config.isEnabled) }
+                    onClick = if (readOnly) null else {
+                        { viewModel.updateIsEnabled(!uiState.config.isEnabled) }
+                    }
                 )
 
                 SettingsLinkedVisibility(
@@ -172,6 +179,7 @@ fun ReminderSettingScreen(
                             ) {
                                 FilterChip(
                                     selected = uiState.config.useAppNotification,
+                                    enabled = !readOnly,
                                     onClick = {
                                         if (!uiState.config.useAppNotification && notificationPermissionState?.status?.isGranted == false) {
                                             notificationPermissionState.launchPermissionRequest()
@@ -191,6 +199,7 @@ fun ReminderSettingScreen(
                                 )
                                 FilterChip(
                                     selected = uiState.config.useSystemCalendar,
+                                    enabled = !readOnly,
                                     onClick = {
                                         if (!uiState.config.useSystemCalendar && !calendarPermissionState.allPermissionsGranted) {
                                             calendarPermissionState.launchMultiplePermissionRequest()
@@ -223,7 +232,9 @@ fun ReminderSettingScreen(
                                         onCheckedChange = null
                                     )
                                 },
-                                onClick = { viewModel.updateIsContinuous(!uiState.config.isContinuous) }
+                                onClick = if (readOnly) null else {
+                                    { viewModel.updateIsContinuous(!uiState.config.isContinuous) }
+                                }
                             )
                         }
 
@@ -256,7 +267,9 @@ fun ReminderSettingScreen(
                                         title = "提醒时间",
                                         value = continuousTime.format(DateTimeFormatter.ofPattern("HH:mm")),
                                         showChevron = true,
-                                        onClick = { showTimePicker = true }
+                                        onClick = if (readOnly) null else {
+                                            { showTimePicker = true }
+                                        }
                                     )
 
                                     if (showTimePicker) {
@@ -270,9 +283,9 @@ fun ReminderSettingScreen(
                                         )
                                     }
 
-                                    // Ensure at least one time exists for continuous mode
+                                    // Ensure at least one time exists for continuous mode（只读预览不写入状态）
                                     LaunchedEffect(uiState.config.isContinuous) {
-                                        if (uiState.config.notificationTimes.isEmpty()) {
+                                        if (!readOnly && uiState.config.notificationTimes.isEmpty()) {
                                             viewModel.addNotificationTime(0, LocalTime.of(9, 0))
                                         }
                                     }
@@ -287,17 +300,19 @@ fun ReminderSettingScreen(
                                         horizontalArrangement = Arrangement.SpaceBetween
                                     ) {
                                         Text("提醒时间", style = MaterialTheme.typography.titleMedium)
-                                        Row(verticalAlignment = Alignment.CenterVertically) {
-                                            IconButton(onClick = {
-                                                showImportDialog = true
-                                            }) {
-                                                Icon(Icons.Default.Download, contentDescription = "导入设置")
-                                            }
-                                            IconButton(onClick = {
-                                                editingTimeIndex = -1
-                                                showTimeConfigDialog = true
-                                            }) {
-                                                Icon(Icons.Default.Add, contentDescription = "添加时间")
+                                        if (!readOnly) {
+                                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                                IconButton(onClick = {
+                                                    showImportDialog = true
+                                                }) {
+                                                    Icon(Icons.Default.Download, contentDescription = "导入设置")
+                                                }
+                                                IconButton(onClick = {
+                                                    editingTimeIndex = -1
+                                                    showTimeConfigDialog = true
+                                                }) {
+                                                    Icon(Icons.Default.Add, contentDescription = "添加时间")
+                                                }
                                             }
                                         }
                                     }
@@ -325,14 +340,18 @@ fun ReminderSettingScreen(
                                                 "$dayLabel ${item.daysBefore} $daySuffix，${item.time.format(DateTimeFormatter.ofPattern("HH:mm"))}"
                                             },
                                             subtitle = reminderDateText,
-                                            trailing = {
-                                                IconButton(onClick = { viewModel.removeNotificationTime(index) }) {
-                                                    Icon(Icons.Default.Delete, contentDescription = "删除")
+                                            trailing = if (readOnly) null else {
+                                                {
+                                                    IconButton(onClick = { viewModel.removeNotificationTime(index) }) {
+                                                        Icon(Icons.Default.Delete, contentDescription = "删除")
+                                                    }
                                                 }
                                             },
-                                            onClick = {
-                                                editingTimeIndex = index
-                                                showTimeConfigDialog = true
+                                            onClick = if (readOnly) null else {
+                                                {
+                                                    editingTimeIndex = index
+                                                    showTimeConfigDialog = true
+                                                }
                                             }
                                         )
                                     }
@@ -390,6 +409,7 @@ fun ReminderSettingScreen(
                     }
                 },
                 actions = {
+                    if (readOnly) return@TopAppBar
                     IconButton(
                         enabled = viewModel.isInitialized && viewModel.hasChanges(),
                         onClick = {

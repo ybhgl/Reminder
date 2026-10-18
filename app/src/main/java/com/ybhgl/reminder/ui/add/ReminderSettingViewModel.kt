@@ -30,6 +30,9 @@ class ReminderSettingViewModel(
     /** 从"提醒管理"页进入时，保存直接写入数据库而非回传给编辑页 */
     val fromManage: Boolean = savedStateHandle.get<Boolean>("fromManage") == true
 
+    /** 回收站只读预览进入：页面可滚动但所有内容不可交互 */
+    val isReadOnly: Boolean = savedStateHandle.get<Boolean>("readOnly") == true
+
     private var loadedReminder: ReminderItem? = null
 
     val eventDate: LocalDate? = savedStateHandle.get<String>("eventDate")?.let { LocalDate.parse(it) }
