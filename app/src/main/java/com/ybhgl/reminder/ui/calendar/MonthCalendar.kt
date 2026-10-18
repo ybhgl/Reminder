@@ -1,6 +1,8 @@
 package com.ybhgl.reminder.ui.calendar
 
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
@@ -20,6 +22,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.pager.HorizontalPager
+import androidx.compose.foundation.pager.PagerDefaults
 import androidx.compose.foundation.pager.PagerState
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -45,6 +48,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
+import androidx.compose.ui.input.pointer.util.VelocityTracker
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
@@ -168,6 +172,18 @@ internal const val EXPANDED_GRID_HEIGHT_DP = 6 * WEEK_ROW_HEIGHT_DP + 2 * GRID_V
 /** 收缩态高度：仅选中日所在的一行（76dp），展开高-收缩高=最大收缩像素 */
 internal const val COLLAPSED_GRID_HEIGHT_DP = WEEK_ROW_HEIGHT_DP + 2 * GRID_VERTICAL_PADDING_DP
 
+/**
+ * 切换位置阈值：位移超过页宽的该比例即切换。
+ * 收缩态横滑切周与展开态 MonthPager 切月（`snapPositionalThreshold`）共用此常量，保证两者手感一致。
+ */
+internal const val SWIPE_COMMIT_FRACTION = 0.3f
+
+/**
+ * 切换速度阈值（dp/s）：轻甩速度超过该值即切换（内部按密度换算为 px/s）。
+ * 与展开态 pager 的"轻甩即切"判定对齐，使收缩态切周不必依赖位移拖满 [SWIPE_COMMIT_FRACTION]。
+ */
+internal const val SWIPE_COMMIT_VELOCITY_DP_PER_SEC = 300f
+
 /** 覆盖 [month] 全部日期的完整周数（5 或 6），与 buildMonthCells 行数口径一致 */
 internal fun weekCountFor(month: YearMonth): Int {
     val lead = month.atDay(1).dayOfWeek.value % 7
@@ -218,6 +234,7 @@ fun MonthCalendar(
     var weekDragFraction by remember { mutableFloatStateOf(0f) }
     var weekJob by remember { mutableStateOf<kotlinx.coroutines.Job?>(null) }
     val currentDisplayMonth = rememberUpdatedState(displayMonth)
+    val currentOnMonthChange = rememberUpdatedState(onMonthChange)
 
     // ===== 月份 pager 状态（提升到本层：切周跨月提交需与日期变更同帧跳页，消除中间帧闪烁） =====
     val center = 1200
@@ -252,11 +269,12 @@ fun MonthCalendar(
             }
         }
     }
-    // 页停稳后上报月份（与外部切月的 LaunchedEffect 互斥收敛：target 已是 settledPage 时不再滚动）
+    // 页停稳后上报月份（与外部切月的 LaunchedEffect 互斥收敛：target 已是 settledPage 时不再滚动）。
+    // 不采用"过中点即切"：中途切换视觉偏跳；切月提速改由缩短落页动画实现（见 MonthPager 的 flingBehavior）。
     LaunchedEffect(pager.settledPage) {
         if (!programmaticScroll) {
             val m = monthOf(pager.settledPage)
-            if (m != displayMonth) onMonthChange(m)
+            if (m != displayMonth) currentOnMonthChange.value(m)
         }
     }
 
@@ -292,6 +310,7 @@ fun MonthCalendar(
                             var horizontalLocked = false
                             var startCollapse = currentCollapse.value
                             var anchorY = 0f
+                            val tracker = VelocityTracker()
                             while (true) {
                                 val event = awaitPointerEvent(PointerEventPass.Initial)
                                 val change = event.changes.firstOrNull() ?: break
@@ -300,6 +319,7 @@ fun MonthCalendar(
                                 if (delta.x == 0f && delta.y == 0f) continue
                                 totalX += delta.x
                                 totalY += delta.y
+                                tracker.addPosition(change.uptimeMillis, change.position)
                                 // 收缩态门控：每次 move 现读（不缓存起手值，避免收缩动画/组合未就绪时用到旧值）。
                                 // 阈值取"任意收缩量(>1px)"而非"过半"：展开态 collapsePx 恰为 0 → 横向放行给内层
                                 // pager 切月；只要收缩中或已收缩 → 本手势从首个 move 起消费横向并走"切周"。
@@ -345,8 +365,15 @@ fun MonthCalendar(
                             if (verticalLocked) {
                                 currentOnCollapseSettle.value()
                             } else if (horizontalLocked) {
-                                val commit = abs(totalX) > widthPx * 0.3f
-                                val sign = if (totalX < 0f) 1f else -1f
+                                // 与展开态 pager 一致的切换判定：位移超共享位置阈值，或轻甩速度超共享速度阈值 → 切换
+                                val velocityX = tracker.calculateVelocity().x
+                                val flingThresholdPx = with(density) { SWIPE_COMMIT_VELOCITY_DP_PER_SEC.dp.toPx() }
+                                val byFling = abs(velocityX) > flingThresholdPx
+                                val positional = abs(totalX) > widthPx * SWIPE_COMMIT_FRACTION
+                                val commit = byFling || positional
+                                // 方向：位移达标时以位移为准，否则取甩动方向，保证轻甩切换方向正确
+                                val dir = if (positional) totalX else velocityX
+                                val sign = if (dir < 0f) 1f else -1f
                                 weekJob?.cancel()
                                 weekJob = scope.launch {
                                     if (commit) {
@@ -431,6 +458,18 @@ private fun MonthPager(
 ) {
     HorizontalPager(
         state = pagerState,
+        // 缩短落页吸附动画：用户横滑/甩动松手后的"落页停稳"更快，
+        // 让切月（停稳后上报）在保持平稳观感的同时接近切周的即时感；
+        // 只压缩松手后的吸附时长，不改变拖拽跟手手感。
+        // snapPositionalThreshold 与收缩态切周共用 SWIPE_COMMIT_FRACTION，统一两者切换阈值。
+        flingBehavior = PagerDefaults.flingBehavior(
+            state = pagerState,
+            snapPositionalThreshold = SWIPE_COMMIT_FRACTION,
+            snapAnimationSpec = spring(
+                dampingRatio = Spring.DampingRatioNoBouncy,
+                stiffness = Spring.StiffnessMedium
+            )
+        ),
         // 收缩态禁止 pager 响应用户横滑/残余惯性：
         // 收缩态的横滑语义是"切周"（由日历面手势在 Initial pass 接管并饿死 pager），
         // 但若手势起手时 collapsePx 尚未过半（收缩动画未完成/未真正收满）被判为"展开分支"，
