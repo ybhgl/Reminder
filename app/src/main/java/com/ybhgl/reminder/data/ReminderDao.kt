@@ -27,11 +27,27 @@ interface ReminderDao {
     @Query("DELETE FROM reminders WHERE id IN (:ids)")
     suspend fun deleteByIds(ids: List<Int>)
 
-    @Query("SELECT * FROM reminders ORDER BY isPinned DESC, date ASC")
+    @Query("SELECT * FROM reminders WHERE isInRecycleBin = 0 ORDER BY isPinned DESC, date ASC")
     fun getAllReminders(): Flow<List<ReminderItem>>
 
-    @Query("SELECT * FROM reminders ORDER BY isPinned DESC, date ASC")
+    @Query("SELECT * FROM reminders WHERE isInRecycleBin = 0 ORDER BY isPinned DESC, date ASC")
     suspend fun getAllRemindersList(): List<ReminderItem>
+
+    /** 含回收站的全表查询：仅供背景图孤儿清理等需要全量引用的场景使用 */
+    @Query("SELECT * FROM reminders")
+    suspend fun getAllRemindersIncludingRecycleBinList(): List<ReminderItem>
+
+    @Query("SELECT * FROM reminders WHERE isInRecycleBin = 1 ORDER BY date ASC")
+    fun getRecycleBinReminders(): Flow<List<ReminderItem>>
+
+    @Query("SELECT * FROM reminders WHERE isInRecycleBin = 1")
+    suspend fun getRecycleBinRemindersList(): List<ReminderItem>
+
+    @Query("UPDATE reminders SET isInRecycleBin = 1, recycleBinTime = :time WHERE id IN (:ids)")
+    suspend fun moveToRecycleBin(ids: List<Int>, time: Long)
+
+    @Query("UPDATE reminders SET isInRecycleBin = 0, recycleBinTime = 0 WHERE id IN (:ids)")
+    suspend fun restoreFromRecycleBin(ids: List<Int>)
 
     @Query("SELECT * FROM reminders WHERE id = :id")
     fun getReminder(id: Int): Flow<ReminderItem?>
@@ -39,7 +55,7 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE id = :id")
     suspend fun getReminderById(id: Int): ReminderItem?
 
-    @Query("SELECT DISTINCT tag FROM reminders WHERE tag != '' ORDER BY tag COLLATE NOCASE")
+    @Query("SELECT DISTINCT tag FROM reminders WHERE tag != '' AND isInRecycleBin = 0 ORDER BY tag COLLATE NOCASE")
     fun getDistinctTags(): Flow<List<String>>
 
     @Query("DELETE FROM reminders")

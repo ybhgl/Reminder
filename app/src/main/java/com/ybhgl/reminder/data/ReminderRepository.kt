@@ -18,6 +18,14 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
 
     suspend fun getAllRemindersList(): List<ReminderItem> = reminderDao.getAllRemindersList()
 
+    /** 含回收站的全表查询：仅供背景图孤儿清理等需要全量引用的场景使用 */
+    suspend fun getAllRemindersIncludingRecycleBinList(): List<ReminderItem> =
+        reminderDao.getAllRemindersIncludingRecycleBinList()
+
+    fun getRecycleBinRemindersStream(): Flow<List<ReminderItem>> = reminderDao.getRecycleBinReminders()
+
+    suspend fun getRecycleBinRemindersList(): List<ReminderItem> = reminderDao.getRecycleBinRemindersList()
+
     fun getReminderStream(id: Int): Flow<ReminderItem?> = reminderDao.getReminder(id)
 
     suspend fun getReminderById(id: Int): ReminderItem? = reminderDao.getReminderById(id)

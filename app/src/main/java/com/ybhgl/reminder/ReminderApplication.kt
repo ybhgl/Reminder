@@ -23,7 +23,8 @@ class ReminderApplication : Application() {
         // 启动时清理未被任何提醒引用的卡片背景图片（个性化/分享会话遗留的导入图、替换残留等）。
         // 进程冷启动时不可能存在进行中的个性化编辑会话，此时机清理不会误删使用中的图片
         CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
-            val reminders = container.reminderRepository.getAllRemindersList()
+            // 用含回收站的全表做引用集合：回收站事件保留背景图，恢复后仍可用
+            val reminders = container.reminderRepository.getAllRemindersIncludingRecycleBinList()
             CardBackgroundImageManager.pruneOrphans(this@ReminderApplication, reminders)
             // 预热用户导入字体的 FontFamily 缓存，避免首帧渲染大数字时主线程读盘解析
             FontManager.preload(this@ReminderApplication)

@@ -122,7 +122,11 @@ data class ReminderItem(
     /** 液态玻璃折射强度（0..1，映射边缘采样位移量比例） */
     val customGlassRefraction: Float = 0.3f,
     /** 液态玻璃高光强度（0..1） */
-    val customGlassHighlight: Float = 0.6f
+    val customGlassHighlight: Float = 0.6f,
+    /** 是否在回收站（软删除标记：回收站事件不出现在首页/Widget/备份等活跃数据视图） */
+    val isInRecycleBin: Boolean = false,
+    /** 进入回收站时间（epoch 毫秒，展示精确到分钟；不在回收站时为 0） */
+    val recycleBinTime: Long = 0L
 )
 
 @Serializer(forClass = LocalDate::class)
