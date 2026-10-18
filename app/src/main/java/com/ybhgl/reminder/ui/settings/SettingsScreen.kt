@@ -129,6 +129,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.toArgb
 
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.AppBlocking
 import androidx.compose.material.icons.filled.Security
 import androidx.compose.material.icons.outlined.Edit
@@ -157,6 +158,7 @@ fun SettingsScreen(
     onNavigateToBackupAndRestore: () -> Unit,
     onNavigateToTagManagement: () -> Unit,
     onNavigateToReminderManage: () -> Unit,
+    onNavigateToRecycleBin: () -> Unit,
     onNavigateToGestureSetup: () -> Unit,
     onNavigateToGestureModify: () -> Unit,
     onNavigateToOpenSourceLicenses: () -> Unit,
@@ -331,6 +333,12 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider()
+                SettingsActionItem(
+                    title = "回收站",
+                    description = "查看、恢复已删除的提醒事件",
+                    icon = { Icon(Icons.Default.RestoreFromTrash, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    onClick = onNavigateToRecycleBin
+                )
                 SettingsActionItem(
                     title = "标签管理",
                     description = "管理、自定义颜色与排序您的分类标签",

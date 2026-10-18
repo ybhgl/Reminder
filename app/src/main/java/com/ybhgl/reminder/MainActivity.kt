@@ -89,7 +89,7 @@ import androidx.compose.material.icons.outlined.CloudOff
 import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Calculate
-import androidx.compose.material.icons.filled.CalendarMonth
+import androidx.compose.material.icons.filled.RestoreFromTrash
 import com.ybhgl.reminder.ui.calendar.CalendarScreen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
@@ -205,6 +205,7 @@ import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.settings.ReminderManageScreen
 import com.ybhgl.reminder.ui.calculator.DateCalculatorScreen
+import com.ybhgl.reminder.ui.recyclebin.RecycleBinScreen
 import com.ybhgl.reminder.ui.settings.SettingsScreen
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
 import com.ybhgl.reminder.ui.tag.TagManagementScreen
@@ -646,6 +647,7 @@ object Routes {
     const val REMINDER_SETTING_PATTERN = "$REMINDER_SETTING_BASE?reminderId={reminderId}&initialConfig={initialConfig}&reminderType={reminderType}&eventDate={eventDate}&fromManage={fromManage}"
     const val REMINDER_MANAGE = "reminder_manage"
     const val DATE_CALCULATOR = "date_calculator"
+    const val RECYCLE_BIN = "recycle_bin"
     const val OPEN_SOURCE_LICENSES = "open_source_licenses"
 
     fun editReminder(reminderId: Int): String = "$EDIT_REMINDER_BASE/$reminderId"
@@ -890,6 +892,7 @@ fun ReminderApp() {
                     onNavigateToBackupAndRestore = { navController.navigate(Routes.BACKUP_AND_RESTORE) },
                     onNavigateToTagManagement = { navController.navigate(Routes.tagManagement()) },
                     onNavigateToReminderManage = { navController.navigate(Routes.REMINDER_MANAGE) },
+                    onNavigateToRecycleBin = { navController.navigate(Routes.RECYCLE_BIN) },
                     onNavigateToGestureSetup = { navController.navigate(Routes.GESTURE_SETUP) },
                     onNavigateToGestureModify = { navController.navigate(Routes.GESTURE_MODIFY) },
                     onNavigateToOpenSourceLicenses = { navController.navigate(Routes.OPEN_SOURCE_LICENSES) }
@@ -918,6 +921,9 @@ fun ReminderApp() {
                         navController.navigate(Routes.addReminder(initialType = type, initialDate = date, initialEndDate = endDate))
                     }
                 )
+            }
+            composable(route = Routes.RECYCLE_BIN) {
+                RecycleBinScreen(navController = navController)
             }
             composable(route = Routes.GESTURE_SETUP) {
                 com.ybhgl.reminder.ui.security.GestureSetupScreen(
@@ -1995,13 +2001,11 @@ fun ReminderListScreen(
                         verticalArrangement = Arrangement.spacedBy(10.dp)
                     ) {
                         FabMenuItem(
-                            icon = Icons.Default.CalendarMonth,
-                            label = "日历视图",
+                            icon = Icons.Default.RestoreFromTrash,
+                            label = "回收站",
                             onClick = {
                                 fabMenuExpanded = false
-                                coroutineScope.launch {
-                                    pagerState.animateScrollToPage(0)
-                                }
+                                navController.navigate(Routes.RECYCLE_BIN)
                             }
                         )
                         FabMenuItem(
