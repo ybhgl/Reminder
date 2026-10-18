@@ -185,18 +185,44 @@ class CalendarEventsTest {
     }
 
     @Test
-    fun `interval event marks start and end days`() {
+    fun `interval event fills every day with day numbering`() {
         val it = item(
             date = LocalDate.of(2026, 11, 1),
-            endDate = LocalDate.of(2026, 12, 31)
+            endDate = LocalDate.of(2026, 11, 10)
+        )
+        val occ = CalendarEvents.occurrencesInRange(it, novFrom, novTo)
+        // 持续时间内每一天都出现，含起始日时 11月1日=第1天 … 11月10日=第10天
+        assertEquals((1..10).toList(), occ.map { it.calendarDate.dayOfMonth })
+        assertTrue(occ.all { it.kind == OccurrenceKind.EVENT })
+        assertEquals((1..10).toList(), occ.map { it.intervalDay })
+    }
+
+    @Test
+    fun `interval day numbering starts at zero without includeStartDay`() {
+        val it = item(
+            date = LocalDate.of(2026, 11, 1),
+            endDate = LocalDate.of(2026, 11, 10),
+            notificationConfig = ReminderNotificationConfig(includeStartDay = false)
+        )
+        val occ = CalendarEvents.occurrencesInRange(it, novFrom, novTo)
+        assertEquals((0..9).toList(), occ.map { it.intervalDay })
+    }
+
+    @Test
+    fun `interval event fills both months when spanning window`() {
+        val it = item(
+            date = LocalDate.of(2026, 11, 25),
+            endDate = LocalDate.of(2026, 12, 5)
         )
         val inNov = CalendarEvents.occurrencesInRange(it, novFrom, novTo)
-        assertEquals(listOf(LocalDate.of(2026, 11, 1)), inNov.map { it.calendarDate })
-        val inDec = CalendarEvents.occurrencesInRange(
-            it, LocalDate.of(2026, 12, 1), LocalDate.of(2026, 12, 31)
-        )
-        // 开始日在 12 月窗口外，但结束日应出现
-        assertEquals(listOf(LocalDate.of(2026, 12, 31)), inDec.map { it.calendarDate })
+        // 开始日在 12 月窗口外，但区间内 11月25-30 日应逐日出现（第1..第6天）
+        assertEquals((25..30).toList(), inNov.map { it.calendarDate.dayOfMonth })
+        assertEquals((1..6).toList(), inNov.map { it.intervalDay })
+        val decFrom = LocalDate.of(2026, 12, 1)
+        val decTo = LocalDate.of(2026, 12, 31)
+        val inDec = CalendarEvents.occurrencesInRange(it, decFrom, decTo)
+        assertEquals((1..5).toList(), inDec.map { it.calendarDate.dayOfMonth })
+        assertEquals((7..11).toList(), inDec.map { it.intervalDay })
     }
 
     @Test

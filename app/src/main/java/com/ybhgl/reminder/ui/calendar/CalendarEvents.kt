@@ -8,7 +8,7 @@ import java.time.temporal.ChronoUnit
 
 /** 事件在月历上出现的种类 */
 enum class OccurrenceKind {
-    /** 事件当天（含区间事件的结束日） */
+    /** 事件当天（区间事件=持续时间内每一天） */
     EVENT,
 
     /** 设置了提醒的日期（相对事件发生日偏移） */
@@ -21,19 +21,22 @@ enum class OccurrenceKind {
  * @param eventDate 该出现所对应的事件发生日（事件卡"事件时间"显示它；REMINDER 时为提醒所锚定的发生日）
  * @param calendarDate 在月历上归属的日期（灰点/当日列表用）
  * @param daysBefore 提醒相对天数，仅 [OccurrenceKind.REMINDER] 非空
+ * @param intervalDay 区间事件持续日序号"第x天"（含起始日=第1天起，否则起始日=第0天起，
+ *   口径同 CalendarUtil.resolveIntervalStage），仅区间事件的 EVENT 出现非空
  */
 data class CalendarOccurrence(
     val item: ReminderItem,
     val eventDate: LocalDate,
     val calendarDate: LocalDate,
     val kind: OccurrenceKind,
-    val daysBefore: Int? = null
+    val daysBefore: Int? = null,
+    val intervalDay: Int? = null
 )
 
 /**
  * 事件 → 月历日期映射（纯函数，无 Android 依赖，可 JVM 单测）。
  *
- * 出现规则：事件当天（重复事件=周期内每次发生日；区间事件=开始日与结束日）
+ * 出现规则：事件当天（重复事件=周期内每次发生日；区间事件=持续时间内每一天）
  * 加上按 notificationConfig.notificationTimes 派生的提醒日。
  * daysBefore 方向口径与 ReminderScheduler.scheduleReminder 逐字一致：
  * COUNT_UP = 发生日 plusDays（includeStartDay 且 daysBefore>0 时减 1）、其余类型 = 发生日 minusDays。
@@ -53,22 +56,31 @@ object CalendarEvents {
 
         // key=calendarDate；同一天 EVENT 优先于 REMINDER（如 daysBefore=0 时提醒日=事件日）
         val byDate = LinkedHashMap<LocalDate, CalendarOccurrence>()
+        val includeStartDay = item.notificationConfig.includeStartDay
         for (start in starts) {
-            // 扩窗枚举的开始日可能早于 from（仅用于派生落在窗口内的结束日/提醒日）
-            if (!start.isBefore(from)) {
+            if (offset > 0L) {
+                // 区间事件：持续时间内每一天都出现（扩窗枚举的 start 可早于 from，填充范围按窗口裁剪）
+                val fillTo = minOf(start.plusDays(offset), to)
+                var day = maxOf(start, from)
+                while (!day.isAfter(fillTo)) {
+                    putPreferEvent(
+                        byDate,
+                        CalendarOccurrence(
+                            item,
+                            eventDate = day,
+                            calendarDate = day,
+                            kind = OccurrenceKind.EVENT,
+                            intervalDay = ChronoUnit.DAYS.between(start, day).toInt() + if (includeStartDay) 1 else 0
+                        )
+                    )
+                    day = day.plusDays(1)
+                }
+            } else if (!start.isBefore(from)) {
+                // 扩窗枚举的开始日可能早于 from（仅用于派生落在窗口内的提醒日）
                 putPreferEvent(
                     byDate,
                     CalendarOccurrence(item, eventDate = start, calendarDate = start, kind = OccurrenceKind.EVENT)
                 )
-            }
-            if (offset > 0L) {
-                val end = start.plusDays(offset)
-                if (!end.isBefore(from) && !end.isAfter(to)) {
-                    putPreferEvent(
-                        byDate,
-                        CalendarOccurrence(item, eventDate = end, calendarDate = end, kind = OccurrenceKind.EVENT)
-                    )
-                }
             }
             if (remindersEnabled) {
                 for (nt in item.notificationConfig.notificationTimes) {

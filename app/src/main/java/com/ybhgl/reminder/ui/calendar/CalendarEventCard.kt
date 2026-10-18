@@ -35,7 +35,7 @@ private val EVENT_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy年M月d日", L
 
 /**
  * 日历页事件卡：类型颜色竖条 + 事件名称 + 发生日期（名称与备注之间）+ 备注，
- * 右侧距今标签（"今天"/"X天"，数字与"今"字用事件类型色）。
+ * 右侧距今标签（"今天"/"X天"，数字与"今"字用事件类型色）；区间事件持续日显示"第x天"。
  * 卡面样式与农历详情卡一致（surfaceVariant 半透明大圆角，无描边阴影）。点击进入事件详情。
  */
 @Composable
@@ -102,7 +102,12 @@ fun CalendarEventCard(
                 }
             }
             Spacer(modifier = Modifier.width(12.dp))
-            DayDistanceLabel(daysFromToday = ChronoUnit.DAYS.between(today, occurrence.eventDate), color = barColor)
+            val intervalDay = occurrence.intervalDay
+            if (intervalDay != null) {
+                IntervalDayLabel(day = intervalDay, color = barColor)
+            } else {
+                DayDistanceLabel(daysFromToday = ChronoUnit.DAYS.between(today, occurrence.eventDate), color = barColor)
+            }
         }
     }
 }
@@ -124,6 +129,42 @@ internal fun DayDistanceLabel(
     ) {
         Text(
             text = numberText,
+            fontSize = 26.sp,
+            fontWeight = FontWeight.Bold,
+            color = color,
+            textAlign = TextAlign.End,
+            maxLines = 1
+        )
+        Text(
+            text = "天",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(start = 2.dp, bottom = 3.dp)
+        )
+    }
+}
+
+/**
+ * 区间事件持续日标签："第x天"，大号数字用事件类型色，小号"第"与"天"同样式（次要色、底部对齐）。
+ */
+@Composable
+internal fun IntervalDayLabel(
+    day: Int,
+    color: androidx.compose.ui.graphics.Color,
+    modifier: Modifier = Modifier
+) {
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.Bottom
+    ) {
+        Text(
+            text = "第",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(end = 2.dp, bottom = 3.dp)
+        )
+        Text(
+            text = day.toString(),
             fontSize = 26.sp,
             fontWeight = FontWeight.Bold,
             color = color,
