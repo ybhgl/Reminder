@@ -59,7 +59,6 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
-import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
@@ -68,9 +67,6 @@ import java.util.Locale
 
 /** 顶部标题只显示年月（如 2026/10），不显示具体天数 */
 private val HEADER_MONTH_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM", Locale.CHINA)
-
-/** 切月"保留日"的停稳去抖时长：快速连续翻月时只在用户停下后应用一次，避免逐页重写选中日 */
-private const val MONTH_PRESERVE_DEBOUNCE_MS = 150L
 
 private val LocalDateSaver: Saver<LocalDate, Long> = Saver(
     save = { it.toEpochDay() },
@@ -101,17 +97,6 @@ fun CalendarScreen(
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     var showAlmanac by rememberSaveable { mutableStateOf(false) }
     val headerInteraction = remember { MutableInteractionSource() }
-
-    // 切月保留"日"：用户翻月停稳后，把选中日同步到目标月同号（天数不足回落月末）。
-    // 用短延时表达"停稳"：快速连续翻月时本 effect 会被下一次 displayMonth 变更取消，只在停下来后应用一次，
-    // 避免逐页重写选中日（详情卡/事件列表随页闪动）。显式选择（点格/日期选择器/"今"/切周）会同时把
-    // displayMonth 设为选中日所在月，故此处对它们天然 no-op，不会与显式选择冲突。
-    LaunchedEffect(displayMonth) {
-        delay(MONTH_PRESERVE_DEBOUNCE_MS)
-        if (YearMonth.from(selectedDate) != displayMonth) {
-            selectedDate = datePreservingDayOfMonth(displayMonth, selectedDate.dayOfMonth)
-        }
-    }
 
     // ===== 日历跟手收展（riji collapsePx 像素模型）=====
     // 收缩像素是唯一状态：0=完全展开，maxCollapsePx=收缩到仅选中行；
@@ -166,9 +151,10 @@ fun CalendarScreen(
     }
 
     // 覆盖前后补位日：窗口取 displayMonth±1 与选中日期所在月的并集，
-    // 保证划到远离选中月的月份时，选中日的事件卡片仍完整显示
-    val dayMap = remember(items, displayMonth, selectedDate) {
-        val selMonth = YearMonth.from(selectedDate)
+    // 保证划到远离选中月的月份时，选中日的事件卡片仍完整显示。
+    // key 取"选中日所在月"而非精确日期：窗口只随月份平移，月内切周/点选不重算（全量事件枚举昂贵）
+    val selMonth = YearMonth.from(selectedDate)
+    val dayMap = remember(items, displayMonth, selMonth) {
         val startMonth = minOf(displayMonth, selMonth).minusMonths(1)
         val endMonth = maxOf(displayMonth, selMonth).plusMonths(1)
         CalendarEvents.dayMap(items, startMonth.atDay(1), endMonth.atEndOfMonth())
@@ -276,12 +262,17 @@ fun CalendarScreen(
                 selectedDate = date
                 displayMonth = YearMonth.from(date)
             },
-            // 切月：这里只更新显示月份，不再改写 selectedDate。
-            // 原因（真机日志定位）：pager 每次落页都会回调本方法，一次快速切月/甩动会连续落多页，
-            // 若在此做"保留日"改写，会逐页重写选中日（表现为选中日跳动/详情卡与事件列表抖动），
-            // 并在收缩等时机把选中日带到非预期月份（"松手后跳到下月同一天"）。
-            // 待落页口径收敛后，再把"保留日"以"仅在 pager 真正静止后生效"的形式安全加回。
-            onMonthChange = { month -> displayMonth = month }
+            // 切月落页（pager 停稳后上报，见 MonthCalendar 的 settledPage 效果与落页 spring 终止阈值）：
+            // 同帧写入显示月与"保留日"选中日（目标月同号，天数不足回落月末）。
+            // 同帧双写让 displayMonth/selectedDate 一次性生效：省掉"先换月、选中日隔帧再跟"的两帧传播链，
+            // 消除中间帧选中环缺失的闪动，且 dayMap 只按最终窗口重算一次（而非换月/跟日各重算一次）。
+            // 显式选择（点格/日期选择器/"今"/切周）不经过本回调（它们自行同时设置两个状态），天然无冲突。
+            onMonthChange = { month ->
+                displayMonth = month
+                if (YearMonth.from(selectedDate) != month) {
+                    selectedDate = datePreservingDayOfMonth(month, selectedDate.dayOfMonth)
+                }
+            }
         )
 
         // ===== 农历详情卡 + 当日事件列表 =====

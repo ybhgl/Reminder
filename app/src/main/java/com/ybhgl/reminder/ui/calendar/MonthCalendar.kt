@@ -269,12 +269,13 @@ fun MonthCalendar(
             }
         }
     }
-    // 页停稳后上报月份（与外部切月的 LaunchedEffect 互斥收敛：target 已是 settledPage 时不再滚动）。
-    // 不采用"过中点即切"：中途切换视觉偏跳；切月提速改由缩短落页动画实现（见 MonthPager 的 flingBehavior）。
+    // 页停稳后上报月份（复刻收缩态"滑动到位才切换"的统一节奏；
+    // 过中点提前提交虽快，但重组成本落在动画途中会掉帧，动画整体"卡一下"，用户否决）。
+    // 停稳速度关键在下方 MonthPager 的 snapAnimationSpec visibilityThreshold（见其注释）。
     LaunchedEffect(pager.settledPage) {
         if (!programmaticScroll) {
             val m = monthOf(pager.settledPage)
-            if (m != displayMonth) currentOnMonthChange.value(m)
+            if (m != currentDisplayMonth.value) currentOnMonthChange.value(m)
         }
     }
 
@@ -458,8 +459,12 @@ private fun MonthPager(
 ) {
     HorizontalPager(
         state = pagerState,
-        // 缩短落页吸附动画：用户横滑/甩动松手后的"落页停稳"更快，
-        // 让切月（停稳后上报）在保持平稳观感的同时接近切周的即时感；
+        // 落页吸附动画提速（切月"停稳才切换"节奏对齐收缩态切周的关键）：
+        // ①visibilityThreshold=1f 是核心——PagerDefaults 默认 spring 显式带 1px 终止阈值，
+        //   而 Float 默认阈值 0.01f 会让临界阻尼 spring 渐近收敛多出 ~300-500ms 的"视觉已停、
+        //   settledPage 未更新"长尾（此前只调刚度感知无差异的真正原因）；补上后动画在画面
+        //   停稳当刻即结束，settledPage 立即上报。
+        // ②stiffness=1200（ω≈34.6）吸附约 180ms，对齐切周 tween(150)。
         // 只压缩松手后的吸附时长，不改变拖拽跟手手感。
         // snapPositionalThreshold 与收缩态切周共用 SWIPE_COMMIT_FRACTION，统一两者切换阈值。
         flingBehavior = PagerDefaults.flingBehavior(
@@ -467,7 +472,8 @@ private fun MonthPager(
             snapPositionalThreshold = SWIPE_COMMIT_FRACTION,
             snapAnimationSpec = spring(
                 dampingRatio = Spring.DampingRatioNoBouncy,
-                stiffness = Spring.StiffnessMedium
+                stiffness = 1200f,
+                visibilityThreshold = 1f
             )
         ),
         // 收缩态禁止 pager 响应用户横滑/残余惯性：
