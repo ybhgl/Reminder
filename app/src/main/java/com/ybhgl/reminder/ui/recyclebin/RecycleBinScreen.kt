@@ -9,7 +9,9 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
@@ -28,6 +30,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.statusBars
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
@@ -36,11 +39,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
+import androidx.compose.material.icons.filled.Autorenew
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material3.Button
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
 import androidx.compose.material3.Icon
@@ -49,7 +55,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.OutlinedTextFieldDefaults
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -67,6 +75,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalLayoutDirection
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -75,9 +84,11 @@ import com.ybhgl.reminder.CircularRevealShape
 import com.ybhgl.reminder.EmptyStateCard
 import com.ybhgl.reminder.ReminderSummaryCard
 import com.ybhgl.reminder.Routes
+import com.ybhgl.reminder.data.RecycleBinPreferences
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import kotlin.math.roundToInt
 
 /**
  * 回收站页面：展示已回收（软删除）的事件。
@@ -99,6 +110,17 @@ fun RecycleBinScreen(
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
     var searchIconOffset by remember { mutableStateOf(Offset.Zero) }
+
+    // 自动删除档位浮窗状态（草稿值在打开时从已保存档位同步）
+    var showAutoDeleteMenu by remember { mutableStateOf(false) }
+    val savedTimeTier by viewModel.autoDeleteTimeTierFlow
+        .collectAsState(initial = RecycleBinPreferences.AUTO_DELETE_TIME_OPTIONS.lastIndex)
+    val savedCountTier by viewModel.autoDeleteCountTierFlow
+        .collectAsState(initial = RecycleBinPreferences.AUTO_DELETE_COUNT_OPTIONS.lastIndex)
+    var draftTimeTier by remember { mutableStateOf(RecycleBinPreferences.AUTO_DELETE_TIME_OPTIONS.lastIndex) }
+    var draftCountTier by remember { mutableStateOf(RecycleBinPreferences.AUTO_DELETE_COUNT_OPTIONS.lastIndex) }
+    val timeTierLastIndex = RecycleBinPreferences.AUTO_DELETE_TIME_OPTIONS.lastIndex
+    val countTierLastIndex = RecycleBinPreferences.AUTO_DELETE_COUNT_OPTIONS.lastIndex
     val searchAnimationProgress by animateFloatAsState(
         targetValue = if (isSearchActive) 1f else 0f,
         animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing),
@@ -152,6 +174,148 @@ fun RecycleBinScreen(
                                 imageVector = Icons.Default.Search,
                                 contentDescription = "搜索"
                             )
+                        }
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    draftTimeTier = savedTimeTier
+                                    draftCountTier = savedCountTier
+                                    showAutoDeleteMenu = true
+                                }
+                            ) {
+                                Icon(
+                                    imageVector = Icons.Default.Autorenew,
+                                    contentDescription = "自动删除"
+                                )
+                            }
+                            DropdownMenu(
+                                expanded = showAutoDeleteMenu,
+                                onDismissRequest = { showAutoDeleteMenu = false },
+                                modifier = Modifier
+                                    .width(320.dp)
+                                    .border(
+                                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                        shape = RoundedCornerShape(20.dp)
+                                    ),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
+                                ) {
+                                    Text(
+                                        text = "自动删除",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                    Text(
+                                        text = "满足任一条件时，回收站内对应提醒将被自动永久删除。",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    // 时间档：1/7/15/30/60/不限 天
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "保留时长",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = RecycleBinPreferences.AUTO_DELETE_TIME_OPTIONS[draftTimeTier.coerceIn(0, timeTierLastIndex)],
+                                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Slider(
+                                            value = draftTimeTier.toFloat().coerceIn(0f, timeTierLastIndex.toFloat()),
+                                            onValueChange = { draftTimeTier = it.roundToInt().coerceIn(0, timeTierLastIndex) },
+                                            valueRange = 0f..timeTierLastIndex.toFloat(),
+                                            steps = timeTierLastIndex - 1
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "1天",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                            Text(
+                                                text = "不限",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    }
+
+                                    // 数量档：10/30/60/100/不限 条
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "保留数量",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = RecycleBinPreferences.AUTO_DELETE_COUNT_OPTIONS[draftCountTier.coerceIn(0, countTierLastIndex)],
+                                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Slider(
+                                            value = draftCountTier.toFloat().coerceIn(0f, countTierLastIndex.toFloat()),
+                                            onValueChange = { draftCountTier = it.roundToInt().coerceIn(0, countTierLastIndex) },
+                                            valueRange = 0f..countTierLastIndex.toFloat(),
+                                            steps = countTierLastIndex - 1
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "10条",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                            Text(
+                                                text = "不限",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                                        verticalAlignment = Alignment.CenterVertically
+                                    ) {
+                                        TextButton(onClick = { showAutoDeleteMenu = false }) {
+                                            Text("取消")
+                                        }
+                                        Button(
+                                            onClick = {
+                                                viewModel.saveAutoDeleteTiers(draftTimeTier, draftCountTier)
+                                                showAutoDeleteMenu = false
+                                                // 保存后立即按新档位执行一次清理
+                                                viewModel.runAutoClean()
+                                            }
+                                        ) {
+                                            Text("保存")
+                                        }
+                                    }
+                                }
+                            }
                         }
                         if (uiState.itemList.isNotEmpty()) {
                             IconButton(onClick = { showClearDialog = true }) {

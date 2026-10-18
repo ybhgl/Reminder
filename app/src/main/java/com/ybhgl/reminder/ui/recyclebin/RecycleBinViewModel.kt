@@ -115,4 +115,17 @@ class RecycleBinViewModel(
             RecycleBinPreferences.runAutoCleanIfNeeded(appContext, reminderRepository)
         }
     }
+
+    /** 当前自动删除时间档索引（0..5，5=不限） */
+    val autoDeleteTimeTierFlow = RecycleBinPreferences.autoDeleteTimeTierFlow(appContext)
+
+    /** 当前自动删除数量档索引（0..4，4=不限） */
+    val autoDeleteCountTierFlow = RecycleBinPreferences.autoDeleteCountTierFlow(appContext)
+
+    /** 保存自动删除档位配置 */
+    fun saveAutoDeleteTiers(timeTier: Int, countTier: Int) {
+        viewModelScope.launch {
+            RecycleBinPreferences.saveAutoDeleteTiers(appContext, timeTier, countTier)
+        }
+    }
 }
