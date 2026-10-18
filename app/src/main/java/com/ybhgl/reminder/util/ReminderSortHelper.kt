@@ -124,6 +124,21 @@ fun sortRemindersByTime(reminders: List<ReminderItem>): List<ReminderItem> {
     return pinned + others
 }
 
+/**
+ * 忽略标签/分类/置顶维度的平铺时间排序：所有事件按时间值升序统一排列。
+ * 用于回收站列表。
+ */
+fun sortRemindersFlatByTime(reminders: List<ReminderItem>): List<ReminderItem> {
+    if (reminders.isEmpty()) return emptyList()
+
+    val locale = Locale.getDefault()
+    return reminders.sortedWith(
+        compareBy<ReminderItem> { reminderSortValue(it) }
+            .thenBy { it.title.lowercase(locale) }
+            .thenBy { it.id }
+    )
+}
+
 private fun reminderSortValue(reminder: ReminderItem): Int {
     val today = LocalDate.now()
     return when (reminder.type) {

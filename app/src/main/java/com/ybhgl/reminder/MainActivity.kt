@@ -2290,7 +2290,7 @@ private fun FabMenuItem(
 }
 
 @Composable
-private fun ReminderListItem(
+internal fun ReminderListItem(
     reminder: ReminderItem,
     isSelectionMode: Boolean,
     isSelected: Boolean,
@@ -2534,7 +2534,7 @@ private fun FloatingSegmentedTabs(
 
 @Suppress("COMPOSE_APPLIER_CALL_MISMATCH")
 @Composable
-private fun ReminderSummaryCard(
+internal fun ReminderSummaryCard(
     reminder: ReminderItem,
     modifier: Modifier = Modifier,
     isSelectionMode: Boolean,
@@ -2821,7 +2821,7 @@ private fun ReminderSummaryCard(
 
 
 @Composable
-private fun SectionHeader(
+internal fun SectionHeader(
     title: String,
     key: String,
     itemCount: Int,
@@ -2945,7 +2945,7 @@ private fun String.toComposeColor(): Color {
 
 
 @Composable
-private fun EmptyStateCard(modifier: Modifier = Modifier) {
+internal fun EmptyStateCard(modifier: Modifier = Modifier) {
     Card(
         modifier = modifier,
         shape = ReminderCardShape,
