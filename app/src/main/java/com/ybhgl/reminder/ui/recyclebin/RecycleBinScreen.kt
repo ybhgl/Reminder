@@ -123,6 +123,8 @@ fun RecycleBinScreen(
     var showAutoDeleteMenu by remember { mutableStateOf(false) }
     val savedTimeTier by viewModel.autoDeleteTimeTierFlow
         .collectAsState(initial = RecycleBinPreferences.AUTO_DELETE_TIME_OPTIONS.lastIndex)
+    // 时间档保留天数（-1 = 不限），用于卡片右上角"xx天"剩余徽标
+    val autoDeleteDays = remember(savedTimeTier) { RecycleBinPreferences.autoDeleteDaysForTier(savedTimeTier) }
     val savedCountTier by viewModel.autoDeleteCountTierFlow
         .collectAsState(initial = RecycleBinPreferences.AUTO_DELETE_COUNT_OPTIONS.lastIndex)
     var draftTimeTier by remember { mutableStateOf(RecycleBinPreferences.AUTO_DELETE_TIME_OPTIONS.lastIndex) }
@@ -212,6 +214,7 @@ fun RecycleBinScreen(
                             }
                         },
                         onToggleSelection = { viewModel.toggleSelection(it) },
+                        autoDeleteDays = autoDeleteDays,
                         footerText = "回收站内共有 ${uiState.itemList.size} 条提醒"
                     )
                 }
@@ -605,7 +608,8 @@ fun RecycleBinScreen(
                                     viewModel.startSelection(reminder.id)
                                 }
                             },
-                            onToggleSelection = { viewModel.toggleSelection(it) }
+                            onToggleSelection = { viewModel.toggleSelection(it) },
+                            autoDeleteDays = autoDeleteDays
                         )
                     }
                 }
@@ -671,11 +675,13 @@ private fun RecycleItemGrid(
     onClick: (ReminderItem) -> Unit,
     onLongPress: (ReminderItem) -> Unit,
     onToggleSelection: (Int) -> Unit,
+    autoDeleteDays: Int = -1,
     footerText: String? = null
 ) {
     val configuration = LocalConfiguration.current
     val screenWidthDp = configuration.screenWidthDp.dp
     val columnsCount = kotlin.math.max(2, ((screenWidthDp - 16.dp) / 176.dp).toInt())
+    val nowMillis = remember(items) { System.currentTimeMillis() }
 
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -701,6 +707,28 @@ private fun RecycleItemGrid(
                             onLongPress = { onLongPress(reminder) },
                             onToggleSelection = { onToggleSelection(reminder.id) }
                         )
+                        // 右上角半透明徽标：提示距离自动永久删除还剩多少天
+                        if (autoDeleteDays >= 0 && reminder.recycleBinTime > 0L) {
+                            val dayMillis = 24L * 60L * 60L * 1000L
+                            val elapsedDays = (nowMillis - reminder.recycleBinTime + dayMillis - 1) / dayMillis
+                            val remainingDays = (autoDeleteDays - elapsedDays).coerceAtLeast(0L).toInt()
+                            Box(
+                                modifier = Modifier
+                                    .align(Alignment.TopEnd)
+                                    .padding(top = 8.dp, end = 8.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.surface.copy(alpha = 0.7f),
+                                        RoundedCornerShape(8.dp)
+                                    )
+                                    .padding(horizontal = 6.dp, vertical = 2.dp)
+                            ) {
+                                Text(
+                                    text = "${remainingDays}天",
+                                    style = MaterialTheme.typography.labelSmall.copy(fontWeight = FontWeight.Bold),
+                                    color = MaterialTheme.colorScheme.onSurface.copy(alpha = 0.8f)
+                                )
+                            }
+                        }
                     }
                 }
                 if (rowItems.size < columnsCount) {

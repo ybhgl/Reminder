@@ -38,6 +38,9 @@ object RecycleBinPreferences {
     /** 数量档对应条数上限（-1 = 不限） */
     private val COUNT_TIER_LIMIT = intArrayOf(10, 30, 60, 100, -1)
 
+    /** 时间档对应的保留天数（"不限"或非法档位返回 -1），供 UI 展示剩余天数徽标 */
+    fun autoDeleteDaysForTier(tier: Int): Int = TIME_TIER_DAYS.getOrElse(tier) { -1 }
+
     fun autoDeleteTimeTierFlow(context: Context): Flow<Int> =
         context.recycleBinDataStore.data
             .catch { exception ->
