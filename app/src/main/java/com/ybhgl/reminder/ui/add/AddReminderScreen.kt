@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExposurePlus1
 import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Repeat
@@ -479,6 +480,25 @@ fun AddReminderScreen(
                     value = uiState.notes.ifBlank { "未填写" },
                     showChevron = true,
                     onClick = { showNotesSheet = true }
+                )
+
+                // 10. 加密（将提醒收入保险柜，仅在保险柜页可见）
+                TonalCardRow(
+                    modifier = Modifier
+                        .padding(top = 16.dp)
+                        .then(readOnlyFade),
+                    icon = Icons.Default.Lock,
+                    title = "加密",
+                    subtitle = "将提醒收入保险柜",
+                    trailing = {
+                        Switch(
+                            checked = uiState.isInSafe,
+                            onCheckedChange = null
+                        )
+                    },
+                    onClick = if (readOnly) null else {
+                        { viewModel.updateUiState(uiState.copy(isInSafe = !uiState.isInSafe)) }
+                    }
                 )
 
                 if (isEditing && !readOnly) {

@@ -3,6 +3,7 @@
 package com.ybhgl.reminder
 
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import com.ybhgl.reminder.ui.add.toFontFamily
 import kotlin.math.roundToInt
 
@@ -79,6 +80,10 @@ import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
@@ -99,6 +104,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
@@ -152,6 +159,8 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChange
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.graphicsLayer
@@ -175,6 +184,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -1323,6 +1333,11 @@ fun ReminderListScreen(
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchIconOffset by remember { mutableStateOf(Offset.Zero) }
+
+    // 入口一：首页下拉打开保险柜（拖动累计像素 + 是否越过阈值）
+    var safePullAccumPx by remember { mutableFloatStateOf(0f) }
+    var safePullArmed by remember { mutableStateOf(false) }
+    val safePullThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
     
     val searchAnimationProgress by animateFloatAsState(
         targetValue = if (isSearchActive) 1f else 0f,
@@ -1711,6 +1726,100 @@ fun ReminderListScreen(
                                     }
                                 }
                             }
+                        }
+                    }
+                }
+            }
+
+            // 入口一：首页下拉打开保险柜。
+            // 被动跟踪垂直拖动（不消费即不影响列表滚动与顶栏嵌套滚动）：仅当列表页 + pager 停稳 +
+            // 顶栏完全展开（= 内容滚动在顶端）时累计向下位移，越过阈值后在松手时进入保险柜。
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .pointerInput(isSearchActive, isSelectionMode, fabMenuExpanded) {
+                        if (isSearchActive || isSelectionMode || fabMenuExpanded) return@pointerInput
+                        awaitEachGesture {
+                            awaitFirstDown(requireUnconsumed = false)
+                            safePullAccumPx = 0f
+                            safePullArmed = false
+                            var accum = 0f
+                            var tracking = false
+                            try {
+                                while (true) {
+                                    val event = awaitPointerEvent()
+                                    val change = event.changes.firstOrNull()
+                                    if (change == null || !change.pressed) {
+                                        // 松手：达标则进入保险柜
+                                        if (tracking && accum >= safePullThresholdPx) {
+                                            navController.navigate(Routes.SAFE)
+                                        }
+                                        break
+                                    }
+                                    val dy = change.positionChange().y
+                                    val atTop = pagerState.currentPage != 0 &&
+                                        pagerState.currentPageOffsetFraction == 0f &&
+                                        titleOffsetPx >= -0.5f
+                                    if (atTop && dy > 0f) {
+                                        accum += dy
+                                        tracking = true
+                                        safePullAccumPx = accum
+                                        safePullArmed = accum >= safePullThresholdPx
+                                        change.consume()
+                                    } else if (tracking && dy <= 0f) {
+                                        accum = (accum + dy).coerceAtLeast(0f)
+                                        safePullAccumPx = accum
+                                        safePullArmed = accum >= safePullThresholdPx
+                                    } else if (!atTop) {
+                                        tracking = false
+                                        accum = 0f
+                                        safePullAccumPx = 0f
+                                        safePullArmed = false
+                                    }
+                                }
+                            } finally {
+                                safePullAccumPx = 0f
+                                safePullArmed = false
+                            }
+                        }
+                    }
+            ) {
+                // 下拉提示 pill：跟随拖动进度渐显，越过阈值后提示「松开进入保险柜」
+                val pullProgress = (safePullAccumPx / safePullThresholdPx).coerceIn(0f, 1f)
+                if (pullProgress > 0.02f) {
+                    Box(
+                        modifier = Modifier
+                            .align(Alignment.TopCenter)
+                            .windowInsetsPadding(WindowInsets.statusBars)
+                            .padding(top = 72.dp)
+                            .graphicsLayer {
+                                alpha = pullProgress
+                                val s = 0.85f + 0.15f * pullProgress
+                                scaleX = s
+                                scaleY = s
+                            }
+                    ) {
+                        Row(
+                            modifier = Modifier
+                                .background(
+                                    MaterialTheme.colorScheme.primary,
+                                    RoundedCornerShape(20.dp)
+                                )
+                                .padding(horizontal = 16.dp, vertical = 10.dp),
+                            verticalAlignment = Alignment.CenterVertically,
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Lock,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.size(18.dp)
+                            )
+                            Text(
+                                text = if (safePullArmed) "松开进入保险柜" else "下拉进入保险柜",
+                                style = MaterialTheme.typography.bodyMedium,
+                                color = MaterialTheme.colorScheme.onPrimary
+                            )
                         }
                     }
                 }
@@ -2124,26 +2233,20 @@ fun ReminderListScreen(
             }
 
             if (showDeleteDialog) {
-                AppAlertDialog(
+                ReminderDisposeDialog(
+                    selectedCount = selectedIds.size,
                     onDismissRequest = { showDeleteDialog = false },
-                    title = "删除提醒",
-                    text = "已选 ${selectedIds.size} 条提醒。删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复！",
-                    neutralText = "永久删除",
-                    onNeutral = {
-                        showDeleteDialog = false
-                        val itemsToDelete = reminderListUiState.itemList.filter { it.id in reminderListUiState.selectedIds }
-                        itemsToDelete.forEach { itemToDelete ->
-                            com.ybhgl.reminder.util.ReminderScheduler.cancelReminder(context, itemToDelete)
-                            com.ybhgl.reminder.util.CalendarManager.deleteEvent(context, itemToDelete)
-                        }
-                        viewModel.deleteSelected()
-                    },
-                    neutralDestructive = true,
-                    dismissText = "取消",
-                    confirmText = "回收",
-                    onConfirm = {
+                    onMoveToRecycleBin = {
                         showDeleteDialog = false
                         viewModel.moveSelectedToRecycleBin()
+                    },
+                    onMoveToSafe = {
+                        showDeleteDialog = false
+                        viewModel.moveSelectedToSafe()
+                    },
+                    onDeletePermanently = {
+                        showDeleteDialog = false
+                        viewModel.deleteSelected()
                     }
                 )
             }
@@ -2193,7 +2296,12 @@ fun ReminderListScreen(
                             navController.navigate(Routes.detailReminder(reminder.id))
                         },
                         onBackClick = { isSearchActive = false },
-                        tagsList = reminderListUiState.tagsList
+                        tagsList = reminderListUiState.tagsList,
+                        onSafeEntry = {
+                            isSearchActive = false
+                            searchQuery = ""
+                            navController.navigate(Routes.SAFE)
+                        }
                     )
                 }
             }
@@ -2247,6 +2355,82 @@ private fun FabMenuItem(
                 fontWeight = FontWeight.Medium
             )
         }
+    }
+}
+
+/**
+ * 首页多选删除弹窗：三选一处理（移入回收站 / 移入保险柜 / 永久删除）。
+ * 三个全宽选项垂直排列，「取消」位于右下角（M3 AlertDialog 规范）；
+ * 永久删除走 Repository 完整删除路径（含闹钟/日历/背景图清理）。
+ */
+@Composable
+private fun ReminderDisposeDialog(
+    selectedCount: Int,
+    onDismissRequest: () -> Unit,
+    onMoveToRecycleBin: () -> Unit,
+    onMoveToSafe: () -> Unit,
+    onDeletePermanently: () -> Unit
+) {
+    AlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = { Text("删除提醒") },
+        text = {
+            Column {
+                Text(
+                    text = "已选 $selectedCount 条提醒，请选择处理方式",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                DisposeOptionRow(
+                    icon = Icons.Default.RestoreFromTrash,
+                    label = "移入回收站",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    onClick = onMoveToRecycleBin
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                DisposeOptionRow(
+                    icon = Icons.Default.Lock,
+                    label = "移入保险柜",
+                    tint = MaterialTheme.colorScheme.primary,
+                    onClick = onMoveToSafe
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                DisposeOptionRow(
+                    icon = Icons.Default.DeleteForever,
+                    label = "永久删除",
+                    tint = MaterialTheme.colorScheme.error,
+                    onClick = onDeletePermanently
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(onClick = onDismissRequest) {
+                Text("取消")
+            }
+        }
+    )
+}
+
+@Composable
+private fun DisposeOptionRow(
+    icon: ImageVector,
+    label: String,
+    tint: Color,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = tint)
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, color = tint)
     }
 }
 
@@ -3064,7 +3248,8 @@ private fun SearchPanelContent(
     viewMode: ReminderViewMode,
     onItemClick: (ReminderItem) -> Unit,
     onBackClick: () -> Unit,
-    tagsList: List<TagItem> = emptyList()
+    tagsList: List<TagItem> = emptyList(),
+    onSafeEntry: () -> Unit = {}
 ) {
     var showFilterMenu by remember { mutableStateOf(false) }
 
@@ -3130,7 +3315,16 @@ private fun SearchPanelContent(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                 ),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        // 入口二：搜索「保险柜」三个字按回车打开
+                        if (searchQuery.trim() == "保险柜") {
+                            onSafeEntry()
+                        }
+                    }
+                )
             )
         }
         
@@ -3383,7 +3577,44 @@ private fun SearchPanelContent(
                 shape = RoundedCornerShape(12.dp)
             )
         }
-        
+
+        // 入口二辅助：输入「保险柜」时展示可点击的快捷入口行（回车亦可打开）
+        if (searchQuery.trim() == "保险柜") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .clickable { onSafeEntry() }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "保险柜",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "按回车键打开",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardReturn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         if (searchQuery.isEmpty() && selectedDateFilter == null && selectedTypes.isEmpty() && selectedTags.isEmpty()) {
             Box(
                 modifier = Modifier
