@@ -126,7 +126,11 @@ data class ReminderItem(
     /** 是否在回收站（软删除标记：回收站事件不出现在首页/Widget/备份等活跃数据视图） */
     val isInRecycleBin: Boolean = false,
     /** 进入回收站时间（epoch 毫秒，展示精确到分钟；不在回收站时为 0） */
-    val recycleBinTime: Long = 0L
+    val recycleBinTime: Long = 0L,
+    /** 是否在保险柜（隐私标记：保险柜事件不出现在首页/Widget/标签等活跃视图，但保留在备份数据中） */
+    val isInSafe: Boolean = false,
+    /** 进入保险柜时间（epoch 毫秒；不在保险柜时为 0） */
+    val safeTime: Long = 0L
 )
 
 @Serializer(forClass = LocalDate::class)
