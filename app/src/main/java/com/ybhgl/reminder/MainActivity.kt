@@ -26,6 +26,7 @@ import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
@@ -41,8 +42,6 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.BorderStroke
@@ -136,7 +135,9 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
@@ -1886,67 +1887,82 @@ fun ReminderListScreen(
                     .graphicsLayer { translationY = bottomBarOffsetPx },
                 contentAlignment = Alignment.BottomStart
             ) {
-                AnimatedVisibility(
-                    visible = fabMenuExpanded && !isSelectionMode,
-                    enter = slideInVertically(
+                // 自驱动展开进度：compose-animation 的 AnimatedVisibility 在退出动画进行中
+                // 被召回（segment PostExit→Visible）时，子动画 spec 落入门控 else 分支的默认
+                // 无弹性 spring，enter 里配置的弹性 spec 不生效，观感退化为"向上浮动渐显"。
+                // 单 Animatable + graphicsLayer 延迟读取，弹性与中断速度连续全程可控。
+                val fabMenuAnim = remember { Animatable(if (fabMenuExpanded) 1f else 0f) }
+                LaunchedEffect(fabMenuExpanded, isSelectionMode) {
+                    fabMenuAnim.animateTo(
+                        targetValue = if (fabMenuExpanded && !isSelectionMode) 1f else 0f,
                         animationSpec = spring(
                             dampingRatio = Spring.DampingRatioMediumBouncy,
                             stiffness = Spring.StiffnessMediumLow
-                        )
-                    ) { it } + fadeIn() +
-                        scaleIn(
-                            animationSpec = spring(
-                                dampingRatio = Spring.DampingRatioMediumBouncy,
-                                stiffness = Spring.StiffnessMediumLow
-                            ),
-                            initialScale = 0.8f
                         ),
-                    exit = slideOutVertically { it } + fadeOut(animationSpec = tween(100)) +
-                        scaleOut(targetScale = 0.8f, animationSpec = tween(100)),
-                    label = "FabExpandedMenu",
-                    modifier = Modifier
-                        .windowInsetsPadding(WindowInsets.navigationBars)
-                        .padding(
-                            start = 24.dp,
-                            bottom = segmentedBottomSpacing + segmentedHeight + 12.dp
-                        )
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.Start,
-                        verticalArrangement = Arrangement.spacedBy(10.dp)
+                    )
+                }
+                // 阈值级渲染判定：布尔翻转才重组，避免逐帧重建
+                val fabMenuRendered by remember {
+                    derivedStateOf {
+                        fabMenuAnim.value > 0f || (fabMenuExpanded && !isSelectionMode)
+                    }
+                }
+                var fabMenuContentHeightPx by remember { mutableFloatStateOf(0f) }
+                if (fabMenuRendered) {
+                    Box(
+                        modifier = Modifier
+                            .windowInsetsPadding(WindowInsets.navigationBars)
+                            .padding(
+                                start = 24.dp,
+                                bottom = segmentedBottomSpacing + segmentedHeight + 12.dp
+                            )
+                            .onSizeChanged { fabMenuContentHeightPx = it.height.toFloat() }
+                            .graphicsLayer {
+                                val p = fabMenuAnim.value
+                                alpha = p
+                                val s = 0.8f + 0.2f * p
+                                scaleX = s
+                                scaleY = s
+                                translationY = (1f - p) * fabMenuContentHeightPx
+                            }
                     ) {
-                        FabMenuItem(
-                            icon = Icons.Default.RestoreFromTrash,
-                            label = "回收站",
-                            onClick = {
-                                fabMenuExpanded = false
-                                navController.navigate(Routes.RECYCLE_BIN)
-                            }
-                        )
-                        FabMenuItem(
-                            icon = Icons.Default.Calculate,
-                            label = "日期计算",
-                            onClick = {
-                                fabMenuExpanded = false
-                                navController.navigate(Routes.DATE_CALCULATOR)
-                            }
-                        )
-                        FabMenuItem(
-                            icon = if (viewMode == ReminderViewMode.CARD) {
-                                Icons.AutoMirrored.Filled.ViewList
-                            } else {
-                                Icons.Default.ViewModule
-                            },
-                            label = "切换视图",
-                            onClick = {
-                                viewMode = if (viewMode == ReminderViewMode.CARD) {
-                                    ReminderViewMode.LIST
-                                } else {
-                                    ReminderViewMode.CARD
+                        Column(
+                            horizontalAlignment = Alignment.Start,
+                            verticalArrangement = Arrangement.spacedBy(10.dp)
+                        ) {
+                            FabMenuItem(
+                                icon = Icons.Default.RestoreFromTrash,
+                                label = "回收站",
+                                onClick = {
+                                    fabMenuExpanded = false
+                                    navController.navigate(Routes.RECYCLE_BIN)
                                 }
-                                fabMenuExpanded = false
-                            }
-                        )
+                            )
+                            FabMenuItem(
+                                icon = Icons.Default.Calculate,
+                                label = "日期计算",
+                                onClick = {
+                                    fabMenuExpanded = false
+                                    navController.navigate(Routes.DATE_CALCULATOR)
+                                }
+                            )
+                            FabMenuItem(
+                                icon = if (viewMode == ReminderViewMode.CARD) {
+                                    Icons.AutoMirrored.Filled.ViewList
+                                } else {
+                                    Icons.Default.ViewModule
+                                },
+                                label = "切换视图",
+                                onClick = {
+                                    viewMode = if (viewMode == ReminderViewMode.CARD) {
+                                        ReminderViewMode.LIST
+                                    } else {
+                                        ReminderViewMode.CARD
+                                    }
+                                    fabMenuExpanded = false
+                                }
+                            )
+                        }
                     }
                 }
             }
