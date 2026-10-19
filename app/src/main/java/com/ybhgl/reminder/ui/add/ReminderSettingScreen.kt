@@ -116,7 +116,9 @@ fun ReminderSettingScreen(
         }
     }
 
-    BackHandler(enabled = true, onBack = handleBack)
+    // 仅在有未保存改动时拦截系统返回：弹确认框，不播预测性返回预览（与 InstallerX 的
+    // interceptPredictiveBack 语义一致）；无改动时放行，交由 MiuixNavHost 播放 MIUIX 返回转场。
+    BackHandler(enabled = viewModel.hasChanges(), onBack = handleBack)
 
     val contentScrollState = rememberScrollState()
     val topBarState = rememberCollapsingTopBarState(contentScrollState)

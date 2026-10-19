@@ -185,11 +185,13 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import androidx.navigation.NavBackStackEntry
 import androidx.navigation.NavController
+import androidx.navigation.NavHostController
 import androidx.navigation.NavType
-import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
+import androidx.navigation.createGraph
 import androidx.navigation.navArgument
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderType
@@ -204,6 +206,7 @@ import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
+import com.ybhgl.reminder.ui.navigation.MiuixNavHost
 import com.ybhgl.reminder.ui.settings.ReminderManageScreen
 import com.ybhgl.reminder.ui.calculator.DateCalculatorScreen
 import com.ybhgl.reminder.ui.recyclebin.RecycleBinScreen
@@ -762,207 +765,110 @@ fun ReminderApp() {
     }
 
     Box(modifier = Modifier.fillMaxSize()) {
-        NavHost(
+        val navGraph = remember {
+            navController.createGraph(startDestination = Routes.REMINDER_LIST) {
+                composable(Routes.REMINDER_LIST) { }
+                composable(
+                    route = Routes.ADD_REMINDER_PATTERN,
+                    arguments = listOf(
+                        navArgument("initialType") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("initialDate") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("initialEndDate") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        }
+                    )
+                ) { }
+                composable(
+                    route = Routes.EDIT_REMINDER_PATTERN,
+                    arguments = listOf(
+                        navArgument("reminderId") { type = NavType.IntType },
+                        navArgument("readOnly") { type = NavType.BoolType; defaultValue = false }
+                    )
+                ) { }
+                composable(
+                    route = Routes.REMINDER_SETTING_PATTERN,
+                    arguments = listOf(
+                        navArgument("reminderId") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("initialConfig") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("reminderType") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("eventDate") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("fromManage") {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        },
+                        navArgument("readOnly") {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        }
+                    )
+                ) { }
+                composable(
+                    route = Routes.DETAIL_REMINDER_PATTERN,
+                    arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
+                ) { }
+                composable(
+                    route = Routes.SHARE_REMINDER_PATTERN,
+                    arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
+                ) { }
+                composable(
+                    route = Routes.BIRTHDAY_LIST_PATTERN,
+                    arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
+                ) { }
+                composable(route = Routes.SETTINGS) { }
+                composable(route = Routes.OPEN_SOURCE_LICENSES) { }
+                composable(route = Routes.REMINDER_MANAGE) { }
+                composable(route = Routes.BACKUP_AND_RESTORE) { }
+                composable(route = Routes.DATE_CALCULATOR) { }
+                composable(route = Routes.RECYCLE_BIN) { }
+                composable(route = Routes.GESTURE_SETUP) { }
+                composable(route = Routes.GESTURE_MODIFY) { }
+                composable(
+                    route = Routes.TAG_MANAGEMENT_PATTERN,
+                    arguments = listOf(
+                        navArgument("isSortMode") {
+                            type = NavType.BoolType
+                            defaultValue = false
+                        }
+                    )
+                ) { }
+            }
+        }
+        MiuixNavHost(
             navController = navController,
-            startDestination = Routes.REMINDER_LIST,
-            enterTransition = {
-                slideIntoContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
-                ) + fadeIn(animationSpec = tween(350))
-            },
-            exitTransition = {
-                slideOutOfContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.Start,
-                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
-                ) + fadeOut(animationSpec = tween(350))
-            },
-            popEnterTransition = {
-                slideIntoContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
-                ) + fadeIn(animationSpec = tween(350))
-            },
-            popExitTransition = {
-                slideOutOfContainer(
-                    towards = AnimatedContentTransitionScope.SlideDirection.End,
-                    animationSpec = tween(durationMillis = 350, easing = FastOutSlowInEasing)
-                ) + fadeOut(animationSpec = tween(350))
-            }
-        ) {
-            composable(Routes.REMINDER_LIST) {
-                ReminderListScreen(
-                    navController = navController,
-                    autoBackupStatus = autoBackupStatus
-                )
-            }
-            composable(
-                route = Routes.ADD_REMINDER_PATTERN,
-                arguments = listOf(
-                    navArgument("initialType") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                    navArgument("initialDate") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                    navArgument("initialEndDate") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    }
-                )
-            ) {
-                AddReminderScreen(
-                    onNavigateUp = { navController.navigateUp() },
-                    navController = navController
-                )
-            }
-            composable(
-                route = Routes.EDIT_REMINDER_PATTERN,
-                arguments = listOf(
-                    navArgument("reminderId") { type = NavType.IntType },
-                    navArgument("readOnly") { type = NavType.BoolType; defaultValue = false }
-                )
-            ) {
-                AddReminderScreen(
-                    onNavigateUp = { navController.navigateUp() },
-                    navController = navController,
-                    onDeleted = {
-                        navController.popBackStack(Routes.REMINDER_LIST, inclusive = false)
-                    }
-                )
-            }
-            composable(
-                route = Routes.REMINDER_SETTING_PATTERN,
-                arguments = listOf(
-                    navArgument("reminderId") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                    navArgument("initialConfig") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                    navArgument("reminderType") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                    navArgument("eventDate") {
-                        type = NavType.StringType
-                        nullable = true
-                        defaultValue = null
-                    },
-                    navArgument("fromManage") {
-                        type = NavType.BoolType
-                        defaultValue = false
-                    },
-                    navArgument("readOnly") {
-                        type = NavType.BoolType
-                        defaultValue = false
-                    }
-                )
-            ) {
-                ReminderSettingScreen(
-                    onNavigateBack = { navController.popBackStack() },
-                    onSave = { configJson ->
-                        navController.previousBackStackEntry?.savedStateHandle?.set("notificationConfig", configJson)
-                        navController.popBackStack()
-                    }
-                )
-            }
-            composable(
-                route = Routes.DETAIL_REMINDER_PATTERN,
-                arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
-            ) {
-                DetailScreen(navController = navController)
-            }
-            composable(
-                route = Routes.SHARE_REMINDER_PATTERN,
-                arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
-            ) {
-                ShareScreen(navController = navController)
-            }
-            composable(
-                route = Routes.BIRTHDAY_LIST_PATTERN,
-                arguments = listOf(navArgument("reminderId") { type = NavType.IntType })
-            ) {
-                BirthdayListScreen(navController = navController)
-            }
-            composable(route = Routes.SETTINGS) {
-                SettingsScreen(
-                    onNavigateBack = { navController.navigateUp() },
-                    onNavigateToBackupAndRestore = { navController.navigate(Routes.BACKUP_AND_RESTORE) },
-                    onNavigateToTagManagement = { navController.navigate(Routes.tagManagement()) },
-                    onNavigateToReminderManage = { navController.navigate(Routes.REMINDER_MANAGE) },
-                    onNavigateToRecycleBin = { navController.navigate(Routes.RECYCLE_BIN) },
-                    onNavigateToGestureSetup = { navController.navigate(Routes.GESTURE_SETUP) },
-                    onNavigateToGestureModify = { navController.navigate(Routes.GESTURE_MODIFY) },
-                    onNavigateToOpenSourceLicenses = { navController.navigate(Routes.OPEN_SOURCE_LICENSES) }
-                )
-            }
-            composable(route = Routes.OPEN_SOURCE_LICENSES) {
-                com.ybhgl.reminder.ui.settings.OpenSourceLicensesScreen(
-                    onNavigateBack = { navController.navigateUp() }
-                )
-            }
-            composable(route = Routes.REMINDER_MANAGE) {
-                ReminderManageScreen(
-                    onNavigateBack = { navController.navigateUp() },
-                    onNavigateToReminderSetting = { reminderId ->
-                        navController.navigate(Routes.reminderSetting(reminderId = reminderId, fromManage = true))
-                    }
-                )
-            }
-            composable(route = Routes.BACKUP_AND_RESTORE) {
-                BackupAndRestoreScreen(onNavigateBack = { navController.navigateUp() })
-            }
-            composable(route = Routes.DATE_CALCULATOR) {
-                DateCalculatorScreen(
-                    onNavigateBack = { navController.navigateUp() },
-                    onNavigateToAddEvent = { type, date, endDate ->
-                        navController.navigate(Routes.addReminder(initialType = type, initialDate = date, initialEndDate = endDate))
-                    }
-                )
-            }
-            composable(route = Routes.RECYCLE_BIN) {
-                RecycleBinScreen(navController = navController)
-            }
-            composable(route = Routes.GESTURE_SETUP) {
-                com.ybhgl.reminder.ui.security.GestureSetupScreen(
-                    onNavigateBack = { navController.navigateUp() },
-                    onSetupComplete = { navController.navigateUp() },
-                    isModifyMode = false
-                )
-            }
-            composable(route = Routes.GESTURE_MODIFY) {
-                com.ybhgl.reminder.ui.security.GestureSetupScreen(
-                    onNavigateBack = { navController.navigateUp() },
-                    onSetupComplete = { navController.navigateUp() },
-                    isModifyMode = true
-                )
-            }
-            composable(
-                route = Routes.TAG_MANAGEMENT_PATTERN,
-                arguments = listOf(
-                    navArgument("isSortMode") {
-                        type = NavType.BoolType
-                        defaultValue = false
-                    }
-                )
-            ) { backStackEntry ->
-                val isSortMode = backStackEntry.arguments?.getBoolean("isSortMode") ?: false
-                TagManagementScreen(
-                    onNavigateBack = { navController.navigateUp() },
-                    initialSortMode = isSortMode
-                )
-            }
+            graph = navGraph,
+            onBack = { navController.popBackStack() },
+        ) { entry ->
+            ReminderNavContent(
+                navController = navController,
+                entry = entry,
+                autoBackupStatus = autoBackupStatus,
+            )
         }
 
     if (showPermissionRationale && !permissionState.allPermissionsGranted) {
@@ -3598,5 +3504,93 @@ private fun SearchPanelContent(
                 }
             }
         }
+    }
+}
+
+
+/**
+ * MiuixNavHost 的页面分发：按当前 entry 的路由渲染对应页面。
+ * 内容从原 NavHost DSL 的 composable content lambda 原样搬迁，页面签名零改动；
+ * entry 自身即 ViewModelStoreOwner / LifecycleOwner（由 MiuixNavHost 提供），
+ * 页面内 viewModel() / savedStateHandle 行为与 NavHost 完全一致。
+ */
+@Composable
+private fun ReminderNavContent(
+    navController: NavHostController,
+    entry: NavBackStackEntry,
+    autoBackupStatus: AutoBackupStatus,
+) {
+    when (entry.destination.route) {
+        Routes.REMINDER_LIST -> ReminderListScreen(
+            navController = navController,
+            autoBackupStatus = autoBackupStatus
+        )
+        Routes.ADD_REMINDER_PATTERN -> AddReminderScreen(
+            onNavigateUp = { navController.navigateUp() },
+            navController = navController
+        )
+        Routes.EDIT_REMINDER_PATTERN -> AddReminderScreen(
+            onNavigateUp = { navController.navigateUp() },
+            navController = navController,
+            onDeleted = {
+                navController.popBackStack(Routes.REMINDER_LIST, inclusive = false)
+            }
+        )
+        Routes.REMINDER_SETTING_PATTERN -> ReminderSettingScreen(
+            onNavigateBack = { navController.popBackStack() },
+            onSave = { configJson ->
+                navController.previousBackStackEntry?.savedStateHandle?.set("notificationConfig", configJson)
+                navController.popBackStack()
+            }
+        )
+        Routes.DETAIL_REMINDER_PATTERN -> DetailScreen(navController = navController)
+        Routes.SHARE_REMINDER_PATTERN -> ShareScreen(navController = navController)
+        Routes.BIRTHDAY_LIST_PATTERN -> BirthdayListScreen(navController = navController)
+        Routes.SETTINGS -> SettingsScreen(
+            onNavigateBack = { navController.navigateUp() },
+            onNavigateToBackupAndRestore = { navController.navigate(Routes.BACKUP_AND_RESTORE) },
+            onNavigateToTagManagement = { navController.navigate(Routes.tagManagement()) },
+            onNavigateToReminderManage = { navController.navigate(Routes.REMINDER_MANAGE) },
+            onNavigateToRecycleBin = { navController.navigate(Routes.RECYCLE_BIN) },
+            onNavigateToGestureSetup = { navController.navigate(Routes.GESTURE_SETUP) },
+            onNavigateToGestureModify = { navController.navigate(Routes.GESTURE_MODIFY) },
+            onNavigateToOpenSourceLicenses = { navController.navigate(Routes.OPEN_SOURCE_LICENSES) }
+        )
+        Routes.OPEN_SOURCE_LICENSES ->
+            com.ybhgl.reminder.ui.settings.OpenSourceLicensesScreen(
+                onNavigateBack = { navController.navigateUp() }
+            )
+        Routes.REMINDER_MANAGE -> ReminderManageScreen(
+            onNavigateBack = { navController.navigateUp() },
+            onNavigateToReminderSetting = { reminderId ->
+                navController.navigate(Routes.reminderSetting(reminderId = reminderId, fromManage = true))
+            }
+        )
+        Routes.BACKUP_AND_RESTORE -> BackupAndRestoreScreen(
+            onNavigateBack = { navController.navigateUp() }
+        )
+        Routes.DATE_CALCULATOR -> DateCalculatorScreen(
+            onNavigateBack = { navController.navigateUp() },
+            onNavigateToAddEvent = { type, date, endDate ->
+                navController.navigate(Routes.addReminder(initialType = type, initialDate = date, initialEndDate = endDate))
+            }
+        )
+        Routes.RECYCLE_BIN -> RecycleBinScreen(navController = navController)
+        Routes.GESTURE_SETUP ->
+            com.ybhgl.reminder.ui.security.GestureSetupScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onSetupComplete = { navController.navigateUp() },
+                isModifyMode = false
+            )
+        Routes.GESTURE_MODIFY ->
+            com.ybhgl.reminder.ui.security.GestureSetupScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onSetupComplete = { navController.navigateUp() },
+                isModifyMode = true
+            )
+        Routes.TAG_MANAGEMENT_PATTERN -> TagManagementScreen(
+            onNavigateBack = { navController.navigateUp() },
+            initialSortMode = entry.arguments?.getBoolean("isSortMode") ?: false
+        )
     }
 }
