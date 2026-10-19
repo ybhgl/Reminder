@@ -1,6 +1,9 @@
 package com.ybhgl.reminder.ui.safe
 
+import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.os.PowerManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
@@ -45,9 +48,9 @@ import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.filled.LockReset
+import androidx.compose.material.icons.filled.Output
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
-import androidx.compose.material.icons.filled.Upgrade
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -89,6 +92,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
@@ -146,6 +150,27 @@ fun SafeScreen(
         lifecycleOwner.lifecycle.addObserver(observer)
         onDispose {
             lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
+    // 息屏重验兜底：ON_STOP 只覆盖「前台锁屏」；切到后台后再锁屏时 Activity 已处于 STOPPED，
+    // 不会再抛生命周期事件，因此注册 ACTION_SCREEN_OFF 广播（进程存活期间任意时刻息屏均触发）
+    DisposableEffect(context) {
+        val screenOffReceiver = object : BroadcastReceiver() {
+            override fun onReceive(receiverContext: Context?, intent: Intent?) {
+                if (intent?.action == Intent.ACTION_SCREEN_OFF) {
+                    unlocked = false
+                }
+            }
+        }
+        ContextCompat.registerReceiver(
+            context,
+            screenOffReceiver,
+            IntentFilter(Intent.ACTION_SCREEN_OFF),
+            ContextCompat.RECEIVER_NOT_EXPORTED
+        )
+        onDispose {
+            context.unregisterReceiver(screenOffReceiver)
         }
     }
 
@@ -537,17 +562,6 @@ private fun SafeVaultContent(
                 horizontalArrangement = Arrangement.spacedBy(16.dp)
             ) {
                 FloatingActionButton(
-                    onClick = { showFabMoveOutConfirm = true },
-                    shape = CircleShape,
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Upgrade,
-                        contentDescription = "移出"
-                    )
-                }
-                FloatingActionButton(
                     onClick = { showFabDeleteConfirm = true },
                     shape = CircleShape,
                     containerColor = MaterialTheme.colorScheme.error,
@@ -556,6 +570,17 @@ private fun SafeVaultContent(
                     Icon(
                         imageVector = Icons.Default.DeleteForever,
                         contentDescription = "删除"
+                    )
+                }
+                FloatingActionButton(
+                    onClick = { showFabMoveOutConfirm = true },
+                    shape = CircleShape,
+                    containerColor = MaterialTheme.colorScheme.primary,
+                    contentColor = MaterialTheme.colorScheme.onPrimary
+                ) {
+                    Icon(
+                        imageVector = Icons.Default.Output,
+                        contentDescription = "移出"
                     )
                 }
             }
