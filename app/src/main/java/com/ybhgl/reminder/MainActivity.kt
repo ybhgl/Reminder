@@ -33,11 +33,15 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.Job
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -1334,10 +1338,31 @@ fun ReminderListScreen(
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchIconOffset by remember { mutableStateOf(Offset.Zero) }
 
-    // 入口一：首页下拉打开保险柜（拖动累计像素 + 是否越过阈值）
-    var safePullAccumPx by remember { mutableFloatStateOf(0f) }
+    // 入口一：首页下拉打开保险柜。整页平移量 safePullOffsetPx 在拖拽中直写（无挂起调用），
+    // 松手未达阈值时由非受限协程弹性回弹；safePullArmed 表示是否已越过阈值（高亮 + 震动）。
+    var safePullOffsetPx by remember { mutableFloatStateOf(0f) }
     var safePullArmed by remember { mutableStateOf(false) }
     val safePullThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
+    val safePullReleaseJob = remember { mutableStateOf<Job?>(null) }
+    val safePullScope = rememberCoroutineScope()
+    val safePullView = LocalView.current
+    val safePullAnim = remember { Animatable(0f) }
+    // 松手未达阈值（或手势被取消）：弹性回弹到 0
+    val safePullSpringBack: () -> Unit = {
+        safePullReleaseJob.value?.cancel()
+        safePullReleaseJob.value = safePullScope.launch {
+            safePullAnim.snapTo(safePullOffsetPx)
+            safePullAnim.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            ) {
+                safePullOffsetPx = value
+            }
+        }
+    }
     
     val searchAnimationProgress by animateFloatAsState(
         targetValue = if (isSearchActive) 1f else 0f,
@@ -1567,6 +1592,90 @@ fun ReminderListScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // 入口一：下拉时整个页面（pager + 顶栏 + 底栏）跟随手指整体下移
+                .graphicsLayer { translationY = safePullOffsetPx }
+                // 手势挂在内容容器（父级）：子级（列表/卡片/顶栏/底栏）的点击与滚动完全不受影响；
+                // 仅当列表页 + pager 停稳 + 顶栏完全展开（= 内容滚动在顶端）时才认领下拉。
+                .pointerInput(isSearchActive, isSelectionMode, fabMenuExpanded) {
+                    if (isSearchActive || isSelectionMode || fabMenuExpanded) return@pointerInput
+                    val touchSlop = viewConfiguration.touchSlop
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        // 新手势开始时取消可能正在进行的回弹动画
+                        safePullReleaseJob.value?.cancel()
+                        var pull = 0f
+                        var tracking = false
+                        var navigated = false
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull()
+                                if (change == null || !change.pressed) {
+                                    // 松手：达标则进入保险柜，否则回弹
+                                    if (tracking && pull >= safePullThresholdPx) {
+                                        navigated = true
+                                        navController.navigate(Routes.SAFE)
+                                        safePullOffsetPx = 0f
+                                    }
+                                    break
+                                }
+                                val dy = change.positionChange().y
+                                val atTop = pagerState.currentPage != 0 &&
+                                    pagerState.currentPageOffsetFraction == 0f &&
+                                    titleOffsetPx >= -0.5f
+                                if (atTop && dy > 0f) {
+                                    if (!tracking) {
+                                        // 未超过触摸 slop 前不认领手势、不消费、不位移，点击与滚动零影响
+                                        pull += dy
+                                        if (pull >= touchSlop) {
+                                            tracking = true
+                                            pull = touchSlop
+                                        }
+                                    } else {
+                                        // 阻尼下拉：越拉越费劲，上限 1.6 倍阈值
+                                        pull = (pull + dy * 0.65f)
+                                            .coerceAtMost(safePullThresholdPx * 1.6f)
+                                    }
+                                    if (tracking) {
+                                        safePullOffsetPx = pull
+                                        val armed = pull >= safePullThresholdPx
+                                        if (armed != safePullArmed) {
+                                            safePullArmed = armed
+                                            safePullView.performHapticFeedback(
+                                                HapticFeedbackConstants.CLOCK_TICK
+                                            )
+                                        }
+                                        change.consume()
+                                    }
+                                } else if (tracking && dy <= 0f) {
+                                    // 已认领后跟手回滑
+                                    pull = (pull + dy).coerceAtLeast(0f)
+                                    safePullOffsetPx = pull
+                                    val armed = pull >= safePullThresholdPx
+                                    if (armed != safePullArmed) {
+                                        safePullArmed = armed
+                                        safePullView.performHapticFeedback(
+                                            HapticFeedbackConstants.CLOCK_TICK
+                                        )
+                                    }
+                                    change.consume()
+                                } else if (!atTop) {
+                                    // 顶栏折叠中/日历页：不认领，交给原有交互
+                                    tracking = false
+                                    pull = 0f
+                                    safePullOffsetPx = 0f
+                                    safePullArmed = false
+                                } else {
+                                    // 顶端向上滚动（正常浏览列表）：重置预累计
+                                    pull = 0f
+                                }
+                            }
+                        } finally {
+                            safePullArmed = false
+                            if (!navigated) safePullSpringBack()
+                        }
+                    }
+                }
         ) {
             HorizontalPager(
                 state = pagerState,
@@ -1731,100 +1840,6 @@ fun ReminderListScreen(
                 }
             }
 
-            // 入口一：首页下拉打开保险柜。
-            // 被动跟踪垂直拖动（不消费即不影响列表滚动与顶栏嵌套滚动）：仅当列表页 + pager 停稳 +
-            // 顶栏完全展开（= 内容滚动在顶端）时累计向下位移，越过阈值后在松手时进入保险柜。
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .pointerInput(isSearchActive, isSelectionMode, fabMenuExpanded) {
-                        if (isSearchActive || isSelectionMode || fabMenuExpanded) return@pointerInput
-                        awaitEachGesture {
-                            awaitFirstDown(requireUnconsumed = false)
-                            safePullAccumPx = 0f
-                            safePullArmed = false
-                            var accum = 0f
-                            var tracking = false
-                            try {
-                                while (true) {
-                                    val event = awaitPointerEvent()
-                                    val change = event.changes.firstOrNull()
-                                    if (change == null || !change.pressed) {
-                                        // 松手：达标则进入保险柜
-                                        if (tracking && accum >= safePullThresholdPx) {
-                                            navController.navigate(Routes.SAFE)
-                                        }
-                                        break
-                                    }
-                                    val dy = change.positionChange().y
-                                    val atTop = pagerState.currentPage != 0 &&
-                                        pagerState.currentPageOffsetFraction == 0f &&
-                                        titleOffsetPx >= -0.5f
-                                    if (atTop && dy > 0f) {
-                                        accum += dy
-                                        tracking = true
-                                        safePullAccumPx = accum
-                                        safePullArmed = accum >= safePullThresholdPx
-                                        change.consume()
-                                    } else if (tracking && dy <= 0f) {
-                                        accum = (accum + dy).coerceAtLeast(0f)
-                                        safePullAccumPx = accum
-                                        safePullArmed = accum >= safePullThresholdPx
-                                    } else if (!atTop) {
-                                        tracking = false
-                                        accum = 0f
-                                        safePullAccumPx = 0f
-                                        safePullArmed = false
-                                    }
-                                }
-                            } finally {
-                                safePullAccumPx = 0f
-                                safePullArmed = false
-                            }
-                        }
-                    }
-            ) {
-                // 下拉提示 pill：跟随拖动进度渐显，越过阈值后提示「松开进入保险柜」
-                val pullProgress = (safePullAccumPx / safePullThresholdPx).coerceIn(0f, 1f)
-                if (pullProgress > 0.02f) {
-                    Box(
-                        modifier = Modifier
-                            .align(Alignment.TopCenter)
-                            .windowInsetsPadding(WindowInsets.statusBars)
-                            .padding(top = 72.dp)
-                            .graphicsLayer {
-                                alpha = pullProgress
-                                val s = 0.85f + 0.15f * pullProgress
-                                scaleX = s
-                                scaleY = s
-                            }
-                    ) {
-                        Row(
-                            modifier = Modifier
-                                .background(
-                                    MaterialTheme.colorScheme.primary,
-                                    RoundedCornerShape(20.dp)
-                                )
-                                .padding(horizontal = 16.dp, vertical = 10.dp),
-                            verticalAlignment = Alignment.CenterVertically,
-                            horizontalArrangement = Arrangement.spacedBy(8.dp)
-                        ) {
-                            Icon(
-                                imageVector = Icons.Default.Lock,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimary,
-                                modifier = Modifier.size(18.dp)
-                            )
-                            Text(
-                                text = if (safePullArmed) "松开进入保险柜" else "下拉进入保险柜",
-                                style = MaterialTheme.typography.bodyMedium,
-                                color = MaterialTheme.colorScheme.onPrimary
-                            )
-                        }
-                    }
-                }
-            }
-
             // 状态栏渐变遮罩 (固定在屏幕最顶部，并在 TopAppBar 的下方，不干扰点击交互)；日历页随顶栏一起淡出
             StatusBarScrim(
                 modifier = Modifier
@@ -1977,6 +1992,71 @@ fun ReminderListScreen(
                             }
                         }
                     )
+                }
+            }
+
+            // 入口一：下拉提示 pill。逆向平移抵消整页位移，固定在顶部露出区并随缺口中心下移；
+            // 未越阈值为中性灰，越过阈值高亮为主题强调色（越阈值的震动由手势处触发）。
+            val safePullProgress = (safePullOffsetPx / safePullThresholdPx).coerceIn(0f, 1f)
+            if (safePullProgress > 0.02f) {
+                val safePullPillColor by animateColorAsState(
+                    targetValue = if (safePullArmed) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    animationSpec = tween(120),
+                    label = "SafePullPillColor"
+                )
+                val safePullPillContentColor by animateColorAsState(
+                    targetValue = if (safePullArmed) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    animationSpec = tween(120),
+                    label = "SafePullPillContentColor"
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(top = 8.dp)
+                        .graphicsLayer {
+                            // 抵消整页平移（-pull）后随缺口中心下移（+pull/2）
+                            translationY = -safePullOffsetPx * 0.5f
+                            alpha = safePullProgress
+                            val s = 0.85f + 0.15f * safePullProgress
+                            scaleX = s
+                            scaleY = s
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .background(safePullPillColor, RoundedCornerShape(20.dp))
+                            .border(
+                                BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                ),
+                                RoundedCornerShape(20.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = safePullPillContentColor,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = if (safePullArmed) "松开进入保险柜" else "下拉进入保险柜",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = safePullPillContentColor
+                        )
+                    }
                 }
             }
 
