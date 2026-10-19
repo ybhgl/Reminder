@@ -27,7 +27,8 @@ import kotlinx.coroutines.launch
 fun AppLockVerifyScreen(
     onUnlockSuccess: () -> Unit,
     onCancel: (() -> Unit)? = null,
-    mode: PasswordMode = PasswordMode.APP_LOCK
+    mode: PasswordMode = PasswordMode.APP_LOCK,
+    forceGesture: Boolean = false
 ) {
     val context = LocalContext.current
     val lifecycleOwner = LocalLifecycleOwner.current
@@ -52,6 +53,7 @@ fun AppLockVerifyScreen(
     }
 
     fun triggerBiometric(isManual: Boolean = false) {
+        if (forceGesture) return
         if (!useBiometric) return
         if (!isManual && hasPromptedBiometric) return
 
@@ -155,7 +157,7 @@ fun AppLockVerifyScreen(
                 }
             )
 
-                if (useBiometric) {
+                if (useBiometric && !forceGesture) {
                     Spacer(modifier = Modifier.height(48.dp))
                     TextButton(onClick = { triggerBiometric(isManual = true) }) {
                         Text("使用生物识别验证")

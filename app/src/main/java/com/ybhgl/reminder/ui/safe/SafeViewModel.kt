@@ -5,6 +5,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.ReminderRepository
+import com.ybhgl.reminder.data.SecurityPreferences
 import com.ybhgl.reminder.util.sortRemindersFlatByTime
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
@@ -101,6 +102,23 @@ class SafeViewModel(
         viewModelScope.launch {
             reminderRepository.restoreFromSafe(idsToMoveOut)
             exitSelectionMode()
+        }
+    }
+
+    /**
+     * 销毁保险柜：柜内全部事件移出（恢复为活跃事件并重建调度），清除保险柜密码与生物开关。
+     * 全部完成后才回调 onDone 退出页面——导航出栈会清空本 ViewModel，协程必须在此之前跑完。
+     */
+    fun destroySafeAndExit(onDone: () -> Unit) {
+        viewModelScope.launch {
+            val allIds = reminderRepository.getSafeRemindersList().map { it.id }.toSet()
+            if (allIds.isNotEmpty()) {
+                reminderRepository.restoreFromSafe(allIds)
+            }
+            SecurityPreferences.saveSafeGesturePassword(appContext, "")
+            SecurityPreferences.saveSafeUseBiometric(appContext, false)
+            exitSelectionMode()
+            onDone()
         }
     }
 }

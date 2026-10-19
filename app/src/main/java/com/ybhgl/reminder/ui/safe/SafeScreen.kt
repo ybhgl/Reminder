@@ -1,5 +1,7 @@
 package com.ybhgl.reminder.ui.safe
 
+import android.content.Context
+import android.os.PowerManager
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
@@ -60,6 +62,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -87,6 +90,7 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.viewmodel.compose.viewModel
 import androidx.navigation.NavController
 import com.ybhgl.reminder.CircularRevealShape
@@ -120,6 +124,7 @@ fun SafeScreen(
     viewModel: SafeViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
     // null = 密码读取中；空串 = 未设置；非空 = 已设置
     var safePassword by remember { mutableStateOf<String?>(null) }
     LaunchedEffect(Unit) {
@@ -128,10 +133,34 @@ fun SafeScreen(
     // 解锁态随本导航条目存活：进入详情页再返回保持解锁，完全退出后再次进入需重新验证
     var unlocked by rememberSaveable { mutableStateOf(false) }
 
+    // 息屏/锁屏后返回需重新验证密码（打开子 Activity 时屏幕仍交互，不触发重锁）
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_STOP) {
+                val powerManager = context.getSystemService(Context.POWER_SERVICE) as? PowerManager
+                if (powerManager != null && !powerManager.isInteractive) {
+                    unlocked = false
+                }
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose {
+            lifecycleOwner.lifecycle.removeObserver(observer)
+        }
+    }
+
     when {
         safePassword == null -> {
             // 读取中不渲染，避免闪屏
             Box(modifier = modifier.fillMaxSize())
+        }
+        unlocked -> {
+            // 已解锁（含刚完成首次设置）：直接进入保险柜主页
+            SafeVaultContent(
+                navController = navController,
+                modifier = modifier,
+                viewModel = viewModel
+            )
         }
         safePassword.isNullOrEmpty() -> {
             // 未设置密码：强制引导设置，返回或不设置即退出保险柜
@@ -142,18 +171,11 @@ fun SafeScreen(
                 mode = PasswordMode.SAFE
             )
         }
-        !unlocked -> {
+        else -> {
             AppLockVerifyScreen(
                 onUnlockSuccess = { unlocked = true },
                 onCancel = { navController.navigateUp() },
                 mode = PasswordMode.SAFE
-            )
-        }
-        else -> {
-            SafeVaultContent(
-                navController = navController,
-                modifier = modifier,
-                viewModel = viewModel
             )
         }
     }
@@ -177,6 +199,10 @@ private fun SafeVaultContent(
     // FAB 组「永久删除 / 移出」操作前的二次确认
     var showFabDeleteConfirm by remember { mutableStateOf(false) }
     var showFabMoveOutConfirm by remember { mutableStateOf(false) }
+
+    // 销毁保险柜：确认弹窗 → 验证保险柜密码 → 销毁（柜内事件全部移出 + 清除密码）
+    var showDestroyConfirm by remember { mutableStateOf(false) }
+    var verifyingDestroy by remember { mutableStateOf(false) }
 
     var isSearchActive by remember { mutableStateOf(false) }
     var searchQuery by remember { mutableStateOf("") }
@@ -462,6 +488,31 @@ private fun SafeVaultContent(
                                         enabled = biometricAvailable
                                     )
                                 }
+
+                                // 销毁保险柜（destructive）：验证密码后销毁，柜内提醒自动移出
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .clip(RoundedCornerShape(12.dp))
+                                        .clickable {
+                                            showSettingsMenu = false
+                                            showDestroyConfirm = true
+                                        }
+                                        .padding(vertical = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                ) {
+                                    Icon(
+                                        imageVector = Icons.Default.DeleteForever,
+                                        contentDescription = null,
+                                        tint = MaterialTheme.colorScheme.error
+                                    )
+                                    Text(
+                                        text = "销毁保险柜",
+                                        style = MaterialTheme.typography.bodyLarge,
+                                        color = MaterialTheme.colorScheme.error
+                                    )
+                                }
                             }
                         }
                     }
@@ -687,6 +738,38 @@ private fun SafeVaultContent(
                 viewModel.moveOutSelected()
             },
             dismissText = "取消"
+        )
+    }
+
+    // 销毁保险柜二次确认弹窗
+    if (showDestroyConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showDestroyConfirm = false },
+            title = "销毁保险柜",
+            text = "确认销毁保险柜？需要验证保险柜密码，验证通过后保险柜将销毁，其内的所有提醒将自动移除保险柜",
+            confirmText = "验证并销毁",
+            onConfirm = {
+                showDestroyConfirm = false
+                verifyingDestroy = true
+            },
+            dismissText = "取消",
+            destructive = true
+        )
+    }
+
+    // 销毁前验证保险柜密码（禁用以生物识别 shortcut，必须验证密码本身）：
+    // 验证通过后执行销毁（柜内事件移出 + 清除密码）并退出保险柜
+    if (verifyingDestroy) {
+        AppLockVerifyScreen(
+            onUnlockSuccess = {
+                verifyingDestroy = false
+                viewModel.destroySafeAndExit {
+                    navController.navigateUp()
+                }
+            },
+            onCancel = { verifyingDestroy = false },
+            mode = PasswordMode.SAFE,
+            forceGesture = true
         )
     }
 }
