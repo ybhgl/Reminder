@@ -78,7 +78,9 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -145,6 +147,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -1347,6 +1350,9 @@ fun ReminderListScreen(
     val safePullScope = rememberCoroutineScope()
     val safePullView = LocalView.current
     val safePullAnim = remember { Animatable(0f) }
+    // 各分类页的列表滚动状态：下拉触发条件需要直接判断「当前页内容是否处于顶部」
+    // （顶栏位移 titleOffsetPx 只在 HIDE_TOP_BAR/HIDE_BOTH 模式下更新，不能作为内容在顶部的判据）
+    val safePullListStates = remember { mutableMapOf<Int, LazyListState>() }
     // 松手未达阈值（或手势被取消）：弹性回弹到 0
     val safePullSpringBack: () -> Unit = {
         safePullReleaseJob.value?.cancel()
@@ -1592,10 +1598,8 @@ fun ReminderListScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
-                // 入口一：下拉时整个页面（pager + 顶栏 + 底栏）跟随手指整体下移
-                .graphicsLayer { translationY = safePullOffsetPx }
                 // 手势挂在内容容器（父级）：子级（列表/卡片/顶栏/底栏）的点击与滚动完全不受影响；
-                // 仅当列表页 + pager 停稳 + 顶栏完全展开（= 内容滚动在顶端）时才认领下拉。
+                // 仅当列表页 + pager 停稳 + 当前页内容处于顶部 + 顶栏完全展开时才认领下拉。
                 .pointerInput(isSearchActive, isSelectionMode, fabMenuExpanded) {
                     if (isSearchActive || isSelectionMode || fabMenuExpanded) return@pointerInput
                     val touchSlop = viewConfiguration.touchSlop
@@ -1622,8 +1626,16 @@ fun ReminderListScreen(
                                 // 用 IgnoreConsumed 变体：列表/卡片的 scrollable 与 clickable 会消费 down，
                                 // positionChange() 在此场景恒返回 Zero（列表区域会完全拉不动）
                                 val dy = change.positionChangeIgnoreConsumed().y
+                                // 触发条件：列表页（非日历页）+ pager 停稳 + 当前页内容处于顶部 + 顶栏完全展开
+                                val currentListState = safePullListStates[pagerState.currentPage]
+                                val contentAtTop = currentListState == null ||
+                                    (
+                                        currentListState.firstVisibleItemIndex == 0 &&
+                                            currentListState.firstVisibleItemScrollOffset == 0
+                                        )
                                 val atTop = pagerState.currentPage != 0 &&
                                     pagerState.currentPageOffsetFraction == 0f &&
+                                    contentAtTop &&
                                     titleOffsetPx >= -0.5f
                                 if (atTop && dy > 0f) {
                                     if (!tracking) {
@@ -1682,7 +1694,9 @@ fun ReminderListScreen(
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    // 入口一：下拉时仅内容区（顶栏下方）跟随手指下移，顶栏与状态栏遮罩保持固定
+                    .graphicsLayer { translationY = safePullOffsetPx },
                 userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
@@ -1725,8 +1739,11 @@ fun ReminderListScreen(
 
                 if (reminderListUiState.isLoading) {
                     // 正在加载时不显示 EmptyStateCard，避免闪屏
+                    // 无列表时注销本页状态，避免残留旧滚动位置影响下拉判定
+                    SideEffect { safePullListStates.remove(page) }
                     Box(modifier = Modifier.fillMaxSize())
                 } else if (sections.isEmpty()) {
+                    SideEffect { safePullListStates.remove(page) }
                     val density = LocalDensity.current
                     val staticBottomPadding = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     EmptyStateCard(
@@ -1743,8 +1760,14 @@ fun ReminderListScreen(
                     )
                 } else {
                     val density = LocalDensity.current
+                    // 登记本页列表状态供下拉手势判断「内容是否处于顶部」
+                    val listState = rememberLazyListState()
+                    SideEffect {
+                        safePullListStates[page] = listState
+                    }
                     val staticBottomPadding = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize(),
                         // top 在测量期读 titleOffsetPx：顶栏收展只触发列表重测，
@@ -1997,10 +2020,11 @@ fun ReminderListScreen(
                 }
             }
 
-            // 入口一：下拉提示 pill。跟随整页下移，固定在顶栏下方（内容区顶部）：
-            // 未越阈值为中性灰，越过阈值高亮为主题强调色（越阈值的震动由手势处触发）。
+            // 入口一：下拉提示 pill。顶栏固定不动，pill 出现在顶栏与下移内容之间拉出的空隙中：
+            // 空隙不足时固定贴在顶栏下沿，空隙够大后贴着下移内容的顶边随之下移；
+            // 未越阈值为中性灰，越过阈值高亮为主题强调色（震动由手势越阈值时触发）。
             val safePullProgress = (safePullOffsetPx / safePullThresholdPx).coerceIn(0f, 1f)
-            if (safePullProgress > 0.02f) {
+            if (safePullProgress > 0.05f) {
                 val safePullPillColor by animateColorAsState(
                     targetValue = if (safePullArmed) {
                         MaterialTheme.colorScheme.primary
@@ -2025,7 +2049,10 @@ fun ReminderListScreen(
                         .windowInsetsPadding(WindowInsets.statusBars)
                         .padding(top = 72.dp)
                         .graphicsLayer {
-                            alpha = safePullProgress
+                            val gap = safePullOffsetPx
+                            // 空隙不足 pill 占位（56dp）时贴顶栏下沿；之后随下移内容顶边一起走
+                            translationY = (gap - 56.dp.toPx()).coerceAtLeast(0f)
+                            alpha = ((gap - 32.dp.toPx()) / 32.dp.toPx()).coerceIn(0f, 1f)
                             val s = 0.85f + 0.15f * safePullProgress
                             scaleX = s
                             scaleY = s
@@ -2169,12 +2196,13 @@ fun ReminderListScreen(
                     .onSizeChanged {
                         if (it.height > 0) bottomBarHeightPx = it.height.toFloat()
                     }
-                    .graphicsLayer {
-                        translationY = bottomBarOffsetPx
-                        alpha = 1f - calendarProgress
-                    }
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(bottom = segmentedBottomSpacing, start = 8.dp, end = 24.dp)
+.graphicsLayer {
+                    // 入口一：与内容区同步下移（顶栏保持固定）
+                    translationY = bottomBarOffsetPx + safePullOffsetPx
+                    alpha = 1f - calendarProgress
+                }
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = segmentedBottomSpacing, start = 8.dp, end = 24.dp)
             ) {
                 // 日历页完全展示时不组合底栏内容，避免淡出浮层误触并放行日历手势
                 if (calendarProgress < 0.999f) {
