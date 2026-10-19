@@ -78,15 +78,42 @@ class DetailViewModel(
         }
             .onEach { (sortedReminders, tags) ->
                 val current = sortedReminders.find { it.id == reminderId }
-                _uiState.update {
-                    it.copy(
-                        reminderItems = sortedReminders,
-                        reminderItem = current ?: it.reminderItem,
-                        tags = tags
-                    )
+                val loaded = _uiState.value.reminderItem
+                if (current != null) {
+                    // 活跃事件：跟随活跃排序列表（支持左右滑动切换）
+                    _uiState.update {
+                        it.copy(
+                            reminderItems = sortedReminders,
+                            reminderItem = current,
+                            tags = tags
+                        )
+                    }
+                } else if (loaded != null && loaded.id == reminderId) {
+                    // 隐私事件（保险柜）：已按 id 直接加载，保持单项列表不被活跃列表覆盖
+                    _uiState.update {
+                        it.copy(reminderItems = listOf(loaded), tags = tags)
+                    }
+                } else {
+                    // 尚未加载到当前事件（首帧等待直接加载）：维持空列表兜底
+                    _uiState.update {
+                        it.copy(reminderItems = sortedReminders, tags = tags)
+                    }
                 }
             }
             .launchIn(viewModelScope)
+
+        // 保险柜事件不在活跃列表中：按 id 直接加载，详情页以单项呈现（左右滑动切换不可用）
+        viewModelScope.launch {
+            val inActiveList = reminderRepository.getAllRemindersList().any { it.id == reminderId }
+            if (!inActiveList) {
+                val item = reminderRepository.getReminderById(reminderId)
+                if (item != null) {
+                    _uiState.update {
+                        it.copy(reminderItems = listOf(item), reminderItem = item)
+                    }
+                }
+            }
+        }
     }
 
     fun updateCurrentReminder(reminder: ReminderItem) {
@@ -115,9 +142,15 @@ class DetailViewModel(
             val updatedReminder = reminder.copy(notes = newNotes)
             reminderRepository.updateReminder(updatedReminder)
             val app = context.applicationContext
-            ReminderScheduler.scheduleReminder(app, updatedReminder)
-            CalendarManager.addOrUpdateEvent(app, updatedReminder)
-            ReminderScheduler.updateActiveNotification(app, updatedReminder)
+            if (updatedReminder.isInRecycleBin || updatedReminder.isInSafe) {
+                // 回收站/保险柜事件不产生系统侧调度，顺带清理可能的历史残留
+                ReminderScheduler.cancelReminder(app, updatedReminder)
+                CalendarManager.deleteEvent(app, updatedReminder)
+            } else {
+                ReminderScheduler.scheduleReminder(app, updatedReminder)
+                CalendarManager.addOrUpdateEvent(app, updatedReminder)
+                ReminderScheduler.updateActiveNotification(app, updatedReminder)
+            }
         }
     }
 
