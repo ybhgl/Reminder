@@ -5,8 +5,9 @@
 // - 只接管"渲染窗口 + 转场驱动 + 系统预测性返回手势"三件事；
 // - 当前栈直接读 ComposeNavigator.backStack（public StateFlow，navigate/pop 同步更新），
 //   离场 entry 由 diff 得出并保留其离场时的 index 供退出动画使用；
-// - 与 miuix 原版的差异：commit 时先播完 commit spring 再真正 pop（leaving entry 全程留在
-//   当前栈中，NavBackStackEntry 的 lifecycle 保持正常，无需自建 entry lifecycle 钳制）；
+// - 与 miuix 原版的差异：手势 commit 为同步 pop（ leaving 由渲染窗口继续播退出动画，
+//   NavBackStackEntry 被 popWithTransition 钳制 CREATED，finishTransitions 统一收尾），
+//   松手速度经 pendingCommit/pendingSettleVelocity 交接槽交给收敛逻辑的 commit spring；
 // - 动画结束后主动调 ComposeNavigator.onTransitionComplete 推进生命周期
 //   （current RESUMED / leaving DESTROYED 并清 ViewModelStore），替代 NavHost 内 AnimatedContent 的角色；
 // - 无 nested nav / replace / edge-swipe 等通用性需求。
@@ -86,7 +87,7 @@ internal fun MiuixNavHost(
     modifier: Modifier = Modifier,
     transition: MiuixNavTransition = MiuixDefaultTransition,
     effects: MiuixNavDisplayEffects = MiuixNavDisplayEffects.Default,
-    onBack: () -> Unit = { navController.popBackStack() },
+    onBack: () -> Boolean = { navController.popBackStack() },
     entryContent: @Composable (NavBackStackEntry) -> Unit,
 ) {
     val viewModelStoreOwner = checkNotNull(LocalViewModelStoreOwner.current) {
@@ -204,11 +205,34 @@ internal fun MiuixNavHost(
         }
     }
 
-    // ---- 程序化驱动：topIndex 变化（navigate / 立即 pop）时按 500ms 曲线收敛 ----
+    // 手势 commit 交接槽：pop 为同步操作，出栈瞬间 topIndex 即变化，LaunchedEffect 重启；
+    // 这里暂存"这是一次 commit"与松手速度，供下面的收敛逻辑消费（miuix pendingSettleVelocity 同款）。
+    var pendingCommit by remember { mutableStateOf(false) }
+    var pendingSettleVelocity by remember { mutableFloatStateOf(0f) }
+
+    // ---- 驱动收敛：topIndex 变化（navigate / pop）时收敛到新栈顶 ----
+    // 手势 commit 为同步 pop：出栈后本 effect 因 topIndex 变化重启，此时消费
+    // pendingCommit 走 commit spring（带松手速度、防过冲下限）——即 miuix 原版
+    // animateTopTo 的 commit 分支。若 commit 已被其他导航取代（典型：返回动画尾声
+    // 用户点击底层页组件进入新页，target 反而变大），清除 pendingCommit 改走
+    // 程序化曲线，避免把一次 push 误判成 commit。
     LaunchedEffect(topIndex) {
         val target = topIndex.toFloat()
         if (animatedTop.value == target) return@LaunchedEffect
-        animatedTop.miuixSettleProgrammatic(target)
+        if (pendingCommit && target < animatedTop.value) {
+            val released = pendingSettleVelocity
+            pendingCommit = false
+            pendingSettleVelocity = 0f
+            val floor = miuixCommitVelocityFloor(animatedTop.value - target)
+            animatedTop.miuixSettleTo(
+                target = target,
+                initialVelocity = released.coerceAtLeast(floor),
+            )
+        } else {
+            pendingCommit = false
+            pendingSettleVelocity = 0f
+            animatedTop.miuixSettleProgrammatic(target)
+        }
         finishTransitions()
     }
 
@@ -246,24 +270,33 @@ internal fun MiuixNavHost(
         // 用 if/else 分支代替 early return。
         handler.currentOnCompleted = onCompleted@{ isDiscrete ->
             if (isDiscrete) {
-                // 离散触发（系统返回键 / 程序化 back）：立即 pop，由 animateTopTo 走 500ms 曲线。
+                // 离散触发（系统返回键 / 程序化 back）：同步 pop，收敛逻辑按程序化 500ms 曲线。
                 currentOnBack.value()
             } else {
                 val velocity = sessionVelocity
                 if (miuixNavBackCompletionDecision(velocity)) {
-                    // commit：先以 spring（带松手速度、防过冲下限）收敛到 topIndex-1，播完再真正 pop。
-                    // 延迟 pop 使 leaving entry 全程留在当前栈中，lifecycle 保持正常。
-                    val target = topIndex - 1f
-                    backScope.launch {
-                        val floor = miuixCommitVelocityFloor(animatedTop.value - target)
-                        animatedTop.miuixSettleTo(
-                            target = target,
-                            initialVelocity = (-velocity).coerceAtLeast(floor),
-                        )
-                        // 先 pop 再 finishTransitions：leaving 离栈后才能被标记 DESTROYED
-                        // 并清 ViewModelStore，新栈顶才能被标记 RESUMED。
-                        currentOnBack.value()
-                        finishTransitions()
+                    // 手势 commit：**同步 pop**（miuix 原版行为）。出栈后 leaving 仍留在
+                    // 渲染窗口（d > -1）继续播退出动画，其 NavBackStackEntry 被
+                    // popWithTransition 钳制在 CREATED，finishTransitions 时统一标记
+                    // DESTROYED 并清 ViewModelStore。同步出栈保证动画尾声用户点击底层页
+                    // 组件时栈状态已就绪，不会出现"撤回返回 / 3-2-1 栈错乱"。
+                    pendingCommit = true
+                    pendingSettleVelocity = -velocity
+                    val popped = currentOnBack.value()
+                    if (!popped) {
+                        // pop 失败（极端：commit 时栈已只剩目标层，如 grab 中二次 commit）：
+                        // 本地启动 commit spring，防止 animatedTop 卡在手势位置。
+                        backScope.launch {
+                            val target = topIndex - 1f
+                            val floor = miuixCommitVelocityFloor(animatedTop.value - target)
+                            animatedTop.miuixSettleTo(
+                                target = target,
+                                initialVelocity = (-velocity).coerceAtLeast(floor),
+                            )
+                            pendingCommit = false
+                            pendingSettleVelocity = 0f
+                            finishTransitions()
+                        }
                     }
                 } else {
                     // OEM 在用户 visibly 取消时误报 completion：回弹。
