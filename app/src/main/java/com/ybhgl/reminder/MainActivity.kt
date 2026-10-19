@@ -654,6 +654,10 @@ object Routes {
     const val DATE_CALCULATOR = "date_calculator"
     const val RECYCLE_BIN = "recycle_bin"
     const val OPEN_SOURCE_LICENSES = "open_source_licenses"
+    /** 保险柜主页（独立隐私密码 + 生物解锁） */
+    const val SAFE = "safe"
+    /** 保险柜密码设置/修改页（复用手势设置组件，SAFE 模式） */
+    const val SAFE_PASSWORD = "safe_password"
 
     fun editReminder(reminderId: Int, readOnly: Boolean = false): String = "$EDIT_REMINDER_BASE/$reminderId?readOnly=$readOnly"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
@@ -847,6 +851,8 @@ fun ReminderApp() {
                 composable(route = Routes.BACKUP_AND_RESTORE) { }
                 composable(route = Routes.DATE_CALCULATOR) { }
                 composable(route = Routes.RECYCLE_BIN) { }
+                composable(route = Routes.SAFE) { }
+                composable(route = Routes.SAFE_PASSWORD) { }
                 composable(route = Routes.GESTURE_SETUP) { }
                 composable(route = Routes.GESTURE_MODIFY) { }
                 composable(
@@ -3592,6 +3598,14 @@ private fun ReminderNavContent(
             }
         )
         Routes.RECYCLE_BIN -> RecycleBinScreen(navController = navController)
+        Routes.SAFE -> com.ybhgl.reminder.ui.safe.SafeScreen(navController = navController)
+        Routes.SAFE_PASSWORD ->
+            com.ybhgl.reminder.ui.security.GestureSetupScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onSetupComplete = { navController.navigateUp() },
+                isModifyMode = true,
+                mode = com.ybhgl.reminder.ui.security.PasswordMode.SAFE
+            )
         Routes.GESTURE_SETUP ->
             com.ybhgl.reminder.ui.security.GestureSetupScreen(
                 onNavigateBack = { navController.navigateUp() },
