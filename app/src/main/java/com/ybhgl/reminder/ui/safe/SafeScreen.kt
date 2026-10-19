@@ -9,6 +9,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -51,6 +54,8 @@ import androidx.compose.material.icons.filled.LockReset
 import androidx.compose.material.icons.filled.Output
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -260,6 +265,20 @@ private fun SafeVaultContent(
     val contentListState = rememberLazyListState()
     val topBarState = rememberCollapsingTopBarState(contentListState)
 
+    // 进入多选：顶栏自动展开并保持展开，标题切换为「已选择 x 项」（与主页多选态一致）
+    LaunchedEffect(isSelectionMode) {
+        topBarState.forceExpanded = isSelectionMode
+        if (isSelectionMode && topBarState.titleOffsetPx < 0f) {
+            animate(
+                initialValue = topBarState.titleOffsetPx,
+                targetValue = 0f,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ) { value, _ ->
+                topBarState.titleOffsetPx = value
+            }
+        }
+    }
+
     fun onBiometricToggle(wantEnabled: Boolean) {
         if (wantEnabled) {
             // 开启前先过一次系统生物识别，验证通过才落库
@@ -393,156 +412,179 @@ private fun SafeVaultContent(
                     )
                 )
         ) {
-            TopAppBar(
-                title = { Text("保险柜") },
-                windowInsets = TopAppBarDefaults.windowInsets,
-                colors = topAppBarColors,
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
-                    }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { isSearchActive = true },
-                        modifier = Modifier.onGloballyPositioned { coordinates ->
-                            val position = coordinates.localToRoot(Offset.Zero)
-                            val size = coordinates.size
-                            searchIconOffset = Offset(
-                                position.x + size.width / 2f,
-                                position.y + size.height / 2f
-                            )
-                        }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "搜索"
-                        )
-                    }
-                    Box {
-                        IconButton(onClick = { showSettingsMenu = true }) {
-                            Icon(
-                                imageVector = Icons.Default.Settings,
-                                contentDescription = "设置"
-                            )
-                        }
-                        // 设置浮窗：修改密码 + 生物解锁开关（应用设置页不设保险柜入口，统一收纳于此）
-                        DropdownMenu(
-                            expanded = showSettingsMenu,
-                            onDismissRequest = { showSettingsMenu = false },
-                            modifier = Modifier
-                                .width(280.dp)
-                                .border(
-                                    BorderStroke(
-                                        1.dp,
-                                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
-                                    ),
-                                    shape = RoundedCornerShape(20.dp)
-                                ),
-                            shape = RoundedCornerShape(20.dp)
+            if (isSelectionMode) {
+                // 多选态顶栏：仅保留标题与「取消」，与主页多选交互一致
+                TopAppBar(
+                    title = { Text("已选择 ${selectedIds.size} 项") },
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = topAppBarColors,
+                    actions = {
+                        Button(
+                            onClick = { viewModel.exitSelectionMode() },
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier.padding(end = 12.dp)
                         ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(12.dp)
-                            ) {
-                                Text(
-                                    text = "保险柜设置",
-                                    style = MaterialTheme.typography.titleMedium.copy(
-                                        fontWeight = FontWeight.Bold
-                                    )
+                            Text("取消")
+                        }
+                    }
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("保险柜") },
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = topAppBarColors,
+                    navigationIcon = {
+                        IconButton(onClick = { navController.navigateUp() }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
+                            )
+                        }
+                    },
+                    actions = {
+                        IconButton(
+                            onClick = { isSearchActive = true },
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                val position = coordinates.localToRoot(Offset.Zero)
+                                val size = coordinates.size
+                                searchIconOffset = Offset(
+                                    position.x + size.width / 2f,
+                                    position.y + size.height / 2f
                                 )
-
-                                // 设置/修改密码（独立隐私密码，与应用锁密码分开存储）
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            showSettingsMenu = false
-                                            navController.navigate(Routes.SAFE_PASSWORD)
-                                        }
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
+                            }
+                        ) {
+                            Icon(
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "搜索"
+                            )
+                        }
+                        Box {
+                            IconButton(onClick = { showSettingsMenu = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.Settings,
+                                    contentDescription = "设置"
+                                )
+                            }
+                            // 设置浮窗：修改密码 + 生物解锁开关（应用设置页不设保险柜入口，统一收纳于此）
+                            DropdownMenu(
+                                expanded = showSettingsMenu,
+                                onDismissRequest = { showSettingsMenu = false },
+                                modifier = Modifier
+                                    .width(280.dp)
+                                    .border(
+                                        BorderStroke(
+                                            1.dp,
+                                            MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                        ),
+                                        shape = RoundedCornerShape(20.dp)
+                                    ),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(12.dp)
                                 ) {
-                                    Icon(
-                                        imageVector = Icons.Default.LockReset,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
                                     Text(
-                                        text = "修改密码",
-                                        style = MaterialTheme.typography.bodyLarge
+                                        text = "保险柜设置",
+                                        style = MaterialTheme.typography.titleMedium.copy(
+                                            fontWeight = FontWeight.Bold
+                                        )
                                     )
-                                }
 
-                                // 生物解锁开关（独立于应用锁生物开关）
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .padding(vertical = 4.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.Fingerprint,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.onSurfaceVariant
-                                    )
-                                    Column(modifier = Modifier.weight(1f)) {
+                                    // 设置/修改密码（独立隐私密码，与应用锁密码分开存储）
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                showSettingsMenu = false
+                                                navController.navigate(Routes.SAFE_PASSWORD)
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.LockReset,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
                                         Text(
-                                            text = "生物解锁",
+                                            text = "修改密码",
                                             style = MaterialTheme.typography.bodyLarge
                                         )
-                                        Text(
-                                            text = if (biometricAvailable) {
-                                                "开启后可用指纹或面部快速进入"
-                                            } else {
-                                                "设备不支持生物识别"
-                                            },
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    }
+
+                                    // 生物解锁开关（独立于应用锁生物开关）
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .padding(vertical = 4.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.Fingerprint,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                        Column(modifier = Modifier.weight(1f)) {
+                                            Text(
+                                                text = "生物解锁",
+                                                style = MaterialTheme.typography.bodyLarge
+                                            )
+                                            Text(
+                                                text = if (biometricAvailable) {
+                                                    "开启后可用指纹或面部快速进入"
+                                                } else {
+                                                    "设备不支持生物识别"
+                                                },
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                        }
+                                        Switch(
+                                            checked = safeUseBiometric && biometricAvailable,
+                                            onCheckedChange = { onBiometricToggle(it) },
+                                            enabled = biometricAvailable
                                         )
                                     }
-                                    Switch(
-                                        checked = safeUseBiometric && biometricAvailable,
-                                        onCheckedChange = { onBiometricToggle(it) },
-                                        enabled = biometricAvailable
-                                    )
-                                }
 
-                                // 销毁保险柜（destructive）：验证密码后销毁，柜内提醒自动移出
-                                Row(
-                                    modifier = Modifier
-                                        .fillMaxWidth()
-                                        .clip(RoundedCornerShape(12.dp))
-                                        .clickable {
-                                            showSettingsMenu = false
-                                            showDestroyConfirm = true
-                                        }
-                                        .padding(vertical = 8.dp),
-                                    verticalAlignment = Alignment.CenterVertically,
-                                    horizontalArrangement = Arrangement.spacedBy(12.dp)
-                                ) {
-                                    Icon(
-                                        imageVector = Icons.Default.DeleteForever,
-                                        contentDescription = null,
-                                        tint = MaterialTheme.colorScheme.error
-                                    )
-                                    Text(
-                                        text = "销毁保险柜",
-                                        style = MaterialTheme.typography.bodyLarge,
-                                        color = MaterialTheme.colorScheme.error
-                                    )
+                                    // 销毁保险柜（destructive）：验证密码后销毁，柜内提醒自动移出
+                                    Row(
+                                        modifier = Modifier
+                                            .fillMaxWidth()
+                                            .clip(RoundedCornerShape(12.dp))
+                                            .clickable {
+                                                showSettingsMenu = false
+                                                showDestroyConfirm = true
+                                            }
+                                            .padding(vertical = 8.dp),
+                                        verticalAlignment = Alignment.CenterVertically,
+                                        horizontalArrangement = Arrangement.spacedBy(12.dp)
+                                    ) {
+                                        Icon(
+                                            imageVector = Icons.Default.DeleteForever,
+                                            contentDescription = null,
+                                            tint = MaterialTheme.colorScheme.error
+                                        )
+                                        Text(
+                                            text = "销毁保险柜",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            color = MaterialTheme.colorScheme.error
+                                        )
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            )
+                )
+            }
         }
 
         // 右下角横向 FAB 组：仅在选择模式且选中非空时显示

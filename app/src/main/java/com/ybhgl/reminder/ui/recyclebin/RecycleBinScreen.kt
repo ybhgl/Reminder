@@ -4,6 +4,9 @@ import androidx.activity.compose.BackHandler
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.core.FastOutSlowInEasing
 import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.spring
+import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -39,13 +42,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
-import androidx.compose.material.icons.filled.Autorenew
+import androidx.compose.material.icons.filled.AutoDelete
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteSweep
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.FloatingActionButton
@@ -157,6 +161,20 @@ fun RecycleBinScreen(
     val contentListState = rememberLazyListState()
     val topBarState = rememberCollapsingTopBarState(contentListState)
 
+    // 进入多选：顶栏自动展开并保持展开，标题切换为「已选择 x 项」（与主页多选态一致）
+    LaunchedEffect(isSelectionMode) {
+        topBarState.forceExpanded = isSelectionMode
+        if (isSelectionMode && topBarState.titleOffsetPx < 0f) {
+            animate(
+                initialValue = topBarState.titleOffsetPx,
+                targetValue = 0f,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ) { value, _ ->
+                topBarState.titleOffsetPx = value
+            }
+        }
+    }
+
     Box(modifier = modifier.fillMaxSize()) {
         Scaffold(
             modifier = Modifier
@@ -257,187 +275,210 @@ fun RecycleBinScreen(
                     )
                 )
         ) {
-            TopAppBar(
-                title = { Text("回收站") },
-                windowInsets = TopAppBarDefaults.windowInsets,
-                colors = topAppBarColors,
-                navigationIcon = {
-                    IconButton(onClick = { navController.navigateUp() }) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
-                            contentDescription = "返回"
-                        )
+            if (isSelectionMode) {
+                // 多选态顶栏：仅保留标题与「取消」，与主页多选交互一致
+                TopAppBar(
+                    title = { Text("已选择 ${selectedIds.size} 项") },
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = topAppBarColors,
+                    actions = {
+                        Button(
+                            onClick = { viewModel.exitSelectionMode() },
+                            shape = RoundedCornerShape(12.dp),
+                            contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp),
+                            colors = ButtonDefaults.buttonColors(
+                                containerColor = MaterialTheme.colorScheme.primary,
+                                contentColor = MaterialTheme.colorScheme.onPrimary
+                            ),
+                            modifier = Modifier.padding(end = 12.dp)
+                        ) {
+                            Text("取消")
+                        }
                     }
-                },
-                actions = {
-                    IconButton(
-                        onClick = { isSearchActive = true },
-                        modifier = Modifier.onGloballyPositioned { coordinates ->
-                            val position = coordinates.localToRoot(Offset.Zero)
-                            val size = coordinates.size
-                            searchIconOffset = Offset(
-                                position.x + size.width / 2f,
-                                position.y + size.height / 2f
+                )
+            } else {
+                TopAppBar(
+                    title = { Text("回收站") },
+                    windowInsets = TopAppBarDefaults.windowInsets,
+                    colors = topAppBarColors,
+                    navigationIcon = {
+                        IconButton(onClick = { navController.navigateUp() }) {
+                            Icon(
+                                imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                                contentDescription = "返回"
                             )
                         }
-                    ) {
-                        Icon(
-                            imageVector = Icons.Default.Search,
-                            contentDescription = "搜索"
-                        )
-                    }
-                    Box {
+                    },
+                    actions = {
                         IconButton(
-                            onClick = {
-                                draftTimeTier = savedTimeTier
-                                draftCountTier = savedCountTier
-                                showAutoDeleteMenu = true
+                            onClick = { isSearchActive = true },
+                            modifier = Modifier.onGloballyPositioned { coordinates ->
+                                val position = coordinates.localToRoot(Offset.Zero)
+                                val size = coordinates.size
+                                searchIconOffset = Offset(
+                                    position.x + size.width / 2f,
+                                    position.y + size.height / 2f
+                                )
                             }
                         ) {
                             Icon(
-                                imageVector = Icons.Default.Autorenew,
-                                contentDescription = "自动删除"
+                                imageVector = Icons.Default.Search,
+                                contentDescription = "搜索"
                             )
                         }
-                        DropdownMenu(
-                            expanded = showAutoDeleteMenu,
-                            onDismissRequest = { showAutoDeleteMenu = false },
-                            modifier = Modifier
-                                .width(320.dp)
-                                .border(
-                                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                                    shape = RoundedCornerShape(20.dp)
-                                ),
-                            shape = RoundedCornerShape(20.dp)
-                        ) {
-                            Column(
-                                modifier = Modifier.padding(16.dp),
-                                verticalArrangement = Arrangement.spacedBy(16.dp)
+                        Box {
+                            IconButton(
+                                onClick = {
+                                    draftTimeTier = savedTimeTier
+                                    draftCountTier = savedCountTier
+                                    showAutoDeleteMenu = true
+                                }
                             ) {
-                                Text(
-                                    text = "自动删除",
-                                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                Icon(
+                                    imageVector = Icons.Default.AutoDelete,
+                                    contentDescription = "自动删除"
                                 )
-                                Text(
-                                    text = "满足任一条件时，回收站内对应提醒将被自动永久删除",
-                                    style = MaterialTheme.typography.bodySmall,
-                                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                                )
-
-                                // 时间档：1/7/15/30/60/不限 天
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "保留时长",
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = RecycleBinPreferences.AUTO_DELETE_TIME_OPTIONS[draftTimeTier.coerceIn(0, timeTierLastIndex)],
-                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Slider(
-                                        value = draftTimeTier.toFloat().coerceIn(0f, timeTierLastIndex.toFloat()),
-                                        onValueChange = { draftTimeTier = it.roundToInt().coerceIn(0, timeTierLastIndex) },
-                                        valueRange = 0f..timeTierLastIndex.toFloat(),
-                                        steps = timeTierLastIndex - 1
-                                    )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "1天",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                        Text(
-                                            text = "不限",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-
-                                // 数量档：10/30/60/100/不限 条
-                                Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween,
-                                        verticalAlignment = Alignment.CenterVertically
-                                    ) {
-                                        Text(
-                                            text = "保留数量",
-                                            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                                        )
-                                        Text(
-                                            text = RecycleBinPreferences.AUTO_DELETE_COUNT_OPTIONS[draftCountTier.coerceIn(0, countTierLastIndex)],
-                                            style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
-                                            color = MaterialTheme.colorScheme.primary
-                                        )
-                                    }
-                                    Slider(
-                                        value = draftCountTier.toFloat().coerceIn(0f, countTierLastIndex.toFloat()),
-                                        onValueChange = { draftCountTier = it.roundToInt().coerceIn(0, countTierLastIndex) },
-                                        valueRange = 0f..countTierLastIndex.toFloat(),
-                                        steps = countTierLastIndex - 1
-                                    )
-                                    Row(
-                                        modifier = Modifier.fillMaxWidth(),
-                                        horizontalArrangement = Arrangement.SpaceBetween
-                                    ) {
-                                        Text(
-                                            text = "10条",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                        Text(
-                                            text = "不限",
-                                            style = MaterialTheme.typography.bodySmall,
-                                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                                        )
-                                    }
-                                }
-
-                                Row(
-                                    modifier = Modifier.fillMaxWidth(),
-                                    horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                                    verticalAlignment = Alignment.CenterVertically
+                            }
+                            DropdownMenu(
+                                expanded = showAutoDeleteMenu,
+                                onDismissRequest = { showAutoDeleteMenu = false },
+                                modifier = Modifier
+                                    .width(320.dp)
+                                    .border(
+                                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                                        shape = RoundedCornerShape(20.dp)
+                                    ),
+                                shape = RoundedCornerShape(20.dp)
+                            ) {
+                                Column(
+                                    modifier = Modifier.padding(16.dp),
+                                    verticalArrangement = Arrangement.spacedBy(16.dp)
                                 ) {
-                                    TextButton(onClick = { showAutoDeleteMenu = false }) {
-                                        Text("取消")
-                                    }
-                                    Button(
-                                        onClick = {
-                                            viewModel.saveAutoDeleteTiers(draftTimeTier, draftCountTier)
-                                            showAutoDeleteMenu = false
-                                            // 保存后立即按新档位执行一次清理
-                                            viewModel.runAutoClean()
+                                    Text(
+                                        text = "自动删除",
+                                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                                    )
+                                    Text(
+                                        text = "满足任一条件时，回收站内对应提醒将被自动永久删除",
+                                        style = MaterialTheme.typography.bodySmall,
+                                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                                    )
+
+                                    // 时间档：1/7/15/30/60/不限 天
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "保留时长",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = RecycleBinPreferences.AUTO_DELETE_TIME_OPTIONS[draftTimeTier.coerceIn(0, timeTierLastIndex)],
+                                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
                                         }
+                                        Slider(
+                                            value = draftTimeTier.toFloat().coerceIn(0f, timeTierLastIndex.toFloat()),
+                                            onValueChange = { draftTimeTier = it.roundToInt().coerceIn(0, timeTierLastIndex) },
+                                            valueRange = 0f..timeTierLastIndex.toFloat(),
+                                            steps = timeTierLastIndex - 1
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "1天",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                            Text(
+                                                text = "不限",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    }
+
+                                    // 数量档：10/30/60/100/不限 条
+                                    Column(verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween,
+                                            verticalAlignment = Alignment.CenterVertically
+                                        ) {
+                                            Text(
+                                                text = "保留数量",
+                                                style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                            )
+                                            Text(
+                                                text = RecycleBinPreferences.AUTO_DELETE_COUNT_OPTIONS[draftCountTier.coerceIn(0, countTierLastIndex)],
+                                                style = MaterialTheme.typography.labelLarge.copy(fontWeight = FontWeight.Bold),
+                                                color = MaterialTheme.colorScheme.primary
+                                            )
+                                        }
+                                        Slider(
+                                            value = draftCountTier.toFloat().coerceIn(0f, countTierLastIndex.toFloat()),
+                                            onValueChange = { draftCountTier = it.roundToInt().coerceIn(0, countTierLastIndex) },
+                                            valueRange = 0f..countTierLastIndex.toFloat(),
+                                            steps = countTierLastIndex - 1
+                                        )
+                                        Row(
+                                            modifier = Modifier.fillMaxWidth(),
+                                            horizontalArrangement = Arrangement.SpaceBetween
+                                        ) {
+                                            Text(
+                                                text = "10条",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                            Text(
+                                                text = "不限",
+                                                style = MaterialTheme.typography.bodySmall,
+                                                color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
+                                            )
+                                        }
+                                    }
+
+                                    Row(
+                                        modifier = Modifier.fillMaxWidth(),
+                                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
+                                        verticalAlignment = Alignment.CenterVertically
                                     ) {
-                                        Text("保存")
+                                        TextButton(onClick = { showAutoDeleteMenu = false }) {
+                                            Text("取消")
+                                        }
+                                        Button(
+                                            onClick = {
+                                                viewModel.saveAutoDeleteTiers(draftTimeTier, draftCountTier)
+                                                showAutoDeleteMenu = false
+                                                // 保存后立即按新档位执行一次清理
+                                                viewModel.runAutoClean()
+                                            }
+                                        ) {
+                                            Text("保存")
+                                        }
                                     }
                                 }
                             }
                         }
-                    }
-                    if (uiState.itemList.isNotEmpty()) {
-                        IconButton(onClick = { showClearDialog = true }) {
-                            Icon(
-                                imageVector = Icons.Default.DeleteSweep,
-                                contentDescription = "清空回收站"
-                            )
+                        if (uiState.itemList.isNotEmpty()) {
+                            IconButton(onClick = { showClearDialog = true }) {
+                                Icon(
+                                    imageVector = Icons.Default.DeleteSweep,
+                                    contentDescription = "清空回收站"
+                                )
+                            }
                         }
                     }
-                }
-            )
+                )
+            }
         }
 
         // 右下角横向 FAB 组：仅在选择模式下显示
