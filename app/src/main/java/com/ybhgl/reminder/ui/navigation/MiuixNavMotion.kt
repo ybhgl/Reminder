@@ -13,7 +13,6 @@ import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
 import androidx.compose.runtime.Immutable
 import kotlin.math.PI
-import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.exp
 import kotlin.math.sin
@@ -164,24 +163,26 @@ internal suspend fun Animatable<Float, AnimationVector1D>.miuixSettleCancel(
 }
 
 /**
- * 渲染侧 settle：按 governing 规则在两条曲线间分派——
- * - 从静止跨整步（程序化 push/pop/multi-pop）：固定时长程序化曲线（复现既有 500ms 手感）；
- * - 其他（带速度的被打断 tween、手势中途位置续跑）：共享 spring，以当前速度为种子保持速度连续。
+ * 渲染侧 settle：**固定时长程序化曲线**（复刻既有 500ms 导航手感），不论距离长短同时长。
+ *
+ * 覆盖全部非手柄收敛场景：静止整步 push/pop，以及动画被新导航打断后的中途续跑
+ * （典型：返回退出动画进行中点击底层页进入新页）。曾按 miuix 原版对"带速度/部分距离"
+ * 分派共享 spring，实测有问题：返回动画中后期 commit spring 尾部速度趋近 0，
+ * `distance * velocity < 0` 判别不成立而落入 spring 分支——spring（ζ=1, k=146）是
+ * 慢启动曲线，同为 500ms 前 40% 仅走 70%（程序化曲线走 84%）、尾部拖沓，
+ * 新页进入明显变慢（用户实测 2026-10-19）；继承朝 pop 的负初速度时更会先回退再爬行。
+ * 而 Reminder 的手势 commit/cancel 手柄均显式传 release velocity 走 [miuixSettleTo] /
+ * [miuixSettleCancel]，不经此路径，恒 tween 不会损失任何速度连续性。
  */
 internal suspend fun Animatable<Float, AnimationVector1D>.miuixSettleProgrammatic(
     target: Float,
     onFrame: (() -> Unit)? = null,
 ) {
-    val distance = target - value
-    if (velocity == 0f && abs(distance) >= MiuixNavDriverSpec.FULL_STEP_THRESHOLD) {
-        animateTo(
-            targetValue = target,
-            animationSpec = miuixTweenSpec(),
-            block = if (onFrame != null) ({ onFrame() }) else null,
-        )
-    } else {
-        miuixSettleTo(target = target, onFrame = onFrame)
-    }
+    animateTo(
+        targetValue = target,
+        animationSpec = miuixTweenSpec(),
+        block = if (onFrame != null) ({ onFrame() }) else null,
+    )
 }
 
 /**
