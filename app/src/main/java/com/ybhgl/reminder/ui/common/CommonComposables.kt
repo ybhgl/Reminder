@@ -326,12 +326,19 @@ fun StatusBarScrim(modifier: Modifier = Modifier) {
  * - [scrollableState]：页面主滚动容器的状态（`ScrollState` / `LazyListState` 等），
  *   用于判断页面是否真的还有可滚动余量；为空时视为"始终可滚动"，退化为旧行为
  * - [forceExpanded]：多选等临时状态下强制保持完全展开
+ * - [contentOffsetPx]：内容占位偏移，多选强制展开期间冻结，顶栏滑出不挤压页面
  * - [nestedScrollConnection]：在内容滚动前优先消费增量驱动顶栏收起/展开
  */
 @Stable
 class CollapsingTopBarState {
     var titleOffsetPx by mutableStateOf(0f)
     var topBarHeightPx by mutableStateOf(0f)
+
+    /**
+     * 内容占位偏移：滚动时始终跟随 [titleOffsetPx]，但多选强制展开动画期间保持冻结，
+     * 使顶栏滑出时悬浮覆盖在内容上方、页面内容不发生纵向位移。
+     */
+    var contentOffsetPx by mutableStateOf(0f)
 
     /**
      * 页面主滚动容器。为 null 时不启用"不可滚动不收起"的保护。
@@ -369,14 +376,15 @@ class CollapsingTopBarState {
             val newOffset = (oldOffset + delta).coerceIn(-barHeight, 0f)
             val consumed = newOffset - oldOffset
             titleOffsetPx = newOffset
+            contentOffsetPx = newOffset
             return Offset(0f, consumed)
         }
     }
 
     companion object {
         val Saver: Saver<CollapsingTopBarState, out Any> = listSaver(
-            save = { listOf(it.titleOffsetPx) },
-            restore = { CollapsingTopBarState().apply { titleOffsetPx = it[0] } }
+            save = { listOf(it.titleOffsetPx, it.contentOffsetPx) },
+            restore = { CollapsingTopBarState().apply { titleOffsetPx = it[0]; contentOffsetPx = it[1] } }
         )
     }
 }

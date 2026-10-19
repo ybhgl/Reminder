@@ -265,13 +265,15 @@ private fun SafeVaultContent(
     val contentListState = rememberLazyListState()
     val topBarState = rememberCollapsingTopBarState(contentListState)
 
-    // 进入多选：顶栏自动展开并保持展开，标题切换为「已选择 x 项」（与主页多选态一致）
+    // 多选：顶栏滑出覆盖在内容上方（内容占位偏移冻结，页面不下移）；
+    // 退出多选：顶栏滑回进入前的位置，页面全程零位移
     LaunchedEffect(isSelectionMode) {
         topBarState.forceExpanded = isSelectionMode
-        if (isSelectionMode && topBarState.titleOffsetPx < 0f) {
+        val target = if (isSelectionMode) 0f else topBarState.contentOffsetPx
+        if (topBarState.titleOffsetPx != target) {
             animate(
                 initialValue = topBarState.titleOffsetPx,
-                targetValue = 0f,
+                targetValue = target,
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
             ) { value, _ ->
                 topBarState.titleOffsetPx = value
@@ -345,7 +347,7 @@ private fun SafeVaultContent(
                     val dynamicTopPadding = (
                         topBarHeightDp +
                             with(LocalDensity.current) {
-                                topBarState.titleOffsetPx.toDp()
+                                topBarState.contentOffsetPx.toDp()
                             } + 8.dp
                         ).coerceAtLeast(0.dp)
                     SafeItemGrid(

@@ -1424,6 +1424,9 @@ fun ReminderListScreen(
     var collapsedSections by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(setOf<String>()) }
     
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
+    // 内容占位偏移：滚动时跟随 titleOffsetPx，多选强制展开动画期间冻结，
+    // 使顶栏滑出/滑回只悬浮覆盖内容，页面内容不发生纵向位移
+    var contentTitleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
     var bottomBarHeightPx by remember { mutableStateOf(0f) }
     var bottomBarOffsetPx by rememberSaveable { mutableStateOf(0f) }
@@ -1457,6 +1460,15 @@ fun ReminderListScreen(
                     bottomBarOffsetPx = value
                 }
             }
+        } else if (titleOffsetPx != contentTitleOffsetPx) {
+            // 退出多选：顶栏滑回进入前的位置，内容占位始终冻结，页面全程不动
+            animate(
+                initialValue = titleOffsetPx,
+                targetValue = contentTitleOffsetPx,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ) { value, _ ->
+                titleOffsetPx = value
+            }
         }
     }
 
@@ -1484,9 +1496,11 @@ fun ReminderListScreen(
                             val newTopOffset = (oldTopOffset + delta).coerceIn(-topBarHeightPx, 0f)
                             consumedTop = newTopOffset - oldTopOffset
                             titleOffsetPx = newTopOffset
+                            contentTitleOffsetPx = newTopOffset
                         }
                     } else {
                         titleOffsetPx = 0f
+                        contentTitleOffsetPx = 0f
                     }
 
                     if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_BOTTOM_BAR || 
@@ -1753,7 +1767,7 @@ fun ReminderListScreen(
                             .windowInsetsPadding(
                                 DynamicTopInsets(
                                     bottomPx = with(density) { staticBottomPadding.roundToPx() },
-                                    topPxProvider = { topBarHeightPx + titleOffsetPx }
+                                    topPxProvider = { topBarHeightPx + contentTitleOffsetPx }
                                 )
                             )
                             .fillMaxWidth()
@@ -1776,7 +1790,7 @@ fun ReminderListScreen(
                             leftPx = with(density) { 16.dp.roundToPx() },
                             rightPx = with(density) { 16.dp.roundToPx() },
                             bottomPx = with(density) { staticBottomPadding.roundToPx() },
-                            topPxProvider = { topBarHeightPx + titleOffsetPx }
+                            topPxProvider = { topBarHeightPx + contentTitleOffsetPx }
                         ).asPaddingValues()
                     ) {
                         sections.forEachIndexed { sectionIndex, section ->
@@ -2469,6 +2483,8 @@ private fun FabMenuItem(
 /**
  * 首页多选删除弹窗：三选一处理（移入回收站 / 移入保险柜 / 永久删除）。
  * 三个全宽选项垂直排列，「取消」位于右下角（M3 AlertDialog 规范）；
+ * 「永久删除」为两步确认：首次点击仅选中该项（error 高亮），
+ * 左下角 neutral 位置出现「确认删除」按钮，再次点击才执行删除，防止误触；
  * 永久删除走 Repository 完整删除路径（含闹钟/日历/背景图清理）。
  */
 @Composable
@@ -2479,10 +2495,12 @@ private fun ReminderDisposeDialog(
     onMoveToSafe: () -> Unit,
     onDeletePermanently: () -> Unit
 ) {
-    AlertDialog(
+    var permanentSelected by remember { mutableStateOf(false) }
+
+    AppAlertDialog(
         onDismissRequest = onDismissRequest,
-        title = { Text("删除提醒") },
-        text = {
+        title = "处理提醒",
+        content = {
             Column {
                 Text(
                     text = "已选 $selectedCount 条提醒，请选择处理方式",
@@ -2490,33 +2508,41 @@ private fun ReminderDisposeDialog(
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(16.dp))
+                
                 DisposeOptionRow(
                     icon = Icons.Default.RestoreFromTrash,
-                    label = "移入回收站",
-                    tint = MaterialTheme.colorScheme.onSurface,
-                    onClick = onMoveToRecycleBin
-                )
-                Spacer(modifier = Modifier.height(8.dp))
-                DisposeOptionRow(
-                    icon = Icons.Default.Lock,
                     label = "移入保险柜",
                     tint = MaterialTheme.colorScheme.primary,
-                    onClick = onMoveToSafe
+                    onClick = {
+                        if (permanentSelected) permanentSelected = false else onMoveToSafe()
+                    }
                 )
                 Spacer(modifier = Modifier.height(8.dp))
+                
+                DisposeOptionRow(
+                    icon = Icons.Default.Lock,
+                    label = "移入回收站",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    onClick = {
+                        if (permanentSelected) permanentSelected = false else onMoveToRecycleBin()
+                    }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
                 DisposeOptionRow(
                     icon = Icons.Default.DeleteForever,
                     label = "永久删除",
                     tint = MaterialTheme.colorScheme.error,
-                    onClick = onDeletePermanently
+                    selected = permanentSelected,
+                    onClick = { permanentSelected = !permanentSelected }
                 )
             }
         },
-        confirmButton = {
-            TextButton(onClick = onDismissRequest) {
-                Text("取消")
-            }
-        }
+        confirmText = "取消",
+        onConfirm = onDismissRequest,
+        neutralText = if (permanentSelected) "确认删除" else null,
+        onNeutral = onDeletePermanently,
+        neutralDestructive = true
     )
 }
 
@@ -2525,13 +2551,21 @@ private fun DisposeOptionRow(
     icon: ImageVector,
     label: String,
     tint: Color,
+    selected: Boolean = false,
     onClick: () -> Unit
 ) {
     Row(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(12.dp))
-            .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+            .background(
+                if (selected) tint.copy(alpha = 0.12f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+            .then(
+                if (selected) Modifier.border(1.dp, tint, RoundedCornerShape(12.dp))
+                else Modifier
+            )
             .clickable(onClick = onClick)
             .padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,

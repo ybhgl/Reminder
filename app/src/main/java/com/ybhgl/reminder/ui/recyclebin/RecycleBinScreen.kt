@@ -161,13 +161,15 @@ fun RecycleBinScreen(
     val contentListState = rememberLazyListState()
     val topBarState = rememberCollapsingTopBarState(contentListState)
 
-    // 进入多选：顶栏自动展开并保持展开，标题切换为「已选择 x 项」（与主页多选态一致）
+    // 多选：顶栏滑出覆盖在内容上方（内容占位偏移冻结，页面不下移）；
+    // 退出多选：顶栏滑回进入前的位置，标题切回「回收站」
     LaunchedEffect(isSelectionMode) {
         topBarState.forceExpanded = isSelectionMode
-        if (isSelectionMode && topBarState.titleOffsetPx < 0f) {
+        val target = if (isSelectionMode) 0f else topBarState.contentOffsetPx
+        if (topBarState.titleOffsetPx != target) {
             animate(
                 initialValue = topBarState.titleOffsetPx,
-                targetValue = 0f,
+                targetValue = target,
                 animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
             ) { value, _ ->
                 topBarState.titleOffsetPx = value
@@ -209,7 +211,7 @@ fun RecycleBinScreen(
                     }
                 }
                 else -> {
-                    val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { topBarState.titleOffsetPx.toDp() } + 8.dp).coerceAtLeast(0.dp)
+                    val dynamicTopPadding = (topBarHeightDp + with(LocalDensity.current) { topBarState.contentOffsetPx.toDp() } + 8.dp).coerceAtLeast(0.dp)
                     RecycleItemGrid(
                         items = uiState.itemList,
                         listState = contentListState,
