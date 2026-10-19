@@ -164,7 +164,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
-import androidx.compose.ui.input.pointer.positionChange
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.graphicsLayer
@@ -1619,7 +1619,9 @@ fun ReminderListScreen(
                                     }
                                     break
                                 }
-                                val dy = change.positionChange().y
+                                // 用 IgnoreConsumed 变体：列表/卡片的 scrollable 与 clickable 会消费 down，
+                                // positionChange() 在此场景恒返回 Zero（列表区域会完全拉不动）
+                                val dy = change.positionChangeIgnoreConsumed().y
                                 val atTop = pagerState.currentPage != 0 &&
                                     pagerState.currentPageOffsetFraction == 0f &&
                                     titleOffsetPx >= -0.5f
@@ -1995,7 +1997,7 @@ fun ReminderListScreen(
                 }
             }
 
-            // 入口一：下拉提示 pill。逆向平移抵消整页位移，固定在顶部露出区并随缺口中心下移；
+            // 入口一：下拉提示 pill。跟随整页下移，固定在顶栏下方（内容区顶部）：
             // 未越阈值为中性灰，越过阈值高亮为主题强调色（越阈值的震动由手势处触发）。
             val safePullProgress = (safePullOffsetPx / safePullThresholdPx).coerceIn(0f, 1f)
             if (safePullProgress > 0.02f) {
@@ -2021,10 +2023,8 @@ fun ReminderListScreen(
                     modifier = Modifier
                         .align(Alignment.TopCenter)
                         .windowInsetsPadding(WindowInsets.statusBars)
-                        .padding(top = 8.dp)
+                        .padding(top = 72.dp)
                         .graphicsLayer {
-                            // 抵消整页平移（-pull）后随缺口中心下移（+pull/2）
-                            translationY = -safePullOffsetPx * 0.5f
                             alpha = safePullProgress
                             val s = 0.85f + 0.15f * safePullProgress
                             scaleX = s
