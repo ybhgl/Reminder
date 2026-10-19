@@ -325,6 +325,7 @@ fun StatusBarScrim(modifier: Modifier = Modifier) {
  * - [titleOffsetPx]：顶栏当前的垂直偏移（0 = 完全展开，-topBarHeightPx = 完全收起）
  * - [scrollableState]：页面主滚动容器的状态（`ScrollState` / `LazyListState` 等），
  *   用于判断页面是否真的还有可滚动余量；为空时视为"始终可滚动"，退化为旧行为
+ * - [forceExpanded]：多选等临时状态下强制保持完全展开
  * - [nestedScrollConnection]：在内容滚动前优先消费增量驱动顶栏收起/展开
  */
 @Stable
@@ -338,6 +339,12 @@ class CollapsingTopBarState {
      */
     var scrollableState: ScrollableState? = null
 
+    /**
+     * 强制展开顶栏（多选等临时状态）：跳过收起消费，顶栏在整个状态期间保持完全展开，
+     * 避免标题（如「已选择 x 项」）被滚走。
+     */
+    var forceExpanded by mutableStateOf(false)
+
     /** 页面内容是否还有可滚动余量；内容高度未超出视口时为 false */
     val isContentScrollable: Boolean
         get() {
@@ -347,6 +354,7 @@ class CollapsingTopBarState {
 
     val nestedScrollConnection = object : NestedScrollConnection {
         override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            if (forceExpanded) return Offset.Zero
             val barHeight = topBarHeightPx
             if (barHeight <= 0f) return Offset.Zero
 
