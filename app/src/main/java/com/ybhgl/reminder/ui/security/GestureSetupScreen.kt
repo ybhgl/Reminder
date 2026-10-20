@@ -125,6 +125,11 @@ fun GestureSetupScreen(
         ) {
             Spacer(modifier = Modifier.height(48.dp))
 
+            // 顶部状态图标与解锁页共用：Lock→LockOpen + 变色随验证状态联动
+            SecurityHeaderIcon(lockState = lockState)
+
+            Spacer(modifier = Modifier.height(24.dp))
+
             Text(
                 text = message,
                 style = MaterialTheme.typography.titleLarge,

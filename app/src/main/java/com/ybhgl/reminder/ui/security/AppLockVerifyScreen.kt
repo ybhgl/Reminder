@@ -3,7 +3,6 @@ package com.ybhgl.reminder.ui.security
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
 import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.Fingerprint
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -114,12 +113,7 @@ fun AppLockVerifyScreen(
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.Center
             ) {
-            Icon(
-                imageVector = Icons.Default.Fingerprint,
-                contentDescription = null,
-                modifier = Modifier.size(64.dp),
-                tint = MaterialTheme.colorScheme.primary
-            )
+            SecurityHeaderIcon(lockState = lockState)
 
             Spacer(modifier = Modifier.height(24.dp))
 
@@ -147,7 +141,8 @@ fun AppLockVerifyScreen(
                         lockState = GestureLockState.SUCCESS
                         message = "已解锁"
                         coroutineScope.launch {
-                            delay(300)
+                            // 300→400ms：留足图标 Crossfade/变色过渡时间，成功反馈可见
+                            delay(400)
                             onUnlockSuccess()
                         }
                     } else {
