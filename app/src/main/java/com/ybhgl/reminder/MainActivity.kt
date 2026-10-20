@@ -233,6 +233,7 @@ import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
 import com.ybhgl.reminder.ui.tag.TagManagementScreen
 import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.BackupPreferences
+import com.ybhgl.reminder.data.SecurityPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
 import com.ybhgl.reminder.ui.theme.ReminderTheme
@@ -1338,6 +1339,12 @@ fun ReminderListScreen(
     val showBackupAlert = backupReminderEnabled && lastDataChangeTimestamp > lastBackupTimestamp
     val hasUpdate by UpdateManager.updateInfo.collectAsState()
 
+    // null = 保险柜密码读取中；空串 = 未设置。未设置时隐藏"移入保险柜"入口
+    var safePassword by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(context) {
+        safePassword = SecurityPreferences.safeGesturePasswordFlow(context).first()
+    }
+
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchIconOffset by remember { mutableStateOf(Offset.Zero) }
 
@@ -2357,6 +2364,7 @@ fun ReminderListScreen(
             if (showDeleteDialog) {
                 ReminderDisposeDialog(
                     selectedCount = selectedIds.size,
+                    hasSafePassword = !safePassword.isNullOrEmpty(),
                     onDismissRequest = { showDeleteDialog = false },
                     onMoveToRecycleBin = {
                         showDeleteDialog = false
@@ -2481,15 +2489,17 @@ private fun FabMenuItem(
 }
 
 /**
- * 首页多选删除弹窗：三选一处理（移入回收站 / 移入保险柜 / 永久删除）。
+ * 首页多选删除弹窗：处理选项（移入保险柜 / 移入回收站 / 永久删除）。
  * 三个全宽选项垂直排列，「取消」位于右下角（M3 AlertDialog 规范）；
  * 「永久删除」为两步确认：首次点击仅选中该项（error 高亮），
  * 左下角 neutral 位置出现「确认删除」按钮，再次点击才执行删除，防止误触；
  * 永久删除走 Repository 完整删除路径（含闹钟/日历/背景图清理）。
+ * hasSafePassword 为 false（含密码读取中）时不渲染「移入保险柜」选项。
  */
 @Composable
 private fun ReminderDisposeDialog(
     selectedCount: Int,
+    hasSafePassword: Boolean,
     onDismissRequest: () -> Unit,
     onMoveToRecycleBin: () -> Unit,
     onMoveToSafe: () -> Unit,
@@ -2509,15 +2519,17 @@ private fun ReminderDisposeDialog(
                 )
                 Spacer(modifier = Modifier.height(16.dp))
                 
-                DisposeOptionRow(
-                    icon = Icons.Default.RestoreFromTrash,
-                    label = "移入保险柜",
-                    tint = MaterialTheme.colorScheme.primary,
-                    onClick = {
-                        if (permanentSelected) permanentSelected = false else onMoveToSafe()
-                    }
-                )
-                Spacer(modifier = Modifier.height(8.dp))
+                if (hasSafePassword) {
+                    DisposeOptionRow(
+                        icon = Icons.Default.RestoreFromTrash,
+                        label = "移入保险柜",
+                        tint = MaterialTheme.colorScheme.primary,
+                        onClick = {
+                            if (permanentSelected) permanentSelected = false else onMoveToSafe()
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
                 
                 DisposeOptionRow(
                     icon = Icons.Default.Lock,
