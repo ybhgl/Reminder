@@ -42,6 +42,8 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.expandHorizontally
+import androidx.compose.animation.shrinkHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
 import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.Crossfade
@@ -2253,10 +2255,25 @@ fun ReminderListScreen(
                         // 进入选择模式时隐藏菜单 FAB，避免与底部操作按钮冲突；
                         // requiredHeight 绕过父 Row 的 54dp 高度约束：内容带 16dp 留白需 86dp，
                         // 否则 FAB 会被压扁；溢出上下各 16dp 透明区，按钮视觉位置不变
+                        // expand/shrinkHorizontally 不可省：只靠位移+淡出的话，FAB 的 86dp 布局槽位会在
+                        // 动画全程继续占位、结束时一帧消失，导致 tab 栏"拓展"无过渡地突跳；
+                        // 收拢方向取水平中心——槽位 86dp 的中心(43dp)恰为 FAB 圆心(16+54/2)，
+                        // 视觉上等效于圆点原地收缩，且默认 clip 保证 FAB 不会溢出压到 tab 栏
+                        // animationSpec 显式指定 tween：expand/shrinkHorizontally 默认也是 spring，
+                        // 会复现"渐近收敛、内容突除"老坑（见 FAB AnimatedVisibility 阴影定案教训），
+                        // 定长 250ms 与 fade 同拍收工，槽位宽度平滑收拢、不会中途突除
                         AnimatedVisibility(
                             visible = !isSelectionMode,
-                            enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
-                            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut(),
+                            enter = slideInVertically(initialOffsetY = { it }) + fadeIn() +
+                                expandHorizontally(
+                                    expandFrom = Alignment.CenterHorizontally,
+                                    animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
+                                ),
+                            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut() +
+                                shrinkHorizontally(
+                                    shrinkTowards = Alignment.CenterHorizontally,
+                                    animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
+                                ),
                             label = "MainMenuFabVisibility",
                             modifier = Modifier.requiredHeight(segmentedHeight + 32.dp)
                         ) {
