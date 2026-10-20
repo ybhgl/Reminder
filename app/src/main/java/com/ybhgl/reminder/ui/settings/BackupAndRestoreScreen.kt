@@ -125,11 +125,17 @@ data class CloudRecoveryFile(
 @Composable
 fun BackupAndRestoreScreen(
     onNavigateBack: () -> Unit,
+    onNavigateToPermissionManagement: (String?) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: BackupAndRestoreViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val context = LocalContext.current
     val coroutineScope = rememberCoroutineScope()
+
+    // WebDAV 联网权限（持续收集）：未开启时门控所有 WebDAV 网络操作入口
+    val webdavNetworkGranted by remember(context) { com.ybhgl.reminder.data.webdavNetworkGrantedFlow(context) }
+        .collectAsState(initial = false)
+    var showWebDavNetDialog by remember { mutableStateOf(false) }
     
     var isProcessing by remember { mutableStateOf(false) }
     var isTestingConnection by remember { mutableStateOf(false) }
@@ -508,7 +514,9 @@ fun BackupAndRestoreScreen(
                                                     }
                                                 } else {
                                                     if (isChecked) {
-                                                        if (isWebDavConfigured) {
+                                                        if (!webdavNetworkGranted) {
+                                                            showWebDavNetDialog = true
+                                                        } else if (isWebDavConfigured) {
                                                             isProcessing = true
                                                             val exists = viewModel.checkWebDavAutoFolderExists(context)
                                                             isProcessing = false
@@ -818,19 +826,23 @@ fun BackupAndRestoreScreen(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            coroutineScope.launch {
-                                isTestingConnection = true
-                                val (success, msg) = viewModel.testWebDavConnection(
-                                    webDavServer,
-                                    webDavUsername,
-                                    webDavPassword,
-                                    webDavPath
-                                )
-                                isTestingConnection = false
-                                if (success) {
-                                    CustomToast.showSuccess(context, msg)
-                                } else {
-                                    CustomToast.showError(context, msg)
+                            if (!webdavNetworkGranted) {
+                                showWebDavNetDialog = true
+                            } else {
+                                coroutineScope.launch {
+                                    isTestingConnection = true
+                                    val (success, msg) = viewModel.testWebDavConnection(
+                                        webDavServer,
+                                        webDavUsername,
+                                        webDavPassword,
+                                        webDavPath
+                                    )
+                                    isTestingConnection = false
+                                    if (success) {
+                                        CustomToast.showSuccess(context, msg)
+                                    } else {
+                                        CustomToast.showError(context, msg)
+                                    }
                                 }
                             }
                         },
@@ -845,14 +857,18 @@ fun BackupAndRestoreScreen(
 
                     Button(
                         onClick = {
-                            coroutineScope.launch {
-                                isProcessing = true
-                                val msg = viewModel.backupToWebDav(context)
-                                isProcessing = false
-                                if (msg.contains("成功")) {
-                                    CustomToast.showSuccess(context, msg)
-                                } else {
-                                    CustomToast.showError(context, msg)
+                            if (!webdavNetworkGranted) {
+                                showWebDavNetDialog = true
+                            } else {
+                                coroutineScope.launch {
+                                    isProcessing = true
+                                    val msg = viewModel.backupToWebDav(context)
+                                    isProcessing = false
+                                    if (msg.contains("成功")) {
+                                        CustomToast.showSuccess(context, msg)
+                                    } else {
+                                        CustomToast.showError(context, msg)
+                                    }
                                 }
                             }
                         },
@@ -872,29 +888,33 @@ fun BackupAndRestoreScreen(
 
                 Button(
                     onClick = {
-                        showCloudRecoveryDialog = true
-                        isLoadingCloudFiles = true
-                        cloudFilesError = ""
-                        cloudFiles = null
-                        coroutineScope.launch {
-                            val manualResultDeferred = async { viewModel.listWebDavBackups(context) }
-                            val autoResultDeferred = async { viewModel.listWebDavAutoBackups(context) }
-                            
-                            val (manualFiles, manualErr) = manualResultDeferred.await()
-                            val (autoFiles, autoErr) = autoResultDeferred.await()
-                            
-                            isLoadingCloudFiles = false
-                            if (manualFiles != null || autoFiles != null) {
-                                val combined = mutableListOf<CloudRecoveryFile>()
-                                manualFiles?.forEach { combined.add(CloudRecoveryFile(it, isAuto = false)) }
-                                autoFiles?.forEach { combined.add(CloudRecoveryFile(it, isAuto = true)) }
-                                cloudFiles = combined.sortedByDescending {
-                                    it.file.name
-                                        .replace("reminder-backup-", "", ignoreCase = true)
-                                        .replace("reminder-autobackup-", "", ignoreCase = true)
+                        if (!webdavNetworkGranted) {
+                            showWebDavNetDialog = true
+                        } else {
+                            showCloudRecoveryDialog = true
+                            isLoadingCloudFiles = true
+                            cloudFilesError = ""
+                            cloudFiles = null
+                            coroutineScope.launch {
+                                val manualResultDeferred = async { viewModel.listWebDavBackups(context) }
+                                val autoResultDeferred = async { viewModel.listWebDavAutoBackups(context) }
+
+                                val (manualFiles, manualErr) = manualResultDeferred.await()
+                                val (autoFiles, autoErr) = autoResultDeferred.await()
+
+                                isLoadingCloudFiles = false
+                                if (manualFiles != null || autoFiles != null) {
+                                    val combined = mutableListOf<CloudRecoveryFile>()
+                                    manualFiles?.forEach { combined.add(CloudRecoveryFile(it, isAuto = false)) }
+                                    autoFiles?.forEach { combined.add(CloudRecoveryFile(it, isAuto = true)) }
+                                    cloudFiles = combined.sortedByDescending {
+                                        it.file.name
+                                            .replace("reminder-backup-", "", ignoreCase = true)
+                                            .replace("reminder-autobackup-", "", ignoreCase = true)
+                                    }
+                                } else {
+                                    cloudFilesError = manualErr.ifBlank { autoErr }
                                 }
-                            } else {
-                                cloudFilesError = manualErr.ifBlank { autoErr }
                             }
                         }
                     },
@@ -1010,7 +1030,8 @@ fun BackupAndRestoreScreen(
 
                 LaunchedEffect(Unit) {
                     loadLocalAuto()
-                    if (isWebDavConfigured) {
+                    // 联网未授权时静默跳过云端列表加载，不打扰用户
+                    if (isWebDavConfigured && webdavNetworkGranted) {
                         loadWebDavAuto()
                     }
                 }
@@ -1702,6 +1723,21 @@ fun BackupAndRestoreScreen(
                 )
             }
 
+            // WebDAV 联网权限未开启引导弹窗
+            if (showWebDavNetDialog) {
+                AppAlertDialog(
+                    onDismissRequest = { showWebDavNetDialog = false },
+                    title = "WebDAV 备份联网未开启",
+                    text = "需要先开启「WebDAV 备份联网」权限，才能使用 WebDAV 云端备份与恢复功能。",
+                    confirmText = "前往设置",
+                    onConfirm = {
+                        showWebDavNetDialog = false
+                        onNavigateToPermissionManagement("webdav")
+                    },
+                    dismissText = "暂不"
+                )
+            }
+
             // Auto Folder Existing Confirmation Dialog
             if (showAutoFolderConfirmDialog) {
                 AppAlertDialog(
@@ -1789,7 +1825,7 @@ fun BackupAndRestoreScreen(
                             showServerConfigDialog = false
                             CustomToast.showSuccess(context, "设置已保存")
 
-                            if (webDavBackupEnabled) {
+                            if (webDavBackupEnabled && webdavNetworkGranted) {
                                 isProcessing = true
                                 val (success, msg) = viewModel.checkAndCreateWebDavAutoFolder(
                                     context,

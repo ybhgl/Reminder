@@ -170,6 +170,7 @@ fun SettingsScreen(
     onNavigateToGestureSetup: () -> Unit,
     onNavigateToGestureModify: () -> Unit,
     onNavigateToOpenSourceLicenses: () -> Unit,
+    onNavigateToPermissionManagement: (String?) -> Unit,
     modifier: Modifier = Modifier,
     viewModel: SettingsViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
@@ -191,6 +192,10 @@ fun SettingsScreen(
     val customColorSeedInt by customColorPreferenceFlow.collectAsState(initial = 0xFF6650A4.toInt())
     val predictiveBackPreferenceFlow = remember(context) { viewModel.predictiveBackPreferenceFlow(context) }
     val predictiveBackEnabled by predictiveBackPreferenceFlow.collectAsState(initial = true)
+    // 检查更新联网权限（持续收集，权限页改完返回本页即时生效）
+    val updateCheckNetworkGranted by remember(context) { com.ybhgl.reminder.data.updateCheckNetworkGrantedFlow(context) }
+        .collectAsState(initial = false)
+    var showUpdateNetDialog by rememberSaveable { mutableStateOf(false) }
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val homeCategoryPreferenceFlow = remember(context) { viewModel.homeCategoryPreferenceFlow(context) }
@@ -507,6 +512,12 @@ fun SettingsScreen(
                         )
                     }
                 )
+                SettingsActionItem(
+                    title = "权限管理",
+                    description = "管理应用各类权限",
+                    icon = { Icon(Icons.Filled.Security, null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(22.dp)) },
+                    onClick = { onNavigateToPermissionManagement(null) }
+                )
                 
                 Text(
                     text = "关于",
@@ -534,35 +545,40 @@ fun SettingsScreen(
                         if (info != null) {
                             showUpdateDialog = true
                         } else if (!isCheckingUpdate) {
-                            CustomToast.show(
-                                context,
-                                "正在检查更新",
-                                type = CustomToast.Type.NORMAL
-                            )
-                            coroutineScope.launch {
-                                when (UpdateManager.checkForUpdates(context)) {
-                                    UpdateCheckResult.UPDATE_AVAILABLE -> {
-                                        UpdateManager.updateInfo.value?.let { release ->
+                            if (!updateCheckNetworkGranted) {
+                                // 检查更新联网未开启：引导前往权限管理页
+                                showUpdateNetDialog = true
+                            } else {
+                                CustomToast.show(
+                                    context,
+                                    "正在检查更新",
+                                    type = CustomToast.Type.NORMAL
+                                )
+                                coroutineScope.launch {
+                                    when (UpdateManager.checkForUpdates(context)) {
+                                        UpdateCheckResult.UPDATE_AVAILABLE -> {
+                                            UpdateManager.updateInfo.value?.let { release ->
+                                                CustomToast.show(
+                                                    context,
+                                                    "检测到更新：v${release.version}",
+                                                    type = CustomToast.Type.NORMAL
+                                                )
+                                            }
+                                        }
+                                        UpdateCheckResult.LATEST -> {
                                             CustomToast.show(
                                                 context,
-                                                "检测到更新：v${release.version}",
-                                                type = CustomToast.Type.NORMAL
+                                                "目前已是最新版本",
+                                                type = CustomToast.Type.SUCCESS
                                             )
                                         }
-                                    }
-                                    UpdateCheckResult.LATEST -> {
-                                        CustomToast.show(
-                                            context,
-                                            "目前已是最新版本",
-                                            type = CustomToast.Type.SUCCESS
-                                        )
-                                    }
-                                    UpdateCheckResult.FAILED -> {
-                                        CustomToast.show(
-                                            context,
-                                            "检查更新失败，请稍后重试",
-                                            type = CustomToast.Type.ERROR
-                                        )
+                                        UpdateCheckResult.FAILED -> {
+                                            CustomToast.show(
+                                                context,
+                                                "检查更新失败，请稍后重试",
+                                                type = CustomToast.Type.ERROR
+                                            )
+                                        }
                                     }
                                 }
                             }
@@ -633,6 +649,20 @@ fun SettingsScreen(
                 )
             }
         }
+    }
+
+    if (showUpdateNetDialog) {
+        AppAlertDialog(
+            onDismissRequest = { showUpdateNetDialog = false },
+            title = "检查更新联网未开启",
+            text = "需要先开启「检查更新联网」权限，才能检查新版本。",
+            confirmText = "前往设置",
+            onConfirm = {
+                showUpdateNetDialog = false
+                onNavigateToPermissionManagement("update")
+            },
+            dismissText = "暂不"
+        )
     }
 
     updateInfo?.let { release ->
@@ -1378,7 +1408,7 @@ private fun ThemeModeSegmentedControl(
 }
 
 @Composable
-private fun defaultSwitchColors() = SwitchDefaults.colors(
+internal fun defaultSwitchColors() = SwitchDefaults.colors(
     checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
     checkedTrackColor = MaterialTheme.colorScheme.primary,
     uncheckedThumbColor = MaterialTheme.colorScheme.surfaceVariant,
@@ -1386,7 +1416,7 @@ private fun defaultSwitchColors() = SwitchDefaults.colors(
 )
 
 @Composable
-private fun SettingsSwitchRow(
+internal fun SettingsSwitchRow(
     title: String,
     description: String,
     checked: Boolean,

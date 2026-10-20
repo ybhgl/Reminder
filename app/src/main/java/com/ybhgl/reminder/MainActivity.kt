@@ -229,6 +229,7 @@ import com.ybhgl.reminder.ui.settings.ReminderManageScreen
 import com.ybhgl.reminder.ui.calculator.DateCalculatorScreen
 import com.ybhgl.reminder.ui.recyclebin.RecycleBinScreen
 import com.ybhgl.reminder.ui.settings.SettingsScreen
+import com.ybhgl.reminder.ui.settings.PermissionManagementScreen
 import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
 import com.ybhgl.reminder.ui.tag.TagManagementScreen
 import com.ybhgl.reminder.data.TagItem
@@ -378,6 +379,13 @@ class MainActivity : FragmentActivity() {
             val customColorFlowInstance = remember(context) { com.ybhgl.reminder.data.customColorFlow(context) }
             val customColorSeedInt by customColorFlowInstance.collectAsState(initial = 0xFF6650A4.toInt())
 
+            // 联网权限模块一次性启动弹窗：新用户=检查更新申请；老用户=「知道了」告知（互斥二选一）
+            // 渲染块位于 ReminderTheme 内（跟随深浅色），见下方 Box 中 when(netModulePrompt)
+            var netModulePrompt by remember { mutableStateOf<com.ybhgl.reminder.data.NetworkModuleLaunchPrompt?>(null) }
+            LaunchedEffect(Unit) {
+                netModulePrompt = com.ybhgl.reminder.data.resolveNetworkModuleLaunch(context)
+            }
+
             LaunchedEffect(themeOption) {
                 com.ybhgl.reminder.ui.common.CustomToast.currentAppTheme = themeOption
             }
@@ -443,6 +451,48 @@ class MainActivity : FragmentActivity() {
                                 },
                                 dismissText = "取消"
                             )
+                        }
+
+                        // 联网权限模块启动双弹窗（渲染在主题内，跟随深浅色）
+                        when (netModulePrompt) {
+                            com.ybhgl.reminder.data.NetworkModuleLaunchPrompt.NEW_USER_GRANT -> {
+                                AppAlertDialog(
+                                    onDismissRequest = { /* 仅可经按钮关闭 */ },
+                                    title = "允许检查更新联网？",
+                                    text = "开启后应用将联网检查新版本，默认关闭，可随时在「设置-安全-权限管理」中更改",
+                                    confirmText = "允许",
+                                    onConfirm = {
+                                        netModulePrompt = null
+                                        lifecycleScope.launch {
+                                            com.ybhgl.reminder.data.saveUpdateCheckNetworkGranted(context, true)
+                                            com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
+                                        }
+                                    },
+                                    dismissText = "不允许",
+                                    onDismiss = {
+                                        netModulePrompt = null
+                                        lifecycleScope.launch {
+                                            com.ybhgl.reminder.data.saveUpdateCheckNetworkGranted(context, false)
+                                            com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
+                                        }
+                                    }
+                                )
+                            }
+                            com.ybhgl.reminder.data.NetworkModuleLaunchPrompt.LEGACY_USER_NOTICE -> {
+                                AppAlertDialog(
+                                    onDismissRequest = { /* 仅可经「知道了」关闭 */ },
+                                    title = "新增联网权限控制",
+                                    text = "本次更新新增了联网权限控制开关，WebDAV 联网权限和检查更新联网权限已默认授予，可随时在「设置-安全-权限管理」中进行管理",
+                                    confirmText = "知道了",
+                                    onConfirm = {
+                                        netModulePrompt = null
+                                        lifecycleScope.launch {
+                                            com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
+                                        }
+                                    }
+                                )
+                            }
+                            null -> Unit
                         }
                     }
                 }
@@ -677,6 +727,9 @@ object Routes {
     const val SAFE = "safe"
     /** 保险柜密码设置/修改页（复用手势设置组件，SAFE 模式） */
     const val SAFE_PASSWORD = "safe_password"
+    /** 权限管理页（功能权限/常规权限/联网开关）；target=webdav|update 时直达并高亮对应开关 */
+    const val PERMISSION_MANAGEMENT = "permission_management"
+    const val PERMISSION_MANAGEMENT_PATTERN = "$PERMISSION_MANAGEMENT?target={target}"
 
     fun editReminder(reminderId: Int, readOnly: Boolean = false): String = "$EDIT_REMINDER_BASE/$reminderId?readOnly=$readOnly"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
@@ -701,6 +754,7 @@ object Routes {
         return base + listOf(idPart, configPart, typePart, datePart, managePart, readOnlyPart).filter { it.isNotEmpty() }.joinToString("&")
     }
     fun tagManagement(isSortMode: Boolean = false): String = "$TAG_MANAGEMENT?isSortMode=$isSortMode"
+    fun permissionManagement(target: String? = null): String = "$PERMISSION_MANAGEMENT?target=${target ?: ""}"
 }
 
 @OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class)
@@ -734,9 +788,12 @@ fun ReminderApp() {
 
     val navController = rememberNavController()
 
-    // 应用启动时执行静默版本检查（不显示任何 toast）
+    // 应用启动时执行静默版本检查（不显示任何 toast）；受「检查更新联网」权限开关门控
     LaunchedEffect(Unit) {
-        UpdateManager.checkForUpdates(context)
+        val updateCheckGranted = com.ybhgl.reminder.data.updateCheckNetworkGrantedFlow(context).first()
+        if (updateCheckGranted) {
+            UpdateManager.checkForUpdates(context)
+        }
     }
 
     val lastBackupTimestamp by remember(context) { BackupPreferences.lastBackupTimestampFlow(context) }.collectAsState(initial = 0L)
@@ -870,6 +927,15 @@ fun ReminderApp() {
                 composable(route = Routes.BACKUP_AND_RESTORE) { }
                 composable(route = Routes.DATE_CALCULATOR) { }
                 composable(route = Routes.RECYCLE_BIN) { }
+                composable(
+                    route = Routes.PERMISSION_MANAGEMENT_PATTERN,
+                    arguments = listOf(
+                        navArgument("target") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        }
+                    )
+                ) { }
                 composable(route = Routes.SAFE) { }
                 composable(route = Routes.SAFE_PASSWORD) { }
                 composable(route = Routes.GESTURE_SETUP) { }
@@ -3988,7 +4054,8 @@ private fun ReminderNavContent(
             onNavigateToRecycleBin = { navController.navigate(Routes.RECYCLE_BIN) },
             onNavigateToGestureSetup = { navController.navigate(Routes.GESTURE_SETUP) },
             onNavigateToGestureModify = { navController.navigate(Routes.GESTURE_MODIFY) },
-            onNavigateToOpenSourceLicenses = { navController.navigate(Routes.OPEN_SOURCE_LICENSES) }
+            onNavigateToOpenSourceLicenses = { navController.navigate(Routes.OPEN_SOURCE_LICENSES) },
+            onNavigateToPermissionManagement = { target -> navController.navigate(Routes.permissionManagement(target)) }
         )
         Routes.OPEN_SOURCE_LICENSES ->
             com.ybhgl.reminder.ui.settings.OpenSourceLicensesScreen(
@@ -4001,7 +4068,8 @@ private fun ReminderNavContent(
             }
         )
         Routes.BACKUP_AND_RESTORE -> BackupAndRestoreScreen(
-            onNavigateBack = { navController.navigateUp() }
+            onNavigateBack = { navController.navigateUp() },
+            onNavigateToPermissionManagement = { target -> navController.navigate(Routes.permissionManagement(target)) }
         )
         Routes.DATE_CALCULATOR -> DateCalculatorScreen(
             onNavigateBack = { navController.navigateUp() },
@@ -4010,6 +4078,10 @@ private fun ReminderNavContent(
             }
         )
         Routes.RECYCLE_BIN -> RecycleBinScreen(navController = navController)
+        Routes.PERMISSION_MANAGEMENT_PATTERN -> PermissionManagementScreen(
+            onNavigateBack = { navController.navigateUp() },
+            focusTarget = entry.arguments?.getString("target")?.takeIf { it.isNotEmpty() }
+        )
         Routes.SAFE -> com.ybhgl.reminder.ui.safe.SafeScreen(navController = navController)
         Routes.SAFE_PASSWORD ->
             com.ybhgl.reminder.ui.security.GestureSetupScreen(
