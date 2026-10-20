@@ -48,6 +48,7 @@ import com.ybhgl.reminder.data.ReminderType
 import com.ybhgl.reminder.reminderDisplayInfo
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.cardBackgroundAverageColor
@@ -76,6 +77,7 @@ import androidx.compose.ui.platform.LocalConfiguration
 import java.time.LocalDate
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Description
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.Spring
@@ -111,28 +113,25 @@ fun DetailScreen(
 
     LaunchedEffect(Unit) {
         viewModel.snackbarMessage.collect { message ->
-            snackbarHostState.showSnackbar(message)
+            // 详情页统一使用项目自绘 Toast 反馈（如移出保险柜成功提示）
+            CustomToast.showSuccess(context, message)
         }
     }
 
     if (reminderItems.isNotEmpty()) {
-        val initialIndex = remember {
-            reminderItems.indexOfFirst { it.id == viewModel.reminderId }.coerceAtLeast(0)
-        }
-
-        val pagerState = rememberPagerState(initialPage = initialIndex) {
-            reminderItems.size
-        }
-
         val showLunarMap = remember { mutableStateMapOf<Int, Boolean>() }
         val showNotesMap = remember { mutableStateMapOf<Int, Boolean>() }
 
-        val currentReminder = reminderItems.getOrNull(pagerState.currentPage)
         val latestReminderItems by rememberUpdatedState(reminderItems)
         var currentId by remember { mutableIntStateOf(viewModel.reminderId) }
         var editingReminderForTag by remember { mutableStateOf<ReminderItem?>(null) }
         // 正在个性化编辑的提醒（打开 Activity 前记录，结果返回时应用）
         var customizingItem by remember { mutableStateOf<ReminderItem?>(null) }
+
+        // currentReminder 改由 currentId 派生（页码收集器保持其实时同步），
+        // 使 pagerState 可下沉进 keyed 子组合内重建
+        val currentReminder = reminderItems.find { it.id == currentId }
+            ?: reminderItems.firstOrNull()
 
         // 个性化设置页结果回写：旧背景图被替换或恢复默认时清理残留图片并入库
         val personalizationLauncher = rememberLauncherForActivityResult(PersonalizationContract()) { result ->
@@ -151,30 +150,8 @@ fun DetailScreen(
             }
         }
 
-        // Sync currentId/viewModel active reminder item when page changes (via user swipe)
-        LaunchedEffect(pagerState) {
-            snapshotFlow { pagerState.currentPage }.collect { page ->
-                val item = latestReminderItems.getOrNull(page)
-                if (item != null) {
-                    currentId = item.id
-                    viewModel.updateCurrentReminder(item)
-                }
-            }
-        }
-
-        // Sync page and content when list updates (due to database edits/re-sorting)
-        LaunchedEffect(reminderItems) {
-            val newIndex = reminderItems.indexOfFirst { it.id == currentId }
-            if (newIndex != -1) {
-                if (newIndex != pagerState.currentPage) {
-                    pagerState.scrollToPage(newIndex)
-                }
-                // Always sync the updated item details to the ViewModel
-                reminderItems.getOrNull(newIndex)?.let {
-                    viewModel.updateCurrentReminder(it)
-                }
-            }
-        }
+        // 页码收集与列表校正逻辑已随 pagerState 一起下沉到 key(reminderItems.size)
+        // 子组合内（见 Scaffold content），确保它们操作的永远是与当前列表同源的 state。
 
         Scaffold(
             snackbarHost = { SnackbarHost(snackbarHostState) },
@@ -213,56 +190,97 @@ fun DetailScreen(
                     .padding(top = paddingValues.calculateTopPadding(), bottom = paddingValues.calculateBottomPadding() + if (isLandscape) 0.dp else 16.dp),
                 horizontalAlignment = Alignment.CenterHorizontally
             ) {
-                HorizontalPager(
-                    state = pagerState,
-                    modifier = Modifier
-                        .weight(1f)
-                        .fillMaxWidth(),
-                    beyondViewportPageCount = 1,
-                    key = { pageIndex ->
-                        val item = reminderItems.getOrNull(pageIndex)
-                        if (item != null) {
-                            "${item.id}_${item.isCustomized}_${item.customHeaderColor}_${item.customFont}"
-                        } else {
-                            pageIndex
+                // rememberPagerState 的 pageCount lambda 仅在 state 创建帧被捕获：
+                // 详情页从"保险柜单项列表"移出后 1→N 规模突变，旧 state 页数恒为 1，
+                // 一切事后 scrollToPage 都被无声钳制回页 0（实机"瞬间变第一个事件、
+                // 无闪烁"定案）。用 key(列表大小) 重建整个 pager 子组合：pagerState
+                // 与页数 lambda 同帧同源生成、初始页直接落在当前事件，从构造上消除
+                // 竞态。大小不变（滑动/编辑/重排）不触发重建，行为与原实现一致。
+                key(reminderItems.size) {
+                    val pagerState = rememberPagerState(
+                        initialPage = reminderItems
+                            .indexOfFirst { it.id == currentId }
+                            .coerceAtLeast(0)
+                    ) { reminderItems.size }
+
+                    // Sync currentId/viewModel item when page changes (via user swipe)
+                    LaunchedEffect(pagerState) {
+                        snapshotFlow { pagerState.currentPage }.collect { page ->
+                            val item = latestReminderItems.getOrNull(page)
+                            if (item != null) {
+                                currentId = item.id
+                                viewModel.updateCurrentReminder(item)
+                            }
                         }
                     }
-                ) { pageIndex ->
-                    val pageItem = reminderItems.getOrNull(pageIndex)
-                    if (pageItem != null) {
-                        ReminderDetailPagerContent(
-                            displayReminderItem = pageItem,
-                            originalPageItem = pageItem,
-                            isLandscape = isLandscape,
-                            uiState = uiState,
-                            showLunarMap = showLunarMap,
-                            showNotesMap = showNotesMap,
-                            viewModel = viewModel,
-                            onEditTag = { editingReminderForTag = it },
-                            onCustomize = { item ->
-                                customizingItem = item
-                                personalizationLauncher.launch(
-                                    PersonalizationInput(
-                                        config = item.toPersonalizationConfig(),
-                                        reminderType = item.type.name
+
+                    // Same-size list updates (re-sort / edit return): correct page here.
+                    // Size changes are handled by the key() recreation above.
+                    LaunchedEffect(reminderItems, pagerState) {
+                        if (pagerState.pageCount != latestReminderItems.size) return@LaunchedEffect
+                        val targetId = currentId
+                        val newIndex = latestReminderItems.indexOfFirst { it.id == targetId }
+                        val landing = newIndex.coerceAtLeast(0)
+                        if (newIndex != -1 && pagerState.currentPage != landing) {
+                            pagerState.scrollToPage(landing)
+                        }
+                        if (newIndex == -1) {
+                            if (pagerState.currentPage != 0) pagerState.scrollToPage(0)
+                            latestReminderItems.firstOrNull()?.let { viewModel.updateCurrentReminder(it) }
+                        }
+                    }
+
+                    HorizontalPager(
+                        state = pagerState,
+                        modifier = Modifier
+                            .weight(1f)
+                            .fillMaxWidth(),
+                        beyondViewportPageCount = 1,
+                        key = { pageIndex ->
+                            val item = reminderItems.getOrNull(pageIndex)
+                            if (item != null) {
+                                "${item.id}_${item.isCustomized}_${item.customHeaderColor}_${item.customFont}"
+                            } else {
+                                pageIndex
+                            }
+                        }
+                    ) { pageIndex ->
+                        val pageItem = reminderItems.getOrNull(pageIndex)
+                        if (pageItem != null) {
+                            ReminderDetailPagerContent(
+                                displayReminderItem = pageItem,
+                                originalPageItem = pageItem,
+                                isLandscape = isLandscape,
+                                uiState = uiState,
+                                showLunarMap = showLunarMap,
+                                showNotesMap = showNotesMap,
+                                viewModel = viewModel,
+                                onEditTag = { editingReminderForTag = it },
+                                onCustomize = { item ->
+                                    customizingItem = item
+                                    personalizationLauncher.launch(
+                                        PersonalizationInput(
+                                            config = item.toPersonalizationConfig(),
+                                            reminderType = item.type.name
+                                        )
                                     )
-                                )
-                            },
-                            onOpenReminderSetting = { item ->
-                                navController.navigate(
-                                    Routes.reminderSetting(reminderId = item.id, fromManage = true)
-                                )
-                            },
-                            onShareClick = {
-                                currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
-                            },
-                            onSaveClick = {
-                                currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
-                            },
-                            onBirthdayListClick = if (currentReminder?.type == ReminderType.BIRTHDAY) {
-                                { navController.navigate(Routes.birthdayList(currentReminder.id)) }
-                            } else null
-                        )
+                                },
+                                onOpenReminderSetting = { item ->
+                                    navController.navigate(
+                                        Routes.reminderSetting(reminderId = item.id, fromManage = true)
+                                    )
+                                },
+                                onShareClick = {
+                                    currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
+                                },
+                                onSaveClick = {
+                                    currentReminder?.let { navController.navigate(Routes.shareReminder(it.id)) }
+                                },
+                                onBirthdayListClick = if (currentReminder?.type == ReminderType.BIRTHDAY) {
+                                    { navController.navigate(Routes.birthdayList(currentReminder.id)) }
+                                } else null
+                            )
+                        }
                     }
                 }
 
@@ -322,6 +340,8 @@ fun ReminderDetailPagerContent(
     val context = LocalContext.current
     val isLunarEnabled = showLunarMap[displayReminderItem.id] ?: displayReminderItem.isLunar
     val isFlipped = showNotesMap[displayReminderItem.id] ?: false
+    // 已加密事件：badge 栏 lock 图标触发的“移出保险柜”确认弹窗
+    var showMoveOutConfirm by remember { mutableStateOf(false) }
 
     val cardContent = @Composable { modifier: Modifier ->
         ReminderDetailCard(
@@ -462,6 +482,23 @@ fun ReminderDetailPagerContent(
                         verticalAlignment = Alignment.CenterVertically,
                         horizontalArrangement = Arrangement.Start
                     ) {
+                        if (displayReminderItem.isInSafe) {
+                            OutlinedIconButton(
+                                onClick = { showMoveOutConfirm = true },
+                                modifier = Modifier.size(36.dp),
+                                colors = IconButtonDefaults.outlinedIconButtonColors(
+                                    containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                                    contentColor = MaterialTheme.colorScheme.primary
+                                ),
+                                border = androidx.compose.foundation.BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                                )
+                            ) {
+                                Icon(Icons.Default.Lock, contentDescription = "移出保险柜", modifier = Modifier.size(20.dp))
+                            }
+                            Spacer(modifier = Modifier.width(12.dp))
+                        }
                         TagBadge(
                             tagName = displayReminderItem.tag,
                             tagColorHex = matchedTag?.color,
@@ -512,6 +549,23 @@ fun ReminderDetailPagerContent(
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.Center
             ) {
+                if (displayReminderItem.isInSafe) {
+                    OutlinedIconButton(
+                        onClick = { showMoveOutConfirm = true },
+                        modifier = Modifier.size(32.dp),
+                        colors = IconButtonDefaults.outlinedIconButtonColors(
+                            containerColor = MaterialTheme.colorScheme.primary.copy(alpha = 0.15f),
+                            contentColor = MaterialTheme.colorScheme.primary
+                        ),
+                        border = androidx.compose.foundation.BorderStroke(
+                            1.dp,
+                            MaterialTheme.colorScheme.primary.copy(alpha = 0.3f)
+                        )
+                    ) {
+                        Icon(Icons.Default.Lock, contentDescription = "移出保险柜", modifier = Modifier.size(18.dp))
+                    }
+                    Spacer(modifier = Modifier.width(8.dp))
+                }
                 TagBadge(
                     tagName = displayReminderItem.tag,
                     tagColorHex = matchedTag?.color,
@@ -656,6 +710,21 @@ fun ReminderDetailPagerContent(
                 tagsAndOptionsContent()
             }
         }
+    }
+
+    // 移出保险柜确认弹窗：复用保险柜页 AppAlertDialog 样式与文案口径
+    if (showMoveOutConfirm) {
+        AppAlertDialog(
+            onDismissRequest = { showMoveOutConfirm = false },
+            title = "移出保险柜",
+            text = "「${displayReminderItem.title}」将恢复到主页列表，并重新开启提醒",
+            confirmText = "移出",
+            onConfirm = {
+                showMoveOutConfirm = false
+                viewModel.removeFromSafe(displayReminderItem)
+            },
+            dismissText = "取消"
+        )
     }
 }
 

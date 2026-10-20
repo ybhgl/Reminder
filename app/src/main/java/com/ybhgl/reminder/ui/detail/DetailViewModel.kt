@@ -154,6 +154,17 @@ class DetailViewModel(
         }
     }
 
+    /**
+     * 详情页单事件移出保险柜：复用 Repository 的 restoreFromSafe 链路
+     * （清标记 + 重建闹钟/日历/Widget 调度），事件回到活跃流后详情页自动刷新。
+     */
+    fun removeFromSafe(reminder: ReminderItem) {
+        viewModelScope.launch {
+            reminderRepository.restoreFromSafe(setOf(reminder.id))
+            _snackbarMessage.emit("已移出保险柜：${reminder.title}")
+        }
+    }
+
     fun addBirthdayReminder(item: BirthdayListItem) {
         val currentReminder = _uiState.value.reminderItem ?: return
         val label = if (item.age == 0) "出生" else "${item.age}岁生日"
