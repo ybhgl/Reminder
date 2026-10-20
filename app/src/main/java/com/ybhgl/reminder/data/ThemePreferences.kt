@@ -234,3 +234,15 @@ suspend fun savePredictiveBack(context: Context, enabled: Boolean) {
         preferences[PREDICTIVE_BACK_KEY] = enabled
     }
 }
+
+/** 是否已有用户存储过的偏好（联网权限模块用于老用户判定） */
+fun themeHasStoredOptions(context: Context): Flow<Boolean> =
+    context.themeDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences -> preferences.asMap().isNotEmpty() }
