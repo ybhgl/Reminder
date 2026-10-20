@@ -82,6 +82,13 @@ import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.animateFloatAsState
+import androidx.compose.animation.expandVertically
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.shrinkVertically
+import androidx.compose.ui.draw.rotate
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
@@ -118,7 +125,6 @@ import android.content.Intent
 import androidx.compose.ui.res.painterResource
 import com.ybhgl.reminder.R
 import androidx.core.net.toUri
-
 import android.appwidget.AppWidgetManager
 import android.content.ComponentName
 import com.ybhgl.reminder.widget.ReminderWidget1x2
@@ -127,8 +133,10 @@ import com.ybhgl.reminder.widget.ReminderWidget4x2
 import com.ybhgl.reminder.widget.WidgetConfigureActivity
 import androidx.compose.material3.Surface
 import androidx.compose.ui.graphics.toArgb
-
 import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.KeyboardArrowDown
+import androidx.compose.material.icons.filled.Home
+import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.RestoreFromTrash
 import androidx.compose.material.icons.filled.AppBlocking
 import androidx.compose.material.icons.filled.Security
@@ -181,6 +189,8 @@ fun SettingsScreen(
     val themeColorPalette by colorPalettePreferenceFlow.collectAsState(initial = AppColorPalette.PURPLE)
     val customColorPreferenceFlow = remember(context) { viewModel.customColorPreferenceFlow(context) }
     val customColorSeedInt by customColorPreferenceFlow.collectAsState(initial = 0xFF6650A4.toInt())
+    val predictiveBackPreferenceFlow = remember(context) { viewModel.predictiveBackPreferenceFlow(context) }
+    val predictiveBackEnabled by predictiveBackPreferenceFlow.collectAsState(initial = true)
     val defaultPagePreferenceFlow = remember(context) { viewModel.defaultPageFlow(context) }
     val selectedDefaultPage by defaultPagePreferenceFlow.collectAsState(initial = AppDefaultPage.COUNTDOWN)
     val homeCategoryPreferenceFlow = remember(context) { viewModel.homeCategoryPreferenceFlow(context) }
@@ -196,6 +206,9 @@ fun SettingsScreen(
     val scrollState = rememberScrollState()
 
     var showDisableVerify by rememberSaveable { mutableStateOf(false) }
+    // 外观分类折叠项展开状态：默认收起，与提醒管理页「通知样式」交互一致
+    var isThemeExpanded by rememberSaveable { mutableStateOf(false) }
+    var isHomeExpanded by rememberSaveable { mutableStateOf(false) }
 
     val updateInfo by UpdateManager.updateInfo.collectAsState()
     val isCheckingUpdate by UpdateManager.isChecking.collectAsState()
@@ -270,61 +283,123 @@ fun SettingsScreen(
                     style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.SemiBold)
                 )
                 HorizontalDivider(modifier = Modifier.padding(bottom = 4.dp))
-                ThemeSelectionCard(
-                    selectedOption = selectedTheme,
-                    usePureBlack = usePureBlack,
-                    useCardColoring = useCardColoring,
-                    dynamicColorEnabled = dynamicColorEnabled,
-                    themeColorPalette = themeColorPalette,
-                    customColorSeedInt = customColorSeedInt,
-                    onOptionSelected = { option ->
-                        coroutineScope.launch {
-                            viewModel.updateThemePreference(context, option)
-                        }
+                // 主题设置折叠项：默认收起，点箭头展开完整主题卡片（交互同提醒管理页「通知样式」）
+                SettingsActionItem(
+                    title = "主题设置",
+                    description = "个性化定制应用主题",
+                    icon = {
+                        Icon(
+                            Icons.Filled.Settings, null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
                     },
-                    onPureBlackToggle = { enabled ->
-                        coroutineScope.launch {
-                            viewModel.updatePureBlackPreference(context, enabled)
-                        }
+                    trailingContent = {
+                        SettingsExpandArrow(
+                            expanded = isThemeExpanded,
+                            onToggle = { isThemeExpanded = !isThemeExpanded },
+                            label = "themeExpandArrow"
+                        )
                     },
-                    onCardColoringToggle = { enabled ->
-                        coroutineScope.launch {
-                            viewModel.updateCardColoringPreference(context, enabled)
-                        }
-                    },
-                    onDynamicColorToggle = { enabled ->
-                        coroutineScope.launch {
-                            viewModel.updateDynamicColorPreference(context, enabled)
-                        }
-                    },
-                    onColorPaletteSelected = { palette ->
-                        coroutineScope.launch {
-                            viewModel.updateColorPalettePreference(context, palette)
-                        }
-                    },
-                    onCustomColorSelected = { color ->
-                        coroutineScope.launch {
-                            viewModel.updateCustomColorPreference(context, color.toArgb())
+                    onClick = { isThemeExpanded = !isThemeExpanded },
+                    bottomContent = {
+                        AnimatedVisibility(
+                            visible = isThemeExpanded,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            ThemeSelectionCard(
+                                selectedOption = selectedTheme,
+                                usePureBlack = usePureBlack,
+                                useCardColoring = useCardColoring,
+                                dynamicColorEnabled = dynamicColorEnabled,
+                                themeColorPalette = themeColorPalette,
+                                customColorSeedInt = customColorSeedInt,
+                                onOptionSelected = { option ->
+                                    coroutineScope.launch {
+                                        viewModel.updateThemePreference(context, option)
+                                    }
+                                },
+                                onPureBlackToggle = { enabled ->
+                                    coroutineScope.launch {
+                                        viewModel.updatePureBlackPreference(context, enabled)
+                                    }
+                                },
+                                onCardColoringToggle = { enabled ->
+                                    coroutineScope.launch {
+                                        viewModel.updateCardColoringPreference(context, enabled)
+                                    }
+                                },
+                                onDynamicColorToggle = { enabled ->
+                                    coroutineScope.launch {
+                                        viewModel.updateDynamicColorPreference(context, enabled)
+                                    }
+                                },
+                                onColorPaletteSelected = { palette ->
+                                    coroutineScope.launch {
+                                        viewModel.updateColorPalettePreference(context, palette)
+                                    }
+                                },
+                                onCustomColorSelected = { color ->
+                                    coroutineScope.launch {
+                                        viewModel.updateCustomColorPreference(context, color.toArgb())
+                                    }
+                                },
+                                predictiveBackEnabled = predictiveBackEnabled,
+                                onPredictiveBackToggle = { enabled ->
+                                    coroutineScope.launch {
+                                        viewModel.updatePredictiveBackPreference(context, enabled)
+                                    }
+                                }
+                            )
                         }
                     }
                 )
-                 HomePageSettingsCard(
-                    homeCategoryEnabled = homeCategoryEnabled,
-                    onHomeCategoryChanged = { enabled ->
-                        coroutineScope.launch {
-                            viewModel.updateHomeCategoryPreference(context, enabled)
-                        }
+                // 首页设置折叠项：默认收起，展开显示首页分类/起始页/滑动模式设置
+                SettingsActionItem(
+                    title = "首页设置",
+                    description = "自定义应用首页显示",
+                    icon = {
+                        Icon(
+                            Icons.Filled.Home, null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(22.dp)
+                        )
                     },
-                    selectedPage = selectedDefaultPage,
-                    onPageSelected = { page ->
-                        coroutineScope.launch {
-                            viewModel.updateDefaultPage(context, page)
-                        }
+                    trailingContent = {
+                        SettingsExpandArrow(
+                            expanded = isHomeExpanded,
+                            onToggle = { isHomeExpanded = !isHomeExpanded },
+                            label = "homeExpandArrow"
+                        )
                     },
-                    currentScrollBehavior = currentScrollBehavior,
-                    onScrollBehaviorSelected = { behavior ->
-                        coroutineScope.launch {
-                            viewModel.updateScrollBehaviorPreference(context, behavior.name)
+                    onClick = { isHomeExpanded = !isHomeExpanded },
+                    bottomContent = {
+                        AnimatedVisibility(
+                            visible = isHomeExpanded,
+                            enter = expandVertically() + fadeIn(),
+                            exit = shrinkVertically() + fadeOut()
+                        ) {
+                            HomePageSettingsCard(
+                                homeCategoryEnabled = homeCategoryEnabled,
+                                onHomeCategoryChanged = { enabled ->
+                                    coroutineScope.launch {
+                                        viewModel.updateHomeCategoryPreference(context, enabled)
+                                    }
+                                },
+                                selectedPage = selectedDefaultPage,
+                                onPageSelected = { page ->
+                                    coroutineScope.launch {
+                                        viewModel.updateDefaultPage(context, page)
+                                    }
+                                },
+                                currentScrollBehavior = currentScrollBehavior,
+                                onScrollBehaviorSelected = { behavior ->
+                                    coroutineScope.launch {
+                                        viewModel.updateScrollBehaviorPreference(context, behavior.name)
+                                    }
+                                }
+                            )
                         }
                     }
                 )
@@ -778,7 +853,9 @@ private fun ThemeSelectionCard(
     onCardColoringToggle: (Boolean) -> Unit,
     onDynamicColorToggle: (Boolean) -> Unit,
     onColorPaletteSelected: (AppColorPalette) -> Unit,
-    onCustomColorSelected: (Color) -> Unit
+    onCustomColorSelected: (Color) -> Unit,
+    predictiveBackEnabled: Boolean,
+    onPredictiveBackToggle: (Boolean) -> Unit
 ) {
     var showColorPicker by remember { mutableStateOf(false) }
 
@@ -799,12 +876,6 @@ private fun ThemeSelectionCard(
         Column(
             modifier = Modifier.padding(horizontal=16.dp, vertical=12.dp)
         ) {
-            Text(
-                text = "主题",
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface,
-                modifier = Modifier.padding(bottom = 12.dp)
-            )
             ThemeModeSegmentedControl(
                 options = listOf(AppThemeOption.SYSTEM, AppThemeOption.LIGHT, AppThemeOption.DARK),
                 selectedOption = selectedOption,
@@ -872,6 +943,17 @@ private fun ThemeSelectionCard(
                         }
                     }
                 }
+            }
+
+            // 预测性返回动画：仅 Android 14+ 显示；运行时生效依赖 Android 15 API，A14 仅存偏好
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.UPSIDE_DOWN_CAKE) {
+                Spacer(modifier = Modifier.height(16.dp))
+                SettingsSwitchRow(
+                    title = "预测性返回动画",
+                    description = "系统侧滑返回时预览返回的目标页面",
+                    checked = predictiveBackEnabled,
+                    onCheckedChange = onPredictiveBackToggle
+                )
             }
         }
     }
@@ -1001,16 +1083,10 @@ private fun HomePageSettingsCard(
         Column(
             modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)
         ) {
-            Text(
-                text = "首页",
-                style = MaterialTheme.typography.bodyLarge.copy(fontWeight = FontWeight.SemiBold),
-                color = MaterialTheme.colorScheme.onSurface
-            )
-
             Row(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .padding(top = 16.dp)
+                    .padding(top = 4.dp)
                     .clickable(
                         interactionSource = remember { MutableInteractionSource() },
                         indication = null,
@@ -1340,6 +1416,28 @@ private fun SettingsSwitchRow(
             checked = checked,
             onCheckedChange = onCheckedChange,
             colors = defaultSwitchColors()
+        )
+    }
+}
+
+/**
+ * 折叠项尾部的旋转箭头：默认朝下，展开时旋转 180° 朝上（同提醒管理页「通知样式」）
+ */
+@Composable
+internal fun SettingsExpandArrow(
+    expanded: Boolean,
+    onToggle: () -> Unit,
+    label: String
+) {
+    val rotation by animateFloatAsState(
+        targetValue = if (expanded) 180f else 0f,
+        label = label
+    )
+    IconButton(onClick = onToggle) {
+        Icon(
+            Icons.Filled.KeyboardArrowDown,
+            contentDescription = if (expanded) "收起" else "展开",
+            modifier = Modifier.rotate(rotation)
         )
     }
 }

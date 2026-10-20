@@ -885,9 +885,15 @@ fun ReminderApp() {
                 ) { }
             }
         }
+        // 预测性返回动画开关（设置页-外观-主题，Android 14+ 可改）：
+        // 控制应用内 Miuix 转场的跟手预览；关闭时返回手势走系统默认派发
+        val predictiveBackEnabled by remember(context) {
+            com.ybhgl.reminder.data.predictiveBackFlow(context)
+        }.collectAsState(initial = true)
         MiuixNavHost(
             navController = navController,
             graph = navGraph,
+            predictiveBackEnabled = predictiveBackEnabled,
             onBack = { navController.popBackStack() },
         ) { entry ->
             ReminderNavContent(

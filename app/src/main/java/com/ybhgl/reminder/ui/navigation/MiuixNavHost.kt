@@ -87,6 +87,7 @@ internal fun MiuixNavHost(
     modifier: Modifier = Modifier,
     transition: MiuixNavTransition = MiuixDefaultTransition,
     effects: MiuixNavDisplayEffects = MiuixNavDisplayEffects.Default,
+    predictiveBackEnabled: Boolean = true,
     onBack: () -> Boolean = { navController.popBackStack() },
     entryContent: @Composable (NavBackStackEntry) -> Unit,
 ) {
@@ -261,16 +262,20 @@ internal fun MiuixNavHost(
                     lastProgress = event.progress
                     lastTimeMillis = t
                 }
-                // 1:1 跟手，路径上无 spring 无缓动
-                animatedTop.miuixSnapToFinger(topIndex, event.progress, anchorRef[0])
+                // 1:1 跟手，路径上无 spring 无缓动；开关关闭时不位移（无预览动画），仅维持事件会话
+                if (predictiveBackEnabled) {
+                    animatedTop.miuixSnapToFinger(topIndex, event.progress, anchorRef[0])
+                }
             }
         }
         // 注意：禁止在此 lambda 内使用 label return（非局部返回）——Kotlin 会生成
         // $$$NON_LOCAL_RETURN$$$$$ 合成类，其 <anonymous> 方法无法被 dex 表示，R8 直接失败。
         // 用 if/else 分支代替 early return。
         handler.currentOnCompleted = onCompleted@{ isDiscrete ->
-            if (isDiscrete) {
-                // 离散触发（系统返回键 / 程序化 back）：同步 pop，收敛逻辑按程序化 500ms 曲线。
+            if (isDiscrete || !predictiveBackEnabled) {
+                // 离散触发（系统返回键 / 程序化 back），或预测动画关闭时的手势完成
+                // （无跟手位移，velocity/progress 判 commit 已无意义 → 一律视为返回）：
+                // 同步 pop，收敛逻辑按程序化 500ms 曲线。
                 currentOnBack.value()
             } else {
                 val velocity = sessionVelocity
@@ -313,6 +318,9 @@ internal fun MiuixNavHost(
                 finishTransitions()
             }
         }
+        // 注意：isBackEnabled 恒不可由预测性返回开关置 false —— 本宿主是返回事件的唯一执行出口
+        // （标准 NavHost 的 dispatcher pop 链已被替换），关掉接管等于返回落到系统默认 finish。
+        // 开关只 gate 下方"跟手预览 + 手势 commit 语义"。
         handler.isBackEnabled = currentStack.size > 1
     }
     val dispatcher = LocalNavigationEventDispatcherOwner.current?.navigationEventDispatcher

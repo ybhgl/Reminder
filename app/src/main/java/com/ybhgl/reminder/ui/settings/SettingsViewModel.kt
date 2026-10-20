@@ -20,6 +20,8 @@ import com.ybhgl.reminder.data.AppDefaultPage
 import com.ybhgl.reminder.data.saveDefaultPage
 import com.ybhgl.reminder.data.customColorFlow
 import com.ybhgl.reminder.data.saveCustomColor
+import com.ybhgl.reminder.data.predictiveBackFlow
+import com.ybhgl.reminder.data.savePredictiveBack
 import com.ybhgl.reminder.data.viewModeFlow
 import com.ybhgl.reminder.data.saveViewMode
 import com.ybhgl.reminder.data.scrollBehaviorFlow
@@ -85,6 +87,14 @@ class SettingsViewModel(private val reminderRepository: ReminderRepository) : Vi
 
     suspend fun updateDynamicColorPreference(context: Context, enabled: Boolean) {
         saveDynamicColor(context, enabled)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, reminderRepository)
+    }
+
+    fun predictiveBackPreferenceFlow(context: Context): Flow<Boolean> = predictiveBackFlow(context)
+
+    suspend fun updatePredictiveBackPreference(context: Context, enabled: Boolean) {
+        savePredictiveBack(context, enabled)
         BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
         BackupPreferences.triggerAutoBackup(context, reminderRepository)
     }
