@@ -89,6 +89,7 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalActivity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -110,6 +111,7 @@ import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.data.SecurityPreferences
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.ui.security.AppLockVerifyScreen
@@ -687,7 +689,7 @@ private fun SafeVaultContent(
                             onValueChange = { searchQuery = it },
                             placeholder = {
                                 Text(
-                                    text = "搜索保险柜内标题...",
+                                    text = "搜索提醒标题...",
                                     style = MaterialTheme.typography.bodyLarge.copy(
                                         color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
                                     )
@@ -788,6 +790,7 @@ private fun SafeVaultContent(
             confirmText = "永久删除",
             onConfirm = {
                 showFabDeleteConfirm = false
+                CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已永久删除")
                 viewModel.deleteSelectedPermanently()
             },
             dismissText = "取消",
@@ -804,6 +807,7 @@ private fun SafeVaultContent(
             confirmText = "移出",
             onConfirm = {
                 showFabMoveOutConfirm = false
+                CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已移出保险柜")
                 viewModel.moveOutSelected()
             },
             dismissText = "取消"
@@ -815,7 +819,7 @@ private fun SafeVaultContent(
         AppAlertDialog(
             onDismissRequest = { showDestroyConfirm = false },
             title = "销毁保险柜",
-            text = "确认销毁保险柜？需要验证保险柜密码，验证通过后保险柜将销毁，其内的所有提醒将自动移除保险柜",
+            text = "确认销毁保险柜？需要验证保险柜密码，验证通过后保险柜将销毁，其内的所有提醒将自动移出保险柜",
             confirmText = "验证并销毁",
             onConfirm = {
                 showDestroyConfirm = false
@@ -827,13 +831,17 @@ private fun SafeVaultContent(
     }
 
     // 销毁前验证保险柜密码（禁用以生物识别 shortcut，必须验证密码本身）：
-    // 验证通过后执行销毁（柜内事件移出 + 清除密码）并退出保险柜
+    // 验证通过后执行销毁（柜内事件移出 + 清除密码）并退出保险柜，退出后 Toast 反馈
     if (verifyingDestroy) {
         AppLockVerifyScreen(
             onUnlockSuccess = {
                 verifyingDestroy = false
-                viewModel.destroySafeAndExit {
+                viewModel.destroySafeAndExit { movedCount ->
                     navController.navigateUp()
+                    CustomToast.showSuccess(
+                        context,
+                        if (movedCount > 0) "${movedCount} 条提醒已移出并销毁保险柜" else "保险柜已销毁"
+                    )
                 }
             },
             onCancel = { verifyingDestroy = false },

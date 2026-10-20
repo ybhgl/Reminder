@@ -85,7 +85,7 @@ class SafeViewModel(
         selectionMode.value = false
     }
 
-    /** 永久删除选中事件（完整删除路径，含背景图清理） */
+    /** 永久删除选中事件（完整删除路径，含背景图清理）。Toast 反馈由页面层给出（本 VM 持有 Application context，CustomToast 需要 Activity） */
     fun deleteSelectedPermanently() {
         val idsToDelete = selectedIds.value
         if (idsToDelete.isEmpty()) return
@@ -108,8 +108,9 @@ class SafeViewModel(
     /**
      * 销毁保险柜：柜内全部事件移出（恢复为活跃事件并重建调度），清除保险柜密码与生物开关。
      * 全部完成后才回调 onDone 退出页面——导航出栈会清空本 ViewModel，协程必须在此之前跑完。
+     * onDone 回传移出条数，供页面在退出后展示 Toast（本 ViewModel 会随出栈销毁，提示不能放在这里）。
      */
-    fun destroySafeAndExit(onDone: () -> Unit) {
+    fun destroySafeAndExit(onDone: (movedCount: Int) -> Unit) {
         viewModelScope.launch {
             val allIds = reminderRepository.getSafeRemindersList().map { it.id }.toSet()
             if (allIds.isNotEmpty()) {
@@ -118,7 +119,7 @@ class SafeViewModel(
             SecurityPreferences.saveSafeGesturePassword(appContext, "")
             SecurityPreferences.saveSafeUseBiometric(appContext, false)
             exitSelectionMode()
-            onDone()
+            onDone(allIds.size)
         }
     }
 }

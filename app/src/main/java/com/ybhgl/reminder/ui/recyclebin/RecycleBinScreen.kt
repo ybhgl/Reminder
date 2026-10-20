@@ -82,6 +82,7 @@ import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
@@ -97,6 +98,7 @@ import com.ybhgl.reminder.data.RecycleBinPreferences
 import com.ybhgl.reminder.data.ReminderItem
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import kotlin.math.roundToInt
@@ -113,6 +115,7 @@ fun RecycleBinScreen(
     modifier: Modifier = Modifier,
     viewModel: RecycleBinViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
+    val context = LocalContext.current
     val uiState by viewModel.recycleBinUiState.collectAsState()
     val isSelectionMode = uiState.isSelectionMode
     val selectedIds = uiState.selectedIds
@@ -679,6 +682,11 @@ fun RecycleBinScreen(
             confirmText = "清空",
             onConfirm = {
                 showClearDialog = false
+                val count = uiState.itemList.size
+                CustomToast.showSuccess(
+                    context,
+                    if (count > 0) "${count} 条提醒已从回收站永久删除（回收站已清空）" else "回收站已清空"
+                )
                 viewModel.clearRecycleBin()
             },
             dismissText = "取消",
@@ -695,6 +703,7 @@ fun RecycleBinScreen(
             confirmText = "永久删除",
             onConfirm = {
                 showFabDeleteConfirm = false
+                CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已永久删除")
                 viewModel.permanentlyDeleteSelected()
             },
             dismissText = "取消",
@@ -711,6 +720,7 @@ fun RecycleBinScreen(
             confirmText = "恢复",
             onConfirm = {
                 showFabRestoreConfirm = false
+                CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已移出回收站")
                 viewModel.restoreSelected()
             },
             dismissText = "取消"

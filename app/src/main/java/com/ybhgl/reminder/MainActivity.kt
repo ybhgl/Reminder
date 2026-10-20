@@ -259,6 +259,7 @@ import com.ybhgl.reminder.ui.share.ShareScreen
 import com.ybhgl.reminder.ui.common.CardBackgroundLayer
 import com.ybhgl.reminder.ui.common.CardBackgroundSpec
 import com.ybhgl.reminder.ui.common.CardBackgroundType
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.NumberEffectSpec
 import com.ybhgl.reminder.ui.common.NumberFontEffect
 import com.ybhgl.reminder.ui.common.GlassTextOverlay
@@ -2367,14 +2368,17 @@ fun ReminderListScreen(
                     onDismissRequest = { showDeleteDialog = false },
                     onMoveToRecycleBin = {
                         showDeleteDialog = false
+                        CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已移入回收站")
                         viewModel.moveSelectedToRecycleBin()
                     },
                     onMoveToSafe = {
                         showDeleteDialog = false
+                        CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已移入保险柜")
                         viewModel.moveSelectedToSafe()
                     },
                     onDeletePermanently = {
                         showDeleteDialog = false
+                        CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已永久删除")
                         viewModel.deleteSelected()
                     }
                 )

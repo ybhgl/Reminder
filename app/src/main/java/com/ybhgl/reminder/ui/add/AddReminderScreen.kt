@@ -110,6 +110,7 @@ import com.ybhgl.reminder.data.RepeatInfo
 import com.ybhgl.reminder.data.RepeatUnit
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.common.TonalCardRow
 import com.ybhgl.reminder.ui.personalization.PersonalizationContract
@@ -534,6 +535,7 @@ fun AddReminderScreen(
                                 showDeleteConfirmDialog = false
                                 coroutineScope.launch {
                                     if (viewModel.deleteReminder(context)) {
+                                        CustomToast.showSuccess(context, "1 条提醒已永久删除")
                                         onDeleted()
                                     }
                                 }
@@ -545,6 +547,7 @@ fun AddReminderScreen(
                                 showDeleteConfirmDialog = false
                                 coroutineScope.launch {
                                     if (viewModel.moveToRecycleBin(context)) {
+                                        CustomToast.showSuccess(context, "1 条提醒已移入回收站")
                                         onDeleted()
                                     }
                                 }
@@ -593,6 +596,7 @@ fun AddReminderScreen(
                         showReadOnlyDeleteConfirm = false
                         coroutineScope.launch {
                             if (viewModel.permanentlyDeleteFromRecycleBin()) {
+                                CustomToast.showSuccess(context, "1 条提醒已永久删除")
                                 onDeleted()
                             }
                         }
@@ -612,6 +616,7 @@ fun AddReminderScreen(
                         showReadOnlyRestoreConfirm = false
                         coroutineScope.launch {
                             if (viewModel.restoreFromRecycleBin()) {
+                                CustomToast.showSuccess(context, "1 条提醒已移出回收站")
                                 onDeleted()
                             }
                         }
