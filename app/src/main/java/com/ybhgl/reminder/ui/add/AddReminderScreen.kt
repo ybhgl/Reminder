@@ -516,7 +516,7 @@ fun AddReminderScreen(
                         onClick = { showDeleteConfirmDialog = true },
                         modifier = Modifier
                             .fillMaxWidth()
-                            .padding(top = if (hasSafePassword) 0.dp else 16.dp),
+                            .padding(top = 16.dp),
                         colors = ButtonDefaults.outlinedButtonColors(
                             contentColor = MaterialTheme.colorScheme.error
                         ),
