@@ -1339,11 +1339,10 @@ fun ReminderListScreen(
     val showBackupAlert = backupReminderEnabled && lastDataChangeTimestamp > lastBackupTimestamp
     val hasUpdate by UpdateManager.updateInfo.collectAsState()
 
-    // null = 保险柜密码读取中；空串 = 未设置。未设置时隐藏"移入保险柜"入口
-    var safePassword by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(context) {
-        safePassword = SecurityPreferences.safeGesturePasswordFlow(context).first()
-    }
+    // null = 保险柜密码读取中；空串 = 未设置。未设置时隐藏"移入保险柜"入口。
+    // 持续收集 DataStore Flow：设置/销毁保险柜密码后返回主页即时更新选项可见性。
+    val safePassword by remember(context) { SecurityPreferences.safeGesturePasswordFlow(context) }
+        .collectAsState<String?, String?>(initial = null)
 
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchIconOffset by remember { mutableStateOf(Offset.Zero) }

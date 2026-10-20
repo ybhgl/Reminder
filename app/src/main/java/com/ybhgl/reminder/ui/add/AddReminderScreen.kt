@@ -70,7 +70,6 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.compose.ui.focus.FocusRequester
 import androidx.compose.ui.focus.focusRequester
 import kotlinx.coroutines.delay
-import kotlinx.coroutines.flow.first
 import com.ybhgl.reminder.ui.common.smoothImePadding
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
@@ -154,11 +153,10 @@ fun AddReminderScreen(
     val currentLunarLabel = remember(uiState.date) { CalendarUtil.getLunarMonthDayLabel(uiState.date) }
     val context = LocalContext.current
 
-    // null = 保险柜密码读取中；空串 = 未设置。未设置时隐藏"加密"入口
-    var safePassword by remember { mutableStateOf<String?>(null) }
-    LaunchedEffect(context) {
-        safePassword = SecurityPreferences.safeGesturePasswordFlow(context).first()
-    }
+    // null = 保险柜密码读取中；空串 = 未设置。未设置时隐藏"加密"入口。
+    // 持续收集 DataStore Flow：设置/销毁保险柜密码后即时更新入口可见性。
+    val safePassword by remember(context) { SecurityPreferences.safeGesturePasswordFlow(context) }
+        .collectAsState<String?, String?>(initial = null)
 
     // 个性化设置页结果回写：旧背景图被替换或恢复默认时清理应用私有目录中的残留图片
     val personalizationLauncher = rememberLauncherForActivityResult(PersonalizationContract()) { result ->
