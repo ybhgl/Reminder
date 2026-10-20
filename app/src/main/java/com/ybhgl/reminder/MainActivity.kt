@@ -3,6 +3,7 @@
 package com.ybhgl.reminder
 
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.ImeAction
 import com.ybhgl.reminder.ui.add.toFontFamily
 import kotlin.math.roundToInt
 
@@ -32,11 +33,15 @@ import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
+import android.view.HapticFeedbackConstants
+import androidx.compose.ui.platform.LocalView
+import kotlinx.coroutines.Job
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -73,12 +78,18 @@ import androidx.compose.foundation.layout.requiredWidth
 import androidx.compose.foundation.layout.requiredHeight
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.Delete
 import androidx.compose.material.icons.filled.Settings
@@ -99,6 +110,8 @@ import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Lock
+import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.KeyboardArrowUp
 import androidx.compose.material.icons.filled.KeyboardArrowDown
 import androidx.compose.material3.AlertDialog
@@ -134,6 +147,7 @@ import androidx.compose.material3.ripple
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.SideEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.derivedStateOf
 import androidx.compose.runtime.getValue
@@ -152,6 +166,8 @@ import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.unit.Velocity
 import androidx.compose.ui.graphics.graphicsLayer
@@ -175,6 +191,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ViewList
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.automirrored.filled.Label
+import androidx.compose.material.icons.automirrored.filled.KeyboardReturn
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -216,6 +233,7 @@ import com.ybhgl.reminder.ui.settings.BackupAndRestoreScreen
 import com.ybhgl.reminder.ui.tag.TagManagementScreen
 import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.data.BackupPreferences
+import com.ybhgl.reminder.data.SecurityPreferences
 import com.ybhgl.reminder.ui.theme.LocalAppDarkTheme
 import com.ybhgl.reminder.ui.theme.LocalCardColoringEnabled
 import com.ybhgl.reminder.ui.theme.ReminderTheme
@@ -241,6 +259,7 @@ import com.ybhgl.reminder.ui.share.ShareScreen
 import com.ybhgl.reminder.ui.common.CardBackgroundLayer
 import com.ybhgl.reminder.ui.common.CardBackgroundSpec
 import com.ybhgl.reminder.ui.common.CardBackgroundType
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.NumberEffectSpec
 import com.ybhgl.reminder.ui.common.NumberFontEffect
 import com.ybhgl.reminder.ui.common.GlassTextOverlay
@@ -654,6 +673,10 @@ object Routes {
     const val DATE_CALCULATOR = "date_calculator"
     const val RECYCLE_BIN = "recycle_bin"
     const val OPEN_SOURCE_LICENSES = "open_source_licenses"
+    /** 保险柜主页（独立隐私密码 + 生物解锁） */
+    const val SAFE = "safe"
+    /** 保险柜密码设置/修改页（复用手势设置组件，SAFE 模式） */
+    const val SAFE_PASSWORD = "safe_password"
 
     fun editReminder(reminderId: Int, readOnly: Boolean = false): String = "$EDIT_REMINDER_BASE/$reminderId?readOnly=$readOnly"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
@@ -847,6 +870,8 @@ fun ReminderApp() {
                 composable(route = Routes.BACKUP_AND_RESTORE) { }
                 composable(route = Routes.DATE_CALCULATOR) { }
                 composable(route = Routes.RECYCLE_BIN) { }
+                composable(route = Routes.SAFE) { }
+                composable(route = Routes.SAFE_PASSWORD) { }
                 composable(route = Routes.GESTURE_SETUP) { }
                 composable(route = Routes.GESTURE_MODIFY) { }
                 composable(
@@ -1315,8 +1340,42 @@ fun ReminderListScreen(
     val showBackupAlert = backupReminderEnabled && lastDataChangeTimestamp > lastBackupTimestamp
     val hasUpdate by UpdateManager.updateInfo.collectAsState()
 
+    // null = 保险柜密码读取中；空串 = 未设置。未设置时隐藏"移入保险柜"入口。
+    // 持续收集 DataStore Flow：设置/销毁保险柜密码后返回主页即时更新选项可见性。
+    val safePassword by remember(context) { SecurityPreferences.safeGesturePasswordFlow(context) }
+        .collectAsState<String?, String?>(initial = null)
+
     var isSearchActive by rememberSaveable { mutableStateOf(false) }
     var searchIconOffset by remember { mutableStateOf(Offset.Zero) }
+
+    // 入口一：首页下拉打开保险柜。整页平移量 safePullOffsetPx 在拖拽中直写（无挂起调用），
+    // 松手未达阈值时由非受限协程弹性回弹；safePullArmed 表示是否已越过阈值（高亮 + 震动）。
+    var safePullOffsetPx by remember { mutableFloatStateOf(0f) }
+    var safePullArmed by remember { mutableStateOf(false) }
+    val safePullThresholdPx = with(LocalDensity.current) { 80.dp.toPx() }
+    val safePullReleaseJob = remember { mutableStateOf<Job?>(null) }
+    val safePullScope = rememberCoroutineScope()
+    val safePullView = LocalView.current
+    val safePullAnim = remember { Animatable(0f) }
+    // 各分类页的列表滚动状态：下拉触发条件需要直接判断「当前页内容是否处于顶部」
+    // （顶栏位移 titleOffsetPx 只在 HIDE_TOP_BAR/HIDE_BOTH 模式下更新，不能作为内容在顶部的判据）
+    val safePullListStates = remember { mutableMapOf<Int, LazyListState>() }
+    // 松手未达阈值（或手势被取消）：弹性回弹到 0
+    val safePullSpringBack: () -> Unit = {
+        safePullReleaseJob.value?.cancel()
+        safePullReleaseJob.value = safePullScope.launch {
+            safePullAnim.snapTo(safePullOffsetPx)
+            safePullAnim.animateTo(
+                targetValue = 0f,
+                animationSpec = spring(
+                    dampingRatio = Spring.DampingRatioLowBouncy,
+                    stiffness = Spring.StiffnessMedium
+                )
+            ) {
+                safePullOffsetPx = value
+            }
+        }
+    }
     
     val searchAnimationProgress by animateFloatAsState(
         targetValue = if (isSearchActive) 1f else 0f,
@@ -1372,6 +1431,9 @@ fun ReminderListScreen(
     var collapsedSections by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(setOf<String>()) }
     
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
+    // 内容占位偏移：滚动时跟随 titleOffsetPx，多选强制展开动画期间冻结，
+    // 使顶栏滑出/滑回只悬浮覆盖内容，页面内容不发生纵向位移
+    var contentTitleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
     var bottomBarHeightPx by remember { mutableStateOf(0f) }
     var bottomBarOffsetPx by rememberSaveable { mutableStateOf(0f) }
@@ -1405,6 +1467,15 @@ fun ReminderListScreen(
                     bottomBarOffsetPx = value
                 }
             }
+        } else if (titleOffsetPx != contentTitleOffsetPx) {
+            // 退出多选：顶栏滑回进入前的位置，内容占位始终冻结，页面全程不动
+            animate(
+                initialValue = titleOffsetPx,
+                targetValue = contentTitleOffsetPx,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ) { value, _ ->
+                titleOffsetPx = value
+            }
         }
     }
 
@@ -1432,9 +1503,11 @@ fun ReminderListScreen(
                             val newTopOffset = (oldTopOffset + delta).coerceIn(-topBarHeightPx, 0f)
                             consumedTop = newTopOffset - oldTopOffset
                             titleOffsetPx = newTopOffset
+                            contentTitleOffsetPx = newTopOffset
                         }
                     } else {
                         titleOffsetPx = 0f
+                        contentTitleOffsetPx = 0f
                     }
 
                     if (currentScrollBehavior == com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_BOTTOM_BAR || 
@@ -1546,11 +1619,105 @@ fun ReminderListScreen(
         Box(
             modifier = Modifier
                 .fillMaxSize()
+                // 手势挂在内容容器（父级）：子级（列表/卡片/顶栏/底栏）的点击与滚动完全不受影响；
+                // 仅当列表页 + pager 停稳 + 当前页内容处于顶部 + 顶栏完全展开时才认领下拉。
+                .pointerInput(isSearchActive, isSelectionMode, fabMenuExpanded) {
+                    if (isSearchActive || isSelectionMode || fabMenuExpanded) return@pointerInput
+                    val touchSlop = viewConfiguration.touchSlop
+                    awaitEachGesture {
+                        awaitFirstDown(requireUnconsumed = false)
+                        // 新手势开始时取消可能正在进行的回弹动画
+                        safePullReleaseJob.value?.cancel()
+                        var pull = 0f
+                        var tracking = false
+                        var navigated = false
+                        try {
+                            while (true) {
+                                val event = awaitPointerEvent()
+                                val change = event.changes.firstOrNull()
+                                if (change == null || !change.pressed) {
+                                    // 松手：达标则进入保险柜，否则回弹
+                                    if (tracking && pull >= safePullThresholdPx) {
+                                        navigated = true
+                                        navController.navigate(Routes.SAFE)
+                                        safePullOffsetPx = 0f
+                                    }
+                                    break
+                                }
+                                // 用 IgnoreConsumed 变体：列表/卡片的 scrollable 与 clickable 会消费 down，
+                                // positionChange() 在此场景恒返回 Zero（列表区域会完全拉不动）
+                                val dy = change.positionChangeIgnoreConsumed().y
+                                // 触发条件：列表页（非日历页）+ pager 停稳 + 当前页内容处于顶部 + 顶栏完全展开
+                                val currentListState = safePullListStates[pagerState.currentPage]
+                                val contentAtTop = currentListState == null ||
+                                    (
+                                        currentListState.firstVisibleItemIndex == 0 &&
+                                            currentListState.firstVisibleItemScrollOffset == 0
+                                        )
+                                val atTop = pagerState.currentPage != 0 &&
+                                    pagerState.currentPageOffsetFraction == 0f &&
+                                    contentAtTop &&
+                                    titleOffsetPx >= -0.5f
+                                if (atTop && dy > 0f) {
+                                    if (!tracking) {
+                                        // 未超过触摸 slop 前不认领手势、不消费、不位移，点击与滚动零影响
+                                        pull += dy
+                                        if (pull >= touchSlop) {
+                                            tracking = true
+                                            pull = touchSlop
+                                        }
+                                    } else {
+                                        // 阻尼下拉：越拉越费劲，上限 1.6 倍阈值
+                                        pull = (pull + dy * 0.65f)
+                                            .coerceAtMost(safePullThresholdPx * 1.6f)
+                                    }
+                                    if (tracking) {
+                                        safePullOffsetPx = pull
+                                        val armed = pull >= safePullThresholdPx
+                                        if (armed != safePullArmed) {
+                                            safePullArmed = armed
+                                            safePullView.performHapticFeedback(
+                                                HapticFeedbackConstants.CLOCK_TICK
+                                            )
+                                        }
+                                        change.consume()
+                                    }
+                                } else if (tracking && dy <= 0f) {
+                                    // 已认领后跟手回滑
+                                    pull = (pull + dy).coerceAtLeast(0f)
+                                    safePullOffsetPx = pull
+                                    val armed = pull >= safePullThresholdPx
+                                    if (armed != safePullArmed) {
+                                        safePullArmed = armed
+                                        safePullView.performHapticFeedback(
+                                            HapticFeedbackConstants.CLOCK_TICK
+                                        )
+                                    }
+                                    change.consume()
+                                } else if (!atTop) {
+                                    // 顶栏折叠中/日历页：不认领，交给原有交互
+                                    tracking = false
+                                    pull = 0f
+                                    safePullOffsetPx = 0f
+                                    safePullArmed = false
+                                } else {
+                                    // 顶端向上滚动（正常浏览列表）：重置预累计
+                                    pull = 0f
+                                }
+                            }
+                        } finally {
+                            safePullArmed = false
+                            if (!navigated) safePullSpringBack()
+                        }
+                    }
+                }
         ) {
             HorizontalPager(
                 state = pagerState,
                 modifier = Modifier
-                    .fillMaxSize(),
+                    .fillMaxSize()
+                    // 入口一：下拉时仅内容区（顶栏下方）跟随手指下移，顶栏与状态栏遮罩保持固定
+                    .graphicsLayer { translationY = safePullOffsetPx },
                 userScrollEnabled = true,
                 beyondViewportPageCount = 1
             ) { page ->
@@ -1593,8 +1760,11 @@ fun ReminderListScreen(
 
                 if (reminderListUiState.isLoading) {
                     // 正在加载时不显示 EmptyStateCard，避免闪屏
+                    // 无列表时注销本页状态，避免残留旧滚动位置影响下拉判定
+                    SideEffect { safePullListStates.remove(page) }
                     Box(modifier = Modifier.fillMaxSize())
                 } else if (sections.isEmpty()) {
+                    SideEffect { safePullListStates.remove(page) }
                     val density = LocalDensity.current
                     val staticBottomPadding = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     EmptyStateCard(
@@ -1604,15 +1774,21 @@ fun ReminderListScreen(
                             .windowInsetsPadding(
                                 DynamicTopInsets(
                                     bottomPx = with(density) { staticBottomPadding.roundToPx() },
-                                    topPxProvider = { topBarHeightPx + titleOffsetPx }
+                                    topPxProvider = { topBarHeightPx + contentTitleOffsetPx }
                                 )
                             )
                             .fillMaxWidth()
                     )
                 } else {
                     val density = LocalDensity.current
+                    // 登记本页列表状态供下拉手势判断「内容是否处于顶部」
+                    val listState = rememberLazyListState()
+                    SideEffect {
+                        safePullListStates[page] = listState
+                    }
                     val staticBottomPadding = listBottomPadding + WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding()
                     LazyColumn(
+                        state = listState,
                         modifier = Modifier
                             .fillMaxSize(),
                         // top 在测量期读 titleOffsetPx：顶栏收展只触发列表重测，
@@ -1621,7 +1797,7 @@ fun ReminderListScreen(
                             leftPx = with(density) { 16.dp.roundToPx() },
                             rightPx = with(density) { 16.dp.roundToPx() },
                             bottomPx = with(density) { staticBottomPadding.roundToPx() },
-                            topPxProvider = { topBarHeightPx + titleOffsetPx }
+                            topPxProvider = { topBarHeightPx + contentTitleOffsetPx }
                         ).asPaddingValues()
                     ) {
                         sections.forEachIndexed { sectionIndex, section ->
@@ -1865,6 +2041,73 @@ fun ReminderListScreen(
                 }
             }
 
+            // 入口一：下拉提示 pill。顶栏固定不动，pill 出现在顶栏与下移内容之间拉出的空隙中：
+            // 空隙不足时固定贴在顶栏下沿，空隙够大后贴着下移内容的顶边随之下移；
+            // 未越阈值为中性灰，越过阈值高亮为主题强调色（震动由手势越阈值时触发）。
+            val safePullProgress = (safePullOffsetPx / safePullThresholdPx).coerceIn(0f, 1f)
+            if (safePullProgress > 0.05f) {
+                val safePullPillColor by animateColorAsState(
+                    targetValue = if (safePullArmed) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.surfaceVariant
+                    },
+                    animationSpec = tween(120),
+                    label = "SafePullPillColor"
+                )
+                val safePullPillContentColor by animateColorAsState(
+                    targetValue = if (safePullArmed) {
+                        MaterialTheme.colorScheme.onPrimary
+                    } else {
+                        MaterialTheme.colorScheme.onSurfaceVariant
+                    },
+                    animationSpec = tween(120),
+                    label = "SafePullPillContentColor"
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .windowInsetsPadding(WindowInsets.statusBars)
+                        .padding(top = 72.dp)
+                        .graphicsLayer {
+                            val gap = safePullOffsetPx
+                            // 空隙不足 pill 占位（56dp）时贴顶栏下沿；之后随下移内容顶边一起走
+                            translationY = (gap - 56.dp.toPx()).coerceAtLeast(0f)
+                            alpha = ((gap - 32.dp.toPx()) / 32.dp.toPx()).coerceIn(0f, 1f)
+                            val s = 0.85f + 0.15f * safePullProgress
+                            scaleX = s
+                            scaleY = s
+                        }
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .background(safePullPillColor, RoundedCornerShape(20.dp))
+                            .border(
+                                BorderStroke(
+                                    1.dp,
+                                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                                ),
+                                RoundedCornerShape(20.dp)
+                            )
+                            .padding(horizontal = 16.dp, vertical = 10.dp),
+                        verticalAlignment = Alignment.CenterVertically,
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Lock,
+                            contentDescription = null,
+                            tint = safePullPillContentColor,
+                            modifier = Modifier.size(18.dp)
+                        )
+                        Text(
+                            text = if (safePullArmed) "松开进入保险柜" else "下拉进入保险柜",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = safePullPillContentColor
+                        )
+                    }
+                }
+            }
+
             // FAB 扩展菜单遮罩：点击空白处收起菜单
             if (fabMenuExpanded) {
                 Box(
@@ -1974,12 +2217,13 @@ fun ReminderListScreen(
                     .onSizeChanged {
                         if (it.height > 0) bottomBarHeightPx = it.height.toFloat()
                     }
-                    .graphicsLayer {
-                        translationY = bottomBarOffsetPx
-                        alpha = 1f - calendarProgress
-                    }
-                    .windowInsetsPadding(WindowInsets.navigationBars)
-                    .padding(bottom = segmentedBottomSpacing, start = 8.dp, end = 24.dp)
+.graphicsLayer {
+                    // 入口一：与内容区同步下移（顶栏保持固定）
+                    translationY = bottomBarOffsetPx + safePullOffsetPx
+                    alpha = 1f - calendarProgress
+                }
+                .windowInsetsPadding(WindowInsets.navigationBars)
+                .padding(bottom = segmentedBottomSpacing, start = 8.dp, end = 24.dp)
             ) {
                 // 日历页完全展示时不组合底栏内容，避免淡出浮层误触并放行日历手势
                 if (calendarProgress < 0.999f) {
@@ -2118,26 +2362,24 @@ fun ReminderListScreen(
             }
 
             if (showDeleteDialog) {
-                AppAlertDialog(
+                ReminderDisposeDialog(
+                    selectedCount = selectedIds.size,
+                    hasSafePassword = !safePassword.isNullOrEmpty(),
                     onDismissRequest = { showDeleteDialog = false },
-                    title = "删除提醒",
-                    text = "已选 ${selectedIds.size} 条提醒。删除的提醒将进入回收站，可稍后恢复；永久删除后不可恢复！",
-                    neutralText = "永久删除",
-                    onNeutral = {
+                    onMoveToRecycleBin = {
                         showDeleteDialog = false
-                        val itemsToDelete = reminderListUiState.itemList.filter { it.id in reminderListUiState.selectedIds }
-                        itemsToDelete.forEach { itemToDelete ->
-                            com.ybhgl.reminder.util.ReminderScheduler.cancelReminder(context, itemToDelete)
-                            com.ybhgl.reminder.util.CalendarManager.deleteEvent(context, itemToDelete)
-                        }
-                        viewModel.deleteSelected()
-                    },
-                    neutralDestructive = true,
-                    dismissText = "取消",
-                    confirmText = "回收",
-                    onConfirm = {
-                        showDeleteDialog = false
+                        CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已移入回收站")
                         viewModel.moveSelectedToRecycleBin()
+                    },
+                    onMoveToSafe = {
+                        showDeleteDialog = false
+                        CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已移入保险柜")
+                        viewModel.moveSelectedToSafe()
+                    },
+                    onDeletePermanently = {
+                        showDeleteDialog = false
+                        CustomToast.showSuccess(context, "${selectedIds.size} 条提醒已永久删除")
+                        viewModel.deleteSelected()
                     }
                 )
             }
@@ -2187,7 +2429,12 @@ fun ReminderListScreen(
                             navController.navigate(Routes.detailReminder(reminder.id))
                         },
                         onBackClick = { isSearchActive = false },
-                        tagsList = reminderListUiState.tagsList
+                        tagsList = reminderListUiState.tagsList,
+                        onSafeEntry = {
+                            isSearchActive = false
+                            searchQuery = ""
+                            navController.navigate(Routes.SAFE)
+                        }
                     )
                 }
             }
@@ -2241,6 +2488,106 @@ private fun FabMenuItem(
                 fontWeight = FontWeight.Medium
             )
         }
+    }
+}
+
+/**
+ * 首页多选删除弹窗：处理选项（移入保险柜 / 移入回收站 / 永久删除）。
+ * 三个全宽选项垂直排列，「取消」位于右下角（M3 AlertDialog 规范）；
+ * 「永久删除」为两步确认：首次点击仅选中该项（error 高亮），
+ * 左下角 neutral 位置出现「确认删除」按钮，再次点击才执行删除，防止误触；
+ * 永久删除走 Repository 完整删除路径（含闹钟/日历/背景图清理）。
+ * hasSafePassword 为 false（含密码读取中）时不渲染「移入保险柜」选项。
+ */
+@Composable
+private fun ReminderDisposeDialog(
+    selectedCount: Int,
+    hasSafePassword: Boolean,
+    onDismissRequest: () -> Unit,
+    onMoveToRecycleBin: () -> Unit,
+    onMoveToSafe: () -> Unit,
+    onDeletePermanently: () -> Unit
+) {
+    var permanentSelected by remember { mutableStateOf(false) }
+
+    AppAlertDialog(
+        onDismissRequest = onDismissRequest,
+        title = "处理提醒",
+        content = {
+            Column {
+                Text(
+                    text = "已选 $selectedCount 条提醒，请选择处理方式",
+                    style = MaterialTheme.typography.bodyMedium,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(16.dp))
+                
+                if (hasSafePassword) {
+                    DisposeOptionRow(
+                        icon = Icons.Default.RestoreFromTrash,
+                        label = "移入保险柜",
+                        tint = MaterialTheme.colorScheme.primary,
+                        onClick = {
+                            if (permanentSelected) permanentSelected = false else onMoveToSafe()
+                        }
+                    )
+                    Spacer(modifier = Modifier.height(8.dp))
+                }
+                
+                DisposeOptionRow(
+                    icon = Icons.Default.Lock,
+                    label = "移入回收站",
+                    tint = MaterialTheme.colorScheme.onSurface,
+                    onClick = {
+                        if (permanentSelected) permanentSelected = false else onMoveToRecycleBin()
+                    }
+                )
+                Spacer(modifier = Modifier.height(8.dp))
+                
+                DisposeOptionRow(
+                    icon = Icons.Default.DeleteForever,
+                    label = "永久删除",
+                    tint = MaterialTheme.colorScheme.error,
+                    selected = permanentSelected,
+                    onClick = { permanentSelected = !permanentSelected }
+                )
+            }
+        },
+        confirmText = "取消",
+        onConfirm = onDismissRequest,
+        neutralText = if (permanentSelected) "确认删除" else null,
+        onNeutral = onDeletePermanently,
+        neutralDestructive = true
+    )
+}
+
+@Composable
+private fun DisposeOptionRow(
+    icon: ImageVector,
+    label: String,
+    tint: Color,
+    selected: Boolean = false,
+    onClick: () -> Unit
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .clip(RoundedCornerShape(12.dp))
+            .background(
+                if (selected) tint.copy(alpha = 0.12f)
+                else MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+            )
+            .then(
+                if (selected) Modifier.border(1.dp, tint, RoundedCornerShape(12.dp))
+                else Modifier
+            )
+            .clickable(onClick = onClick)
+            .padding(horizontal = 16.dp, vertical = 12.dp),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(12.dp)
+    ) {
+        Icon(imageVector = icon, contentDescription = null, tint = tint)
+        Text(text = label, style = MaterialTheme.typography.bodyLarge, color = tint)
     }
 }
 
@@ -3058,7 +3405,8 @@ private fun SearchPanelContent(
     viewMode: ReminderViewMode,
     onItemClick: (ReminderItem) -> Unit,
     onBackClick: () -> Unit,
-    tagsList: List<TagItem> = emptyList()
+    tagsList: List<TagItem> = emptyList(),
+    onSafeEntry: () -> Unit = {}
 ) {
     var showFilterMenu by remember { mutableStateOf(false) }
 
@@ -3124,7 +3472,16 @@ private fun SearchPanelContent(
                     focusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f),
                     unfocusedContainerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.3f)
                 ),
-                singleLine = true
+                singleLine = true,
+                keyboardOptions = KeyboardOptions(imeAction = ImeAction.Search),
+                keyboardActions = KeyboardActions(
+                    onSearch = {
+                        // 入口二：搜索「保险柜」三个字按回车打开
+                        if (searchQuery.trim() == "保险柜") {
+                            onSafeEntry()
+                        }
+                    }
+                )
             )
         }
         
@@ -3377,7 +3734,44 @@ private fun SearchPanelContent(
                 shape = RoundedCornerShape(12.dp)
             )
         }
-        
+
+        // 入口二辅助：输入「保险柜」时展示可点击的快捷入口行（回车亦可打开）
+        if (searchQuery.trim() == "保险柜") {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 16.dp, vertical = 4.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f))
+                    .clickable { onSafeEntry() }
+                    .padding(horizontal = 16.dp, vertical = 12.dp),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(12.dp)
+            ) {
+                Icon(
+                    imageVector = Icons.Default.Lock,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.primary
+                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "保险柜",
+                        style = MaterialTheme.typography.bodyLarge
+                    )
+                    Text(
+                        text = "按回车键打开",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+                Icon(
+                    imageVector = Icons.AutoMirrored.Filled.KeyboardReturn,
+                    contentDescription = null,
+                    tint = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
+        }
+
         if (searchQuery.isEmpty() && selectedDateFilter == null && selectedTypes.isEmpty() && selectedTags.isEmpty()) {
             Box(
                 modifier = Modifier
@@ -3592,6 +3986,14 @@ private fun ReminderNavContent(
             }
         )
         Routes.RECYCLE_BIN -> RecycleBinScreen(navController = navController)
+        Routes.SAFE -> com.ybhgl.reminder.ui.safe.SafeScreen(navController = navController)
+        Routes.SAFE_PASSWORD ->
+            com.ybhgl.reminder.ui.security.GestureSetupScreen(
+                onNavigateBack = { navController.navigateUp() },
+                onSetupComplete = { navController.navigateUp() },
+                isModifyMode = true,
+                mode = com.ybhgl.reminder.ui.security.PasswordMode.SAFE
+            )
         Routes.GESTURE_SETUP ->
             com.ybhgl.reminder.ui.security.GestureSetupScreen(
                 onNavigateBack = { navController.navigateUp() },

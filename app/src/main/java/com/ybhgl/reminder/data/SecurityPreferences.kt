@@ -19,6 +19,10 @@ private val APP_LOCK_ENABLED_KEY = booleanPreferencesKey("app_lock_enabled")
 private val GESTURE_PASSWORD_KEY = stringPreferencesKey("gesture_password")
 private val SCREENSHOT_BLOCKED_KEY = booleanPreferencesKey("screenshot_blocked")
 private val USE_BIOMETRIC_KEY = booleanPreferencesKey("use_biometric")
+/** 保险柜独立隐私密码（与应用锁密码分开存储，可设为相同；空 = 未设置） */
+private val SAFE_GESTURE_PASSWORD_KEY = stringPreferencesKey("safe_gesture_password")
+/** 保险柜生物解锁开关（独立于应用锁的生物解锁开关） */
+private val SAFE_USE_BIOMETRIC_KEY = booleanPreferencesKey("safe_use_biometric")
 
 private val Context.securityDataStore: DataStore<Preferences> by preferencesDataStore(
     name = SECURITY_DATA_STORE_NAME
@@ -106,6 +110,48 @@ object SecurityPreferences {
     suspend fun saveUseBiometric(context: Context, use: Boolean) {
         context.securityDataStore.edit { preferences ->
             preferences[USE_BIOMETRIC_KEY] = use
+        }
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+    }
+
+    /** 保险柜独立隐私密码（空字符串 = 未设置） */
+    fun safeGesturePasswordFlow(context: Context): Flow<String> =
+        context.securityDataStore.data
+            .catch { exception ->
+                if (exception is IOException) {
+                    emit(emptyPreferences())
+                } else {
+                    throw exception
+                }
+            }
+            .map { preferences ->
+                preferences[SAFE_GESTURE_PASSWORD_KEY] ?: ""
+            }
+
+    suspend fun saveSafeGesturePassword(context: Context, password: String) {
+        context.securityDataStore.edit { preferences ->
+            preferences[SAFE_GESTURE_PASSWORD_KEY] = password
+        }
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+    }
+
+    /** 保险柜生物解锁开关（独立于应用锁） */
+    fun safeUseBiometricFlow(context: Context): Flow<Boolean> =
+        context.securityDataStore.data
+            .catch { exception ->
+                if (exception is IOException) {
+                    emit(emptyPreferences())
+                } else {
+                    throw exception
+                }
+            }
+            .map { preferences ->
+                preferences[SAFE_USE_BIOMETRIC_KEY] ?: false
+            }
+
+    suspend fun saveSafeUseBiometric(context: Context, use: Boolean) {
+        context.securityDataStore.edit { preferences ->
+            preferences[SAFE_USE_BIOMETRIC_KEY] = use
         }
         BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
     }

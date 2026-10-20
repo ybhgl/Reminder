@@ -320,8 +320,9 @@ object BackupPreferences {
             autoBackupStatusFlow.value = "BACKUPING"
 
             val actualRepository = reminderRepository ?: (context.applicationContext as? com.ybhgl.reminder.ReminderApplication)?.container?.reminderRepository
-            val reminders = actualRepository?.getAllRemindersStream()?.first()
-                ?: ReminderDatabase.getDatabase(context).reminderDao().getAllRemindersList()
+            // 备份数据源含保险柜事件：isInSafe 随序列化保留，恢复备份时直接回到保险柜
+            val reminders = actualRepository?.getBackupRemindersStream()?.first()
+                ?: ReminderDatabase.getDatabase(context).reminderDao().getBackupRemindersList()
 
             if (reminders.isEmpty()) return@withLock AutoBackupResult(success = false, errorMessage = "无提醒事项数据，不进行备份")
 

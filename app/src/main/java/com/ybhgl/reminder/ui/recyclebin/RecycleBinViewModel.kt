@@ -81,7 +81,7 @@ class RecycleBinViewModel(
         selectionMode.value = false
     }
 
-    /** 恢复选中事件：重建调度/日历后自动触发自动删除检查 */
+    /** 恢复选中事件：重建调度/日历后自动触发自动删除检查。Toast 反馈由页面层给出（本 VM 持有 Application context，CustomToast 需要 Activity） */
     fun restoreSelected() {
         val idsToRestore = selectedIds.value
         if (idsToRestore.isEmpty()) return

@@ -325,6 +325,8 @@ fun StatusBarScrim(modifier: Modifier = Modifier) {
  * - [titleOffsetPx]：顶栏当前的垂直偏移（0 = 完全展开，-topBarHeightPx = 完全收起）
  * - [scrollableState]：页面主滚动容器的状态（`ScrollState` / `LazyListState` 等），
  *   用于判断页面是否真的还有可滚动余量；为空时视为"始终可滚动"，退化为旧行为
+ * - [forceExpanded]：多选等临时状态下强制保持完全展开
+ * - [contentOffsetPx]：内容占位偏移，多选强制展开期间冻结，顶栏滑出不挤压页面
  * - [nestedScrollConnection]：在内容滚动前优先消费增量驱动顶栏收起/展开
  */
 @Stable
@@ -333,10 +335,22 @@ class CollapsingTopBarState {
     var topBarHeightPx by mutableStateOf(0f)
 
     /**
+     * 内容占位偏移：滚动时始终跟随 [titleOffsetPx]，但多选强制展开动画期间保持冻结，
+     * 使顶栏滑出时悬浮覆盖在内容上方、页面内容不发生纵向位移。
+     */
+    var contentOffsetPx by mutableStateOf(0f)
+
+    /**
      * 页面主滚动容器。为 null 时不启用"不可滚动不收起"的保护。
      * 只在嵌套滚动回调里读取，不参与重组，故用普通 var 而非 mutableState。
      */
     var scrollableState: ScrollableState? = null
+
+    /**
+     * 强制展开顶栏（多选等临时状态）：跳过收起消费，顶栏在整个状态期间保持完全展开，
+     * 避免标题（如「已选择 x 项」）被滚走。
+     */
+    var forceExpanded by mutableStateOf(false)
 
     /** 页面内容是否还有可滚动余量；内容高度未超出视口时为 false */
     val isContentScrollable: Boolean
@@ -347,6 +361,7 @@ class CollapsingTopBarState {
 
     val nestedScrollConnection = object : NestedScrollConnection {
         override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+            if (forceExpanded) return Offset.Zero
             val barHeight = topBarHeightPx
             if (barHeight <= 0f) return Offset.Zero
 
@@ -361,14 +376,15 @@ class CollapsingTopBarState {
             val newOffset = (oldOffset + delta).coerceIn(-barHeight, 0f)
             val consumed = newOffset - oldOffset
             titleOffsetPx = newOffset
+            contentOffsetPx = newOffset
             return Offset(0f, consumed)
         }
     }
 
     companion object {
         val Saver: Saver<CollapsingTopBarState, out Any> = listSaver(
-            save = { listOf(it.titleOffsetPx) },
-            restore = { CollapsingTopBarState().apply { titleOffsetPx = it[0] } }
+            save = { listOf(it.titleOffsetPx, it.contentOffsetPx) },
+            restore = { CollapsingTopBarState().apply { titleOffsetPx = it[0]; contentOffsetPx = it[1] } }
         )
     }
 }

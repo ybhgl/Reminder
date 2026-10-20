@@ -45,6 +45,7 @@ import androidx.compose.material.icons.filled.EventAvailable
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ExposurePlus1
 import androidx.compose.material.icons.filled.Label
+import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.PushPin
 import androidx.compose.material.icons.filled.Repeat
@@ -104,10 +105,12 @@ import com.ybhgl.reminder.Routes
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.foundation.layout.requiredWidth
 import com.ybhgl.reminder.data.ReminderType
+import com.ybhgl.reminder.data.SecurityPreferences
 import com.ybhgl.reminder.data.RepeatInfo
 import com.ybhgl.reminder.data.RepeatUnit
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
 import com.ybhgl.reminder.ui.common.TonalCardRow
 import com.ybhgl.reminder.ui.personalization.PersonalizationContract
@@ -150,6 +153,11 @@ fun AddReminderScreen(
     val zoneId = ZoneId.systemDefault()
     val currentLunarLabel = remember(uiState.date) { CalendarUtil.getLunarMonthDayLabel(uiState.date) }
     val context = LocalContext.current
+
+    // null = 保险柜密码读取中；空串 = 未设置。未设置时隐藏"加密"入口。
+    // 持续收集 DataStore Flow：设置/销毁保险柜密码后即时更新入口可见性。
+    val safePassword by remember(context) { SecurityPreferences.safeGesturePasswordFlow(context) }
+        .collectAsState<String?, String?>(initial = null)
 
     // 个性化设置页结果回写：旧背景图被替换或恢复默认时清理应用私有目录中的残留图片
     val personalizationLauncher = rememberLauncherForActivityResult(PersonalizationContract()) { result ->
@@ -481,6 +489,28 @@ fun AddReminderScreen(
                     onClick = { showNotesSheet = true }
                 )
 
+                // 10. 加密（将提醒收入保险柜，仅在保险柜页可见；未设置保险柜密码时隐藏）
+                val hasSafePassword = !safePassword.isNullOrEmpty()
+                if (hasSafePassword) {
+                    TonalCardRow(
+                        modifier = Modifier
+                            .padding(top = 16.dp)
+                            .then(readOnlyFade),
+                        icon = Icons.Default.Lock,
+                        title = "加密",
+                        subtitle = "将提醒收入保险柜",
+                        trailing = {
+                            Switch(
+                                checked = uiState.isInSafe,
+                                onCheckedChange = null
+                            )
+                        },
+                        onClick = if (readOnly) null else {
+                            { viewModel.updateUiState(uiState.copy(isInSafe = !uiState.isInSafe)) }
+                        }
+                    )
+                }
+
                 if (isEditing && !readOnly) {
                     OutlinedButton(
                         onClick = { showDeleteConfirmDialog = true },
@@ -505,6 +535,7 @@ fun AddReminderScreen(
                                 showDeleteConfirmDialog = false
                                 coroutineScope.launch {
                                     if (viewModel.deleteReminder(context)) {
+                                        CustomToast.showSuccess(context, "1 条提醒已永久删除")
                                         onDeleted()
                                     }
                                 }
@@ -516,6 +547,7 @@ fun AddReminderScreen(
                                 showDeleteConfirmDialog = false
                                 coroutineScope.launch {
                                     if (viewModel.moveToRecycleBin(context)) {
+                                        CustomToast.showSuccess(context, "1 条提醒已移入回收站")
                                         onDeleted()
                                     }
                                 }
@@ -564,6 +596,7 @@ fun AddReminderScreen(
                         showReadOnlyDeleteConfirm = false
                         coroutineScope.launch {
                             if (viewModel.permanentlyDeleteFromRecycleBin()) {
+                                CustomToast.showSuccess(context, "1 条提醒已永久删除")
                                 onDeleted()
                             }
                         }
@@ -583,6 +616,7 @@ fun AddReminderScreen(
                         showReadOnlyRestoreConfirm = false
                         coroutineScope.launch {
                             if (viewModel.restoreFromRecycleBin()) {
+                                CustomToast.showSuccess(context, "1 条提醒已移出回收站")
                                 onDeleted()
                             }
                         }

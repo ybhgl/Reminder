@@ -26,6 +26,15 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
 
     suspend fun getRecycleBinRemindersList(): List<ReminderItem> = reminderDao.getRecycleBinRemindersList()
 
+    /** 备份数据源：含保险柜事件（恢复备份时 isInSafe 字段随数据保留，直接回到保险柜）；不含回收站 */
+    fun getBackupRemindersStream(): Flow<List<ReminderItem>> = reminderDao.getBackupReminders()
+
+    suspend fun getBackupRemindersList(): List<ReminderItem> = reminderDao.getBackupRemindersList()
+
+    fun getSafeRemindersStream(): Flow<List<ReminderItem>> = reminderDao.getSafeReminders()
+
+    suspend fun getSafeRemindersList(): List<ReminderItem> = reminderDao.getSafeRemindersList()
+
     fun getReminderStream(id: Int): Flow<ReminderItem?> = reminderDao.getReminder(id)
 
     suspend fun getReminderById(id: Int): ReminderItem? = reminderDao.getReminderById(id)
@@ -125,6 +134,48 @@ class ReminderRepository(private val reminderDao: ReminderDao, private val conte
         val items = getRecycleBinRemindersList()
         if (items.isEmpty()) return
         deleteRemindersByIds(items.map { it.id }.toSet())
+    }
+
+    /**
+     * 移入保险柜：与回收站一致地取消闹钟调度并移除系统日历事件（隐私事件不产生任何系统侧痕迹），
+     * 但保留背景图文件（移出后仍可用），并记录进入保险柜时间。
+     * 保险柜事件仍参与备份（isInSafe 随序列化保留），数据变更后的自动备份触发链与回收站保持一致。
+     */
+    suspend fun moveToSafe(ids: Set<Int>) {
+        if (ids.isEmpty()) return
+        val app = context.applicationContext
+        ids.forEach { id ->
+            val item = getReminderById(id)
+            if (item != null) {
+                ReminderScheduler.cancelReminder(app, item)
+                CalendarManager.deleteEvent(app, item)
+            }
+        }
+        reminderDao.moveToSafe(ids.toList(), System.currentTimeMillis())
+        WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, this)
+    }
+
+    /**
+     * 从保险柜移出（恢复为活跃事件）：清除保险柜标记后重建闹钟调度、系统日历事件与常驻通知，
+     * 调度链与 restoreReminders 保持一致。
+     */
+    suspend fun restoreFromSafe(ids: Set<Int>) {
+        if (ids.isEmpty()) return
+        val app = context.applicationContext
+        reminderDao.restoreFromSafe(ids.toList())
+        ids.forEach { id ->
+            val item = getReminderById(id)
+            if (item != null) {
+                ReminderScheduler.scheduleReminder(app, item)
+                CalendarManager.addOrUpdateEvent(app, item)
+                ReminderScheduler.updateActiveNotification(app, item)
+            }
+        }
+        WidgetUpdateHelper.updateAllWidgets(context)
+        BackupPreferences.saveLastDataChangeTimestamp(context, System.currentTimeMillis())
+        BackupPreferences.triggerAutoBackup(context, this)
     }
 
     suspend fun deleteAllReminders() {

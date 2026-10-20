@@ -139,6 +139,7 @@ class AddReminderViewModel(
             }
 
             val reminder = reminderUiState.toReminderItem()
+            val oldItem = if (reminder.id != 0) reminderRepository.getReminderById(reminder.id) else null
             val savedReminder = if (reminder.id == 0) {
                 val generatedId = reminderRepository.insertReminder(reminder)
                 reminder.copy(id = generatedId.toInt())
@@ -146,10 +147,21 @@ class AddReminderViewModel(
                 reminderRepository.updateReminder(reminder)
                 reminder
             }
-            // Trigger scheduling and calendar update with the correct ID
-            ReminderScheduler.scheduleReminder(context, savedReminder)
-            CalendarManager.addOrUpdateEvent(context, savedReminder)
-            ReminderScheduler.updateActiveNotification(context, savedReminder)
+            if (reminder.isInSafe) {
+                // 加密（收入保险柜）：清理系统侧闹钟与日历事件，不产生任何通知
+                ReminderScheduler.cancelReminder(context, savedReminder)
+                CalendarManager.deleteEvent(context, savedReminder)
+            } else {
+                if (oldItem != null && oldItem.isInSafe) {
+                    // 取消加密（从保险柜移出）：重建闹钟调度、系统日历事件与常充通知
+                    ReminderScheduler.scheduleReminder(context, savedReminder)
+                    CalendarManager.addOrUpdateEvent(context, savedReminder)
+                }
+                // Trigger scheduling and calendar update with the correct ID
+                ReminderScheduler.scheduleReminder(context, savedReminder)
+                CalendarManager.addOrUpdateEvent(context, savedReminder)
+                ReminderScheduler.updateActiveNotification(context, savedReminder)
+            }
         }
     }
 
@@ -275,6 +287,8 @@ data class ReminderUiState(
     val notificationConfig: ReminderNotificationConfig = ReminderNotificationConfig(),
     val showRepeatDialog: Boolean = false,
     val notes: String = "",
+    /** 加密开关：将提醒收入保险柜（独立隐私密码保护，仅保险柜页可见） */
+    val isInSafe: Boolean = false,
     val isCustomized: Boolean = false,
     val customHeaderColor: String = "",
     val customFont: String = "",
@@ -319,6 +333,7 @@ fun ReminderUiState.toReminderItem(): ReminderItem = ReminderItem(
     repeatInfo = repeatInfo,
     notificationConfig = notificationConfig,
     notes = notes,
+    isInSafe = isInSafe,
     isCustomized = isCustomized,
     customHeaderColor = customHeaderColor,
     customFont = customFont,
@@ -363,6 +378,7 @@ fun ReminderItem.toReminderUiState(): ReminderUiState = ReminderUiState(
     repeatInfo = repeatInfo,
     notificationConfig = notificationConfig,
     notes = notes,
+    isInSafe = isInSafe,
     isCustomized = isCustomized,
     customHeaderColor = customHeaderColor,
     customFont = customFont,

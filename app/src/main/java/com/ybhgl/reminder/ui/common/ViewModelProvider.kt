@@ -82,6 +82,14 @@ object AppViewModelProvider {
             )
         }
 
+        // Initializer for SafeViewModel
+        initializer {
+            com.ybhgl.reminder.ui.safe.SafeViewModel(
+                reminderRepository = reminderApplication().container.reminderRepository,
+                appContext = reminderApplication().applicationContext
+            )
+        }
+
         // Initializer for SettingsViewModel
         initializer {
             SettingsViewModel(reminderApplication().container.reminderRepository)
