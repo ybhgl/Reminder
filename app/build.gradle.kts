@@ -64,6 +64,8 @@ android {
             initWith(getByName("release")) 
             isMinifyEnabled = false      // 关闭混淆
             isShrinkResources = false    // 关闭资源压缩
+            // 依赖模块（如 :hiddenapi）没有该自定义 buildType，回退到 release 变体
+            matchingFallbacks += listOf("release")
         }
     }
     splits {
