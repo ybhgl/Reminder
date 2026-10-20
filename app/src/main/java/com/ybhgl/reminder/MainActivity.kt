@@ -25,11 +25,9 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.FastOutSlowInEasing
-import androidx.compose.animation.core.snap
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.animateFloatAsState
-import androidx.compose.animation.core.animateIntAsState
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.spring
@@ -1602,6 +1600,13 @@ fun ReminderListScreen(
     val columnsCount = kotlin.math.max(2, ((screenWidthDp - 16.dp) / 176.dp).toInt())
     
     val tabs = remember { ReminderTab.entries.toTypedArray() }
+    // 底栏高亮的「连续位置」：由 pager 的 当前页 + 页内偏移 直接驱动，使高亮块跟随手指逐帧移动，
+    // 而不是等滑过 50% 触发 currentPage 变更后再用补间动画追赶（旧写法观感为“过半直接跳过去”）。
+    // 减 1 把 pager 页码映射为 tab 下标（pager 第 0 页 = 日历，不对应任何 tab）；
+    // 下界钳在 0 = 向日历页滑动期间高亮固定停在「倒数」不动，与底栏淡出互不干扰。
+    val tabsSelectedPosition =
+        (pagerState.currentPage + pagerState.currentPageOffsetFraction - 1f)
+            .coerceIn(0f, (tabs.size - 1).coerceAtLeast(0).toFloat())
     val tabCounts = remember(reminderListUiState.itemList) {
         tabs.map { tab -> reminderListUiState.itemList.count(tab.filter) }
     }
@@ -2290,7 +2295,7 @@ fun ReminderListScreen(
                                 FloatingSegmentedTabs(
                                     tabs = tabs,
                                     counts = tabCounts,
-                                    selectedIndex = pagerState.currentPage - 1,
+                                    selectedPosition = tabsSelectedPosition,
                                     onTabSelected = { index ->
                                         coroutineScope.launch {
                                             pagerState.animateScrollToPage(index + 1)
@@ -2730,29 +2735,18 @@ internal fun ReminderListItem(
 private fun FloatingSegmentedTabs(
     tabs: Array<ReminderTab>,
     counts: List<Int>,
-    selectedIndex: Int,
+    selectedPosition: Float,
     onTabSelected: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
     var containerWidthPx by remember { mutableIntStateOf(0) }
-    var skipNextAnimation by remember { mutableStateOf(true) }
     val segmentCount = tabs.size.coerceAtLeast(1)
     val indicatorWidthPx = if (containerWidthPx > 0) containerWidthPx / segmentCount else 0
-
-    LaunchedEffect(containerWidthPx) {
-        if (containerWidthPx > 0) {
-            // Give it a tiny bit of time to snap to the correct position before allowing animations
-            kotlinx.coroutines.delay(100)
-            skipNextAnimation = false
-        }
-    }
-
-    val indicatorOffsetPx by animateIntAsState(
-        targetValue = indicatorWidthPx * selectedIndex,
-        animationSpec = if (skipNextAnimation) snap() else tween(durationMillis = 250),
-        label = "indicatorOffset"
-    )
+    // 落点下标（四舍五入）仅用于点击判定：点已选中的那段不重复翻页
+    val selectedIndex = selectedPosition.roundToInt()
+    val selectedTextColor = contentColorFor(MaterialTheme.colorScheme.primary)
+    val unselectedTextColor = MaterialTheme.colorScheme.onSurfaceVariant
 
     Surface(
         modifier = modifier,
@@ -2776,7 +2770,10 @@ private fun FloatingSegmentedTabs(
                     modifier = Modifier
                         .fillMaxHeight()
                         .width(indicatorWidthDp)
-                        .offset { IntOffset(indicatorOffsetPx, 0) },
+                        // 布局阶段按连续位置直接落位（不再走补间）：高亮块与手指位移逐帧同步
+                        .offset {
+                            IntOffset((indicatorWidthPx * selectedPosition).roundToInt(), 0)
+                        },
                     shape = RoundedCornerShape(20.dp),
                     color = MaterialTheme.colorScheme.primary,
                     contentColor = contentColorFor(MaterialTheme.colorScheme.primary)
@@ -2790,10 +2787,14 @@ private fun FloatingSegmentedTabs(
             ) {
                 tabs.forEachIndexed { index, tab ->
                     val selected = index == selectedIndex
-                    val textColor = if (selected) {
-                        contentColorFor(MaterialTheme.colorScheme.primary)
+                    // 文字颜色随高亮块连续交叉渐变：离高亮块越近越接近选中色，与指示器同步，
+                    // 避免“亮块已经压过去、文字还没变色”的错位
+                    val selectionProgress =
+                        (1f - kotlin.math.abs(selectedPosition - index)).coerceIn(0f, 1f)
+                    val textColor = if (selectionProgress >= 0.999f) {
+                        selectedTextColor
                     } else {
-                        MaterialTheme.colorScheme.onSurfaceVariant
+                        lerp(unselectedTextColor, selectedTextColor, selectionProgress)
                     }
                     val label = buildString {
                         append(tab.title)
