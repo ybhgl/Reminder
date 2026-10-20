@@ -1,7 +1,9 @@
 package com.ybhgl.reminder.ui.safe
 
+import android.app.Activity
 import android.content.BroadcastReceiver
 import android.content.Context
+import android.content.ContextWrapper
 import android.content.Intent
 import android.content.IntentFilter
 import android.os.PowerManager
@@ -89,7 +91,6 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.onSizeChanged
-import androidx.compose.ui.platform.LocalActivity
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
@@ -127,6 +128,16 @@ import kotlinx.coroutines.launch
  * - 已设置密码时，先经手势验证（开启生物解锁且设备支持时自动弹系统生物识别）再进入
  * - 主页复用回收站范式：沉浸式收起顶栏、圆形揭示搜索、长按多选、右下角 FAB 组
  */
+/** 沿 ContextWrapper 链解包至 Activity（本 NavHost 挂在 MainActivity 窗口上） */
+private fun Context.findActivity(): Activity? {
+    var ctx: Context = this
+    while (ctx is ContextWrapper) {
+        if (ctx is Activity) return ctx
+        ctx = ctx.baseContext
+    }
+    return null
+}
+
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun SafeScreen(
@@ -178,6 +189,23 @@ fun SafeScreen(
         )
         onDispose {
             context.unregisterReceiver(screenOffReceiver)
+        }
+    }
+
+    // 保险柜页强制防截屏/录屏/最近任务预览（独立于全局开关，覆盖密码验证与设置引导等柜内全部界面）；
+    // 退出时按全局防截屏开关决定去留，避免把主页等其他界面的保护一并清掉
+    val activity = context.findActivity()
+    val screenshotBlockedGlobal by remember(context) { SecurityPreferences.screenshotBlockedFlow(context) }
+        .collectAsState(initial = false)
+    DisposableEffect(activity, screenshotBlockedGlobal) {
+        activity?.window?.setFlags(
+            android.view.WindowManager.LayoutParams.FLAG_SECURE,
+            android.view.WindowManager.LayoutParams.FLAG_SECURE
+        )
+        onDispose {
+            if (!screenshotBlockedGlobal) {
+                activity?.window?.clearFlags(android.view.WindowManager.LayoutParams.FLAG_SECURE)
+            }
         }
     }
 
