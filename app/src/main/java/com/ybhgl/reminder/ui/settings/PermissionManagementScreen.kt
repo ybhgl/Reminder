@@ -34,7 +34,6 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
@@ -69,7 +68,10 @@ import androidx.compose.runtime.setValue
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.CornerRadius
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
@@ -403,7 +405,7 @@ fun PermissionManagementScreen(
                                                 }
                                             )
                                         }
-                                        Spacer(modifier = Modifier.height(8.dp))
+                                        Spacer(modifier = Modifier.height(16.dp))
                                         RowHighlight(active = highlightedRow == "update") {
                                             SettingsSwitchRow(
                                                 title = "检查更新联网",
@@ -557,7 +559,7 @@ private fun PermissionStatusChip(
     )
 }
 
-/** target 直达高亮：命中时短暂高亮该行背景，引导视线 */
+/** target 直达高亮：底色块向外扩绘（不占据布局、文字位置与其他卡片行完全对齐），命中时短暂高亮 */
 @Composable
 private fun RowHighlight(
     active: Boolean,
@@ -572,12 +574,20 @@ private fun RowHighlight(
         animationSpec = tween(300),
         label = "netPermRowHighlight"
     )
+    val padX = with(LocalDensity.current) { 12.dp.toPx() }
+    val padY = with(LocalDensity.current) { 8.dp.toPx() }
+    val corner = with(LocalDensity.current) { 14.dp.toPx() }
     Box(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(14.dp))
-            .background(background)
-            .padding(horizontal = 12.dp, vertical = 8.dp)
+            .drawBehind {
+                drawRoundRect(
+                    color = background,
+                    topLeft = Offset(-padX, -padY),
+                    size = Size(size.width + padX * 2f, size.height + padY * 2f),
+                    cornerRadius = CornerRadius(corner, corner)
+                )
+            }
     ) {
         content()
     }
