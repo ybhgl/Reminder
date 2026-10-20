@@ -35,12 +35,21 @@ class DetailViewModel(
     private val _snackbarMessage = MutableSharedFlow<String>()
     val snackbarMessage = _snackbarMessage.asSharedFlow()
 
+    /** 按 id 直查的单事件最新值：保险柜事件不在活跃流中，靠它驱动详情页实时刷新 */
+    private val directReminder = MutableStateFlow<ReminderItem?>(null)
+
     init {
+        // 持续订阅单事件流（Room Flow，编辑保存即发射新值），替代原一次性快照加载
+        reminderRepository.getReminderStream(reminderId)
+            .onEach { directReminder.value = it }
+            .launchIn(viewModelScope)
+
         combine(
             reminderRepository.getAllRemindersStream(),
             tagRepository.getAllTagsFlow(),
-            com.ybhgl.reminder.data.homeCategoryFlow(appContext)
-        ) { reminders, tags, homeCategoryEnabled ->
+            com.ybhgl.reminder.data.homeCategoryFlow(appContext),
+            directReminder
+        ) { reminders, tags, homeCategoryEnabled, direct ->
             val sortedReminders = if (homeCategoryEnabled) {
                 val today = LocalDate.now()
                 val locale = java.util.Locale.getDefault()
@@ -74,11 +83,11 @@ class DetailViewModel(
                 // 关闭分类显示时，滑动顺序与首页统一列表完全一致
                 com.ybhgl.reminder.util.flattenReminders(reminders, tags)
             }
-            Pair(sortedReminders, tags)
+            Pair(sortedReminders, tags) to direct
         }
-            .onEach { (sortedReminders, tags) ->
+            .onEach { (listAndTags, direct) ->
+                val (sortedReminders, tags) = listAndTags
                 val current = sortedReminders.find { it.id == reminderId }
-                val loaded = _uiState.value.reminderItem
                 if (current != null) {
                     // 活跃事件：跟随活跃排序列表（支持左右滑动切换）
                     _uiState.update {
@@ -88,10 +97,14 @@ class DetailViewModel(
                             tags = tags
                         )
                     }
-                } else if (loaded != null && loaded.id == reminderId) {
-                    // 隐私事件（保险柜）：已按 id 直接加载，保持单项列表不被活跃列表覆盖
+                } else if (direct != null) {
+                    // 隐私事件（保险柜）：由单事件流最新值直接驱动，编辑返回后实时更新
                     _uiState.update {
-                        it.copy(reminderItems = listOf(loaded), tags = tags)
+                        it.copy(
+                            reminderItems = listOf(direct),
+                            reminderItem = direct,
+                            tags = tags
+                        )
                     }
                 } else {
                     // 尚未加载到当前事件（首帧等待直接加载）：维持空列表兜底
@@ -101,19 +114,6 @@ class DetailViewModel(
                 }
             }
             .launchIn(viewModelScope)
-
-        // 保险柜事件不在活跃列表中：按 id 直接加载，详情页以单项呈现（左右滑动切换不可用）
-        viewModelScope.launch {
-            val inActiveList = reminderRepository.getAllRemindersList().any { it.id == reminderId }
-            if (!inActiveList) {
-                val item = reminderRepository.getReminderById(reminderId)
-                if (item != null) {
-                    _uiState.update {
-                        it.copy(reminderItems = listOf(item), reminderItem = item)
-                    }
-                }
-            }
-        }
     }
 
     fun updateCurrentReminder(reminder: ReminderItem) {
