@@ -23,11 +23,25 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import com.tyme.solar.SolarDay
+import com.ybhgl.reminder.util.BirthdayCalculator
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
+import java.time.temporal.WeekFields
 import java.util.Locale
 
 private val ALMANAC_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
+
+private val WEEKDAY_CN = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+/** 星期短文本，如"周二" */
+private fun weekdayCn(date: LocalDate): String = WEEKDAY_CN[date.dayOfWeek.value - 1]
+
+/** ISO 8601 周数：周一为一周开始，第1周=含当年首个周四的周 */
+internal fun isoWeekOfYear(date: LocalDate): Int = date.get(WeekFields.ISO.weekOfWeekBasedYear())
+
+/** "第xx周 xx座"行文本（周数 ISO 8601 口径；星座与详情页生日卡同口径） */
+internal fun weekConstellationLine(date: LocalDate): String =
+    "第${isoWeekOfYear(date)}周 ${BirthdayCalculator.getZodiacSign(date.monthValue, date.dayOfMonth)}"
 
 /** 某日宜忌（黄历），基于干支日的建除十二神等传统规则本地推算 */
 fun dayTaboos(date: LocalDate): Pair<List<String>, List<String>> {
@@ -60,7 +74,7 @@ fun AlmanacDialog(
                     .padding(horizontal = 24.dp, vertical = 20.dp)
             ) {
                 Text(
-                    text = date.format(ALMANAC_DATE_FORMAT),
+                    text = "${date.format(ALMANAC_DATE_FORMAT)} ${weekdayCn(date)}",
                     style = MaterialTheme.typography.headlineSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.onSurface
@@ -78,6 +92,13 @@ fun AlmanacDialog(
                 )
                 Text(
                     text = almanac.ganzhiLine,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(top = 4.dp)
+                )
+                // 周数+星座行：样式与干支行一致
+                Text(
+                    text = weekConstellationLine(date),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                     modifier = Modifier.padding(top = 4.dp)

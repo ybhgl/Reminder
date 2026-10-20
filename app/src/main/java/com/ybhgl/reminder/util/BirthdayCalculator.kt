@@ -76,7 +76,8 @@ object BirthdayCalculator {
         )
     }
 
-    private fun getZodiacSign(month: Int, day: Int): String {
+    /** internal 供日历详情卡复用（同一星座口径） */
+    internal fun getZodiacSign(month: Int, day: Int): String {
         val threshold = ZODIAC_SIGNS[month - 1].second.second
         return if (day <= threshold) {
             ZODIAC_SIGNS[month - 1].first
