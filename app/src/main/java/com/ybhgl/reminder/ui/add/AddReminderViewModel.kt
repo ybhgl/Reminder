@@ -40,6 +40,10 @@ class AddReminderViewModel(
     /** 只读模式（从回收站进入）：内容置灰不可编辑，底部提供恢复/永久删除 */
     val isReadOnly: Boolean = savedStateHandle.get<Boolean>("readOnly") == true
 
+    /** 进入编辑页时事件是否在保险柜：保险柜事件的删除/回收成功后只退回保险柜页而非首页 */
+    var isSafeAtEntry by mutableStateOf(false)
+        private set
+
     val tagSuggestions = tagRepository.getAllTagsFlow()
         .stateIn(
             scope = viewModelScope,
@@ -65,6 +69,7 @@ class AddReminderViewModel(
                     val state = reminder.toReminderUiState()
                     reminderUiState = state
                     initialUiState = state
+                    isSafeAtEntry = reminder.isInSafe
                     isInitialized = true
                 }
             }

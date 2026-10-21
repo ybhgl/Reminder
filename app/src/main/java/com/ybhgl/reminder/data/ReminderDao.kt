@@ -56,7 +56,8 @@ interface ReminderDao {
     @Query("SELECT * FROM reminders WHERE isInSafe = 1")
     suspend fun getSafeRemindersList(): List<ReminderItem>
 
-    @Query("UPDATE reminders SET isInRecycleBin = 1, recycleBinTime = :time WHERE id IN (:ids)")
+    /** 移入回收站：与移入保险柜互斥（保险柜事件回收时先离开保险柜并清零保险柜时间） */
+    @Query("UPDATE reminders SET isInRecycleBin = 1, recycleBinTime = :time, isInSafe = 0, safeTime = 0 WHERE id IN (:ids)")
     suspend fun moveToRecycleBin(ids: List<Int>, time: Long)
 
     @Query("UPDATE reminders SET isInRecycleBin = 0, recycleBinTime = 0 WHERE id IN (:ids)")
@@ -66,7 +67,8 @@ interface ReminderDao {
     @Query("UPDATE reminders SET isInSafe = 1, safeTime = :time, isInRecycleBin = 0, recycleBinTime = 0 WHERE id IN (:ids)")
     suspend fun moveToSafe(ids: List<Int>, time: Long)
 
-    @Query("UPDATE reminders SET isInSafe = 0, safeTime = 0 WHERE id IN (:ids)")
+    /** 移出保险柜：恢复为活跃事件，顺带清理历史脏数据可能残留的回收标记（与调度链路口径一致） */
+    @Query("UPDATE reminders SET isInSafe = 0, safeTime = 0, isInRecycleBin = 0, recycleBinTime = 0 WHERE id IN (:ids)")
     suspend fun restoreFromSafe(ids: List<Int>)
 
     @Query("SELECT * FROM reminders WHERE id = :id")

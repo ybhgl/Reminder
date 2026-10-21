@@ -4080,6 +4080,12 @@ private fun ReminderNavContent(
             navController = navController,
             onDeleted = {
                 navController.popBackStack(Routes.REMINDER_LIST, inclusive = false)
+            },
+            onReturnToRecycleBin = {
+                navController.popBackStack(Routes.RECYCLE_BIN, inclusive = false)
+            },
+            onReturnToSafe = {
+                navController.popBackStack(Routes.SAFE, inclusive = false)
             }
         )
         Routes.REMINDER_SETTING_PATTERN -> ReminderSettingScreen(

@@ -132,6 +132,10 @@ fun AddReminderScreen(
     onNavigateUp: () -> Unit,
     navController: NavController = rememberNavController(),
     onDeleted: () -> Unit = onNavigateUp,
+    // 回收站只读页「永久删除/恢复」成功后仅退回回收站页，避免连弹多层
+    onReturnToRecycleBin: () -> Unit = onDeleted,
+    // 保险柜事件的「永久删除/回收」成功后仅退回保险柜页，避免越过保险柜直达首页
+    onReturnToSafe: () -> Unit = onDeleted,
     modifier: Modifier = Modifier,
     viewModel: AddReminderViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
@@ -536,7 +540,7 @@ fun AddReminderScreen(
                                 coroutineScope.launch {
                                     if (viewModel.deleteReminder(context)) {
                                         CustomToast.showSuccess(context, "1 条提醒已永久删除")
-                                        onDeleted()
+                                        if (viewModel.isSafeAtEntry) onReturnToSafe() else onDeleted()
                                     }
                                 }
                             },
@@ -548,7 +552,7 @@ fun AddReminderScreen(
                                 coroutineScope.launch {
                                     if (viewModel.moveToRecycleBin(context)) {
                                         CustomToast.showSuccess(context, "1 条提醒已移入回收站")
-                                        onDeleted()
+                                        if (viewModel.isSafeAtEntry) onReturnToSafe() else onDeleted()
                                     }
                                 }
                             }
@@ -597,7 +601,7 @@ fun AddReminderScreen(
                         coroutineScope.launch {
                             if (viewModel.permanentlyDeleteFromRecycleBin()) {
                                 CustomToast.showSuccess(context, "1 条提醒已永久删除")
-                                onDeleted()
+                                onReturnToRecycleBin()
                             }
                         }
                     },
@@ -617,7 +621,7 @@ fun AddReminderScreen(
                         coroutineScope.launch {
                             if (viewModel.restoreFromRecycleBin()) {
                                 CustomToast.showSuccess(context, "1 条提醒已移出回收站")
-                                onDeleted()
+                                onReturnToRecycleBin()
                             }
                         }
                     },
