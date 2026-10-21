@@ -6,6 +6,8 @@ import androidx.datastore.preferences.core.Preferences
 import androidx.datastore.preferences.core.booleanPreferencesKey
 import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.emptyPreferences
+import androidx.datastore.preferences.core.intPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.Flow
@@ -14,12 +16,17 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.withContext
 import java.io.IOException
+import java.time.LocalDate
 
 private const val NETWORK_PERMISSION_DATA_STORE_NAME = "network_permission_preferences"
 
 private val WEBDAV_NETWORK_KEY = booleanPreferencesKey("webdav_network_granted")
 private val UPDATE_CHECK_NETWORK_KEY = booleanPreferencesKey("update_check_network_granted")
 private val MODULE_SETUP_DONE_KEY = booleanPreferencesKey("module_setup_done")
+private val HOLIDAY_NETWORK_KEY = booleanPreferencesKey("holiday_network_granted")
+private val HOLIDAY_PROMPT_DONE_KEY = booleanPreferencesKey("holiday_prompt_done")
+private val HOLIDAY_ALERT_DISMISSED_KEY = booleanPreferencesKey("holiday_update_alert_dismissed")
+private val HOLIDAY_TRIGGERED_KEYS = stringSetPreferencesKey("holiday_update_triggered")
 
 private val Context.networkPermissionDataStore: DataStore<Preferences> by preferencesDataStore(
     name = NETWORK_PERMISSION_DATA_STORE_NAME
@@ -105,5 +112,120 @@ suspend fun resolveNetworkModuleLaunch(context: Context): NetworkModuleLaunchPro
 suspend fun markNetworkModuleSetupDone(context: Context) {
     context.networkPermissionDataStore.edit { preferences ->
         preferences[MODULE_SETUP_DONE_KEY] = true
+    }
+}
+
+// ==================== 节假日数据联网权限 ====================
+
+/** 节假日数据联网开关（默认关闭，未授权不得发起任何节假日网络请求） */
+fun holidayNetworkGrantedFlow(context: Context): Flow<Boolean> =
+    context.networkPermissionDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[HOLIDAY_NETWORK_KEY] ?: false
+        }
+
+suspend fun saveHolidayNetworkGranted(context: Context, granted: Boolean) {
+    context.networkPermissionDataStore.edit { preferences ->
+        preferences[HOLIDAY_NETWORK_KEY] = granted
+    }
+    // 收口清理：撤销授权立即清空所有已存节假日数据（磁盘缓存+内存），重新授权后才再次下载；
+    // 所有写 false 的入口（设置页开关/日历授权弹窗）共用本函数，避免遗漏
+    if (!granted) {
+        com.ybhgl.reminder.util.HolidayManager.clearAll(context)
+    }
+}
+
+/** 节假日授权弹窗是否已处理过（仅弹一次；done 只在点击按钮后写入） */
+fun holidayPromptDoneFlow(context: Context): Flow<Boolean> =
+    context.networkPermissionDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[HOLIDAY_PROMPT_DONE_KEY] ?: false
+        }
+
+/** 更新失败 alert 图标是否被长按隐藏（新一轮失败时由 HolidayManager 重置） */
+fun holidayAlertDismissedFlow(context: Context): Flow<Boolean> =
+    context.networkPermissionDataStore.data
+        .catch { exception ->
+            if (exception is IOException) {
+                emit(emptyPreferences())
+            } else {
+                throw exception
+            }
+        }
+        .map { preferences ->
+            preferences[HOLIDAY_ALERT_DISMISSED_KEY] ?: false
+        }
+
+suspend fun saveHolidayAlertDismissed(context: Context, dismissed: Boolean) {
+    context.networkPermissionDataStore.edit { preferences ->
+        preferences[HOLIDAY_ALERT_DISMISSED_KEY] = dismissed
+    }
+}
+
+/** 已触发成功的更新键集合（如 "2027@11-15"、"2026-01-01"），防止同日重复请求 */
+suspend fun getHolidayTriggeredKeys(context: Context): Set<String> =
+    context.networkPermissionDataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .first()
+        .let { it[HOLIDAY_TRIGGERED_KEYS] ?: emptySet() }
+
+suspend fun markHolidayUpdateTriggered(context: Context, key: String) {
+    context.networkPermissionDataStore.edit { preferences ->
+        val current = preferences[HOLIDAY_TRIGGERED_KEYS] ?: emptySet()
+        if (!current.contains(key)) {
+            // 只保留近 4 个年度的键，防止集合无限增长
+            val yearPrefixesToKeep = (LocalDate.now().year - 3..LocalDate.now().year + 1)
+                .map { it.toString() }
+                .toSet()
+            preferences[HOLIDAY_TRIGGERED_KEYS] =
+                (current + key).filter { k -> yearPrefixesToKeep.any { p -> k.startsWith(p) } }
+                    .toCollection(mutableSetOf())
+        }
+    }
+}
+
+suspend fun markHolidayPromptDone(context: Context) {
+    context.networkPermissionDataStore.edit { preferences ->
+        preferences[HOLIDAY_PROMPT_DONE_KEY] = true
+    }
+}
+
+// 空数据尝试计数键前缀：完整键 = "holiday_empty-{年份}-{yyyy-MM-dd}"，记录当天该年已下载但内容为空的次数；
+// 写入时剪除非当日旧键，天然按日清零
+private const val HOLIDAY_EMPTY_PREFIX = "holiday_empty"
+
+private fun holidayEmptyAttemptsKey(year: Int, date: LocalDate) =
+    intPreferencesKey("$HOLIDAY_EMPTY_PREFIX-$year-$date")
+
+/** 某目标年份当天"文件为空"已尝试次数（用于每天最多重复下载 3 次的限流） */
+suspend fun getHolidayEmptyAttempts(context: Context, year: Int, date: LocalDate): Int =
+    context.networkPermissionDataStore.data
+        .catch { if (it is IOException) emit(emptyPreferences()) else throw it }
+        .first()
+        .let { it[holidayEmptyAttemptsKey(year, date)] ?: 0 }
+
+/** 计一次当天空数据尝试；顺带剪掉所有非当日的空计数键 */
+suspend fun increaseHolidayEmptyAttempts(context: Context, year: Int, date: LocalDate) {
+    val key = holidayEmptyAttemptsKey(year, date)
+    context.networkPermissionDataStore.edit { preferences ->
+        val staleKeys = preferences.asMap().keys.filter { k ->
+            k.name.startsWith(HOLIDAY_EMPTY_PREFIX) && k.name != key.name
+        }
+        staleKeys.forEach { preferences.remove(it) }
+        preferences[key] = (preferences[key] ?: 0) + 1
     }
 }

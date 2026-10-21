@@ -87,6 +87,8 @@ import androidx.core.content.ContextCompat
 import androidx.core.app.NotificationManagerCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import com.ybhgl.reminder.data.holidayNetworkGrantedFlow
+import com.ybhgl.reminder.data.saveHolidayNetworkGranted
 import com.ybhgl.reminder.data.saveUpdateCheckNetworkGranted
 import com.ybhgl.reminder.data.saveWebdavNetworkGranted
 import com.ybhgl.reminder.data.updateCheckNetworkGrantedFlow
@@ -158,12 +160,14 @@ fun PermissionManagementScreen(
         .collectAsState(initial = false)
     val updateCheckNetworkGranted by remember(context) { updateCheckNetworkGrantedFlow(context) }
         .collectAsState(initial = false)
+    val holidayNetworkGranted by remember(context) { holidayNetworkGrantedFlow(context) }
+        .collectAsState(initial = false)
 
     // 永久拒绝后引导去系统设置
     var permissionHintTitle by remember { mutableStateOf<String?>(null) }
 
     // 联网权限折叠项展开状态（默认收起；target 直达时首帧即展开，动画同步更连贯）
-    val directTarget = focusTarget?.takeIf { it == "webdav" || it == "update" }
+    val directTarget = focusTarget?.takeIf { it == "webdav" || it == "update" || it == "holiday" }
     var isNetworkExpanded by rememberSaveable { mutableStateOf(directTarget != null) }
     var highlightedRow by remember { mutableStateOf<String?>(null) }
 
@@ -395,7 +399,7 @@ fun PermissionManagementScreen(
                                     ) {
                                         RowHighlight(active = highlightedRow == "webdav") {
                                             SettingsSwitchRow(
-                                                title = "WebDAV 备份联网",
+                                                title = "WebDAV 备份",
                                                 description = "设定的 WebDAV 服务器",
                                                 checked = webdavNetworkGranted,
                                                 onCheckedChange = { enabled ->
@@ -408,12 +412,25 @@ fun PermissionManagementScreen(
                                         Spacer(modifier = Modifier.height(16.dp))
                                         RowHighlight(active = highlightedRow == "update") {
                                             SettingsSwitchRow(
-                                                title = "检查更新联网",
+                                                title = "检查更新",
                                                 description = "GitHub API",
                                                 checked = updateCheckNetworkGranted,
                                                 onCheckedChange = { enabled ->
                                                     coroutineScope.launch {
                                                         saveUpdateCheckNetworkGranted(context, enabled)
+                                                    }
+                                                }
+                                            )
+                                        }
+                                        Spacer(modifier = Modifier.height(16.dp))
+                                        RowHighlight(active = highlightedRow == "holiday") {
+                                            SettingsSwitchRow(
+                                                title = "节假日数据",
+                                                description = "NateScarlet/holiday-cn",
+                                                checked = holidayNetworkGranted,
+                                                onCheckedChange = { enabled ->
+                                                    coroutineScope.launch {
+                                                        saveHolidayNetworkGranted(context, enabled)
                                                     }
                                                 }
                                             )
