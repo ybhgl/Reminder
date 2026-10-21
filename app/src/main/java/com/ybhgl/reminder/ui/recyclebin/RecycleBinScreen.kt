@@ -164,20 +164,13 @@ fun RecycleBinScreen(
     val contentListState = rememberLazyListState()
     val topBarState = rememberCollapsingTopBarState(contentListState)
 
-    // 多选：顶栏滑出覆盖在内容上方（内容占位偏移冻结，页面不下移）；
-    // 退出多选：顶栏滑回进入前的位置，标题切回「回收站」
+    // 多选：顶栏展开与内容占位同步动画 + 等量滚动补偿——
+    // 屏幕内容全程零位移，同时展开顶栏不再遮挡首屏内容；退出多选原路滑回
     LaunchedEffect(isSelectionMode) {
         topBarState.forceExpanded = isSelectionMode
-        val target = if (isSelectionMode) 0f else topBarState.contentOffsetPx
-        if (topBarState.titleOffsetPx != target) {
-            animate(
-                initialValue = topBarState.titleOffsetPx,
-                targetValue = target,
-                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-            ) { value, _ ->
-                topBarState.titleOffsetPx = value
-            }
-        }
+        // 进/出成对动画；已就位（或非多选会话）时函数内部自短路
+        topBarState.animateSelectionSyncedCollapse(contentListState, entering = isSelectionMode)
+        if (!isSelectionMode) topBarState.forceExpanded = false
     }
 
     Box(modifier = modifier.fillMaxSize()) {

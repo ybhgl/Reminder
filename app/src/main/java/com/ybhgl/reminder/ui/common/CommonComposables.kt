@@ -8,6 +8,7 @@ import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
@@ -27,6 +28,7 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
@@ -326,7 +328,8 @@ fun StatusBarScrim(modifier: Modifier = Modifier) {
  * - [scrollableState]：页面主滚动容器的状态（`ScrollState` / `LazyListState` 等），
  *   用于判断页面是否真的还有可滚动余量；为空时视为"始终可滚动"，退化为旧行为
  * - [forceExpanded]：多选等临时状态下强制保持完全展开
- * - [contentOffsetPx]：内容占位偏移，多选强制展开期间冻结，顶栏滑出不挤压页面
+ * - [contentOffsetPx]：内容占位偏移，与顶栏位移同步动画，多选进/出时由
+ *   [animateSelectionSyncedCollapse] 做等量滚动补偿，保证屏幕内容零位移
  * - [nestedScrollConnection]：在内容滚动前优先消费增量驱动顶栏收起/展开
  */
 @Stable
@@ -335,10 +338,19 @@ class CollapsingTopBarState {
     var topBarHeightPx by mutableStateOf(0f)
 
     /**
-     * 内容占位偏移：滚动时始终跟随 [titleOffsetPx]，但多选强制展开动画期间保持冻结，
-     * 使顶栏滑出时悬浮覆盖在内容上方、页面内容不发生纵向位移。
+     * 内容占位偏移：滚动时跟随 [titleOffsetPx]；多选进/出动画期间与顶栏位移保持同步
+     * （gap 恒为 0），并由 [animateSelectionSyncedCollapse] 逐帧做等量滚动补偿，
+     * 使屏幕上的内容一帧不动、同时完整露出不被展开顶栏遮挡。
      */
     var contentOffsetPx by mutableStateOf(0f)
+
+    /**
+     * 进入多选前的占位偏移：退出多选动画的回归目标；NaN = 当前不在多选会话中
+     * （页面首访/状态恢复时不能把「收起态占位」误当成退出目标归零）。
+     * 滚动补偿在动画期间逐帧维护（屏幕位置 = 滚动绝对量 − 占位 = 恒量），
+     * 滚不动的部分对应条目位于视口边缘之外、本就被顶栏盖住，不产生可见位移。
+     */
+    var selectionPrePadPx = Float.NaN
 
     /**
      * 页面主滚动容器。为 null 时不启用"不可滚动不收起"的保护。
@@ -379,6 +391,63 @@ class CollapsingTopBarState {
             contentOffsetPx = newOffset
             return Offset(0f, consumed)
         }
+    }
+
+    /**
+     * 多选进/出多选模式的「双轨对冲」同步动画：
+     * 占位偏移 [contentOffsetPx] 与顶栏位移 [titleOffsetPx] 同增量变化
+     * （顶栏底边与内容视口边缘保持零 gap），并对列表做等量滚动补偿——
+     * 每一帧都满足 屏幕位置 = 滚动绝对量 − 占位 = 恒量，屏幕上条目一帧不动：
+     * - 进入多选：占位增大（负值 → 0）扩大内容可视窗口、解除展开顶栏对首屏内容的
+     *   遮挡，列表等量前滚，原藏于顶栏上方的内容滑入视口；
+     * - 退出多选：占位减小（0 → 进入前负值）缩小可视窗口、顶栏滑回，
+     *   列表等量回滚，让出的顶部空间重新藏入顶栏后方。
+     *
+     * 补偿必须用非挂起的 `dispatchRawDelta`：它与占位写入处于同一次布局、原子生效。
+     * 用挂起的 `scrollBy` 则滚动要等下一帧才派发，画面表现为「占位先推、下帧才拉回」，
+     * 即进入多选时向下弹一下、退出时向上弹一下（实测复现过）。
+     * 列表滚不动（触顶/触底/内容变短）时该帧补偿被钳制，对应条目位于视口边缘之外、
+     * 本就被顶栏盖住，屏幕可见区域不发生任何位移。
+     *
+     * @param listState 页面主列表状态
+     * @param entering true = 进入多选（占位归零、顶栏展开），false = 退出多选（占位回进入前冻结值）
+     */
+    suspend fun animateSelectionSyncedCollapse(
+        listState: LazyListState,
+        entering: Boolean
+    ) {
+        val padStart = contentOffsetPx
+        val titleStart = titleOffsetPx
+        // selectionPrePadPx 为 NaN 表示当前不在多选会话中（页面首访/状态恢复），
+        // 此时不能把「收起态占位」误当退出目标归零
+        val target = when {
+            entering -> 0f
+            selectionPrePadPx.isNaN() -> padStart
+            else -> selectionPrePadPx
+        }
+        if (entering) {
+            selectionPrePadPx = padStart
+        }
+        var prevPad = padStart
+        if (padStart != target) {
+            animate(
+                initialValue = padStart,
+                targetValue = target,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ) { value, _ ->
+                val padDelta = value - prevPad
+                prevPad = value
+                contentOffsetPx = value
+                titleOffsetPx = (titleStart + value - padStart).coerceAtMost(0f)
+                if (padDelta != 0f) listState.dispatchRawDelta(padDelta)
+            }
+            // 收尾钉准：落到精确目标，并补掉逐帧近似残差
+            contentOffsetPx = target
+            titleOffsetPx = (titleStart + target - padStart).coerceAtMost(0f)
+            val padDelta = target - prevPad
+            if (padDelta != 0f) listState.dispatchRawDelta(padDelta)
+        }
+        if (!entering) selectionPrePadPx = Float.NaN
     }
 
     companion object {

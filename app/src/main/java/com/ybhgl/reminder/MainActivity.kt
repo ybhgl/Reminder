@@ -1508,12 +1508,15 @@ fun ReminderListScreen(
     var collapsedSections by rememberSaveable(stateSaver = StringSetSaver) { mutableStateOf(setOf<String>()) }
     
     var titleOffsetPx by rememberSaveable { mutableStateOf(0f) }
-    // 内容占位偏移：滚动时跟随 titleOffsetPx，多选强制展开动画期间冻结，
-    // 使顶栏滑出/滑回只悬浮覆盖内容，页面内容不发生纵向位移
+    // 内容占位偏移：滚动时跟随 titleOffsetPx；多选进/出动画期间与顶栏同增量变化，
+    // 由下方双轨对冲动画对各分类页做等量滚动补偿，保证屏幕内容零位移且不遮挡
     var contentTitleOffsetPx by rememberSaveable { mutableStateOf(0f) }
     var topBarHeightPx by remember { mutableStateOf(0f) }
     var bottomBarHeightPx by remember { mutableStateOf(0f) }
     var bottomBarOffsetPx by rememberSaveable { mutableStateOf(0f) }
+    // 进入多选前的占位偏移：多选期间占位被动画归零，退出时须回归该值；
+    // NaN = 不在多选会话中（页面首访/状态恢复时不得把收起态占位误归零）
+    var selectionPrePadPx by rememberSaveable { mutableFloatStateOf(Float.NaN) }
 
     val scrollBehaviorStr by remember(context) { com.ybhgl.reminder.data.scrollBehaviorFlow(context) }.collectAsState(initial = com.ybhgl.reminder.data.ScrollBehaviorMode.HIDE_TOP_BAR.name)
     val currentScrollBehavior = remember(scrollBehaviorStr) {
@@ -1525,35 +1528,52 @@ fun ReminderListScreen(
     val selectedIds = reminderListUiState.selectedIds
 
     LaunchedEffect(isSelectionMode) {
-        if (isSelectionMode) {
-            launch {
-                animate(
-                    initialValue = titleOffsetPx,
-                    targetValue = 0f,
-                    animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                ) { value, _ ->
-                    titleOffsetPx = value
-                }
-            }
+        // 「双轨对冲」：占位 contentTitleOffsetPx 与顶栏同增量动画（零 gap），
+        // 并对各分类页做等量滚动补偿（每帧 屏幕位置 = 滚动绝对量 − 占位 = 恒量）——
+        // 进入多选时展开顶栏不再遮挡首屏内容，退出时顶部让出的空间重新藏入滑回顶栏后方，
+        // 全程屏幕内容零位移。
+        // 补偿用非挂起的 dispatchRawDelta：与占位写入处于同一次布局、原子生效；
+        // 挂起的 scrollBy 要等下一帧派发，会表现为进入时向下弹、退出时向上弹
+        val entering = isSelectionMode
+        val padStart = contentTitleOffsetPx
+        val titleStart = titleOffsetPx
+        val padTarget = when {
+            entering -> 0f
+            selectionPrePadPx.isNaN() -> padStart
+            else -> selectionPrePadPx
+        }
+        val pages = safePullListStates.values.toList()
+        if (entering) {
+            selectionPrePadPx = padStart
+            // 底栏滑入与顶栏/占位轨道并行启动，避免等主动画收敛后才浮现
             launch {
                 animate(
                     initialValue = bottomBarOffsetPx,
                     targetValue = 0f,
                     animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-                ) { value, _ ->
-                    bottomBarOffsetPx = value
-                }
-            }
-        } else if (titleOffsetPx != contentTitleOffsetPx) {
-            // 退出多选：顶栏滑回进入前的位置，内容占位始终冻结，页面全程不动
-            animate(
-                initialValue = titleOffsetPx,
-                targetValue = contentTitleOffsetPx,
-                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
-            ) { value, _ ->
-                titleOffsetPx = value
+                ) { value, _ -> bottomBarOffsetPx = value }
             }
         }
+        var prevPad = padStart
+        if (padStart != padTarget) {
+            animate(
+                initialValue = padStart,
+                targetValue = padTarget,
+                animationSpec = spring(stiffness = Spring.StiffnessMediumLow)
+            ) { value, _ ->
+                val padDelta = value - prevPad
+                prevPad = value
+                contentTitleOffsetPx = value
+                titleOffsetPx = (titleStart + value - padStart).coerceAtMost(0f)
+                if (padDelta != 0f) pages.forEach { it.dispatchRawDelta(padDelta) }
+            }
+            // 收尾钉准：落到精确目标，并补掉逐帧近似残差
+            contentTitleOffsetPx = padTarget
+            titleOffsetPx = (titleStart + padTarget - padStart).coerceAtMost(0f)
+            val padDelta = padTarget - prevPad
+            if (padDelta != 0f) pages.forEach { it.dispatchRawDelta(padDelta) }
+        }
+        if (!entering) selectionPrePadPx = Float.NaN
     }
 
     // 日历页（pager 第 0 页）标志：该页顶栏/底栏 alpha=0 完全不可见，
@@ -2384,7 +2404,8 @@ fun ReminderListScreen(
 
                         Box(
                             modifier = Modifier
-                                .weight(1f),
+                                .weight(1f)
+                                .padding(start = if (isSelectionMode) 16.dp else 0.dp),
                             contentAlignment = Alignment.Center
                         ) {
                             if (showCategories) {
