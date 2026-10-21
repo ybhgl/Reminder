@@ -77,7 +77,7 @@ fun ReminderSettingScreen(
     viewModel: ReminderSettingViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val uiState = viewModel.uiState
-    // 回收站只读预览：可滚动、所有内容不可交互且整体置灰
+    // 只读预览（回收站/保险柜事件）：可滚动、所有内容不可交互且整体置灰
     val readOnly = viewModel.isReadOnly
     var showExitDialog by remember { mutableStateOf(false) }
     var showTimeConfigDialog by remember { mutableStateOf(false) }

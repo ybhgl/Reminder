@@ -446,8 +446,10 @@ fun ReminderDetailPagerContent(
             )
         }
 
-        // 提醒设置入口：已开启提醒且配置了提醒时间时高亮（M3 主题色）
-        val hasActiveNotification = displayReminderItem.notificationConfig.isEnabled &&
+        // 提醒设置入口：已开启提醒且配置了提醒时间时高亮（M3 主题色）；
+        // 保险柜事件的闹钟已随移入取消，实际不会提醒，故不着色（与提醒设置页置灰口径一致）
+        val hasActiveNotification = !displayReminderItem.isInSafe &&
+            displayReminderItem.notificationConfig.isEnabled &&
             displayReminderItem.notificationConfig.notificationTimes.isNotEmpty()
         val notificationBaseColor = MaterialTheme.colorScheme.primary
         val (notificationContainerColor, notificationContentColor, notificationBorderColor) = if (hasActiveNotification) {
