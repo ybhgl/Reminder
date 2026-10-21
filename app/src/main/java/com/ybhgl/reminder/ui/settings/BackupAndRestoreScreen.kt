@@ -1727,8 +1727,8 @@ fun BackupAndRestoreScreen(
             if (showWebDavNetDialog) {
                 AppAlertDialog(
                     onDismissRequest = { showWebDavNetDialog = false },
-                    title = "WebDAV 备份联网未开启",
-                    text = "需要先开启「WebDAV 备份联网」权限，才能使用 WebDAV 云端备份与恢复功能。",
+                    title = "权限提醒",
+                    text = "需要先开启「WebDAV 备份」的联网权限，才能使用 WebDAV 云端备份与恢复功能。",
                     confirmText = "前往设置",
                     onConfirm = {
                         showWebDavNetDialog = false
