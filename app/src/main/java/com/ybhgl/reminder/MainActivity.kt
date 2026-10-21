@@ -458,8 +458,8 @@ class MainActivity : FragmentActivity() {
                             com.ybhgl.reminder.data.NetworkModuleLaunchPrompt.NEW_USER_GRANT -> {
                                 AppAlertDialog(
                                     onDismissRequest = { /* 仅可经按钮关闭 */ },
-                                    title = "允许检查更新联网？",
-                                    text = "开启后应用将联网检查新版本，默认关闭，可随时在「设置-安全-权限管理」中更改",
+                                    title = "允许自动检查更新？",
+                                    text = "开启后每次启动应用将联网检查新版本，可随时在「设置-安全-权限管理」中更改",
                                     confirmText = "允许",
                                     onConfirm = {
                                         netModulePrompt = null
@@ -475,6 +475,11 @@ class MainActivity : FragmentActivity() {
                                             com.ybhgl.reminder.data.saveUpdateCheckNetworkGranted(context, false)
                                             com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
                                         }
+                                        CustomToast.show(
+                                            context,
+                                            "已拒绝，可随时前往「设置-安全-权限管理」中管理权限",
+                                            CustomToast.Type.NORMAL
+                                        )
                                     }
                                 )
                             }
@@ -1806,7 +1811,9 @@ fun ReminderListScreen(
                         onNavigateDetail = { id -> navController.navigate(Routes.detailReminder(id)) },
                         onAddReminder = { date ->
                             navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
-                        }
+                        },
+                        // 主页 pager 会预组合日历页，"进入日历页"须以落页为准（授权弹窗/节假日同步门控）
+                        isActive = pagerState.currentPage == 0
                     )
                     return@HorizontalPager
                 }

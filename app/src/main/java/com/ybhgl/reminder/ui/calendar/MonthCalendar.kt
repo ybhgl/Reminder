@@ -54,8 +54,10 @@ import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.tyme.solar.SolarDay
 import com.ybhgl.reminder.util.CalendarUtil
+import com.ybhgl.reminder.util.HolidayDay
 import kotlinx.coroutines.launch
 import java.time.DayOfWeek
 import java.time.LocalDate
@@ -74,16 +76,28 @@ data class CalendarDayCell(
     val subLabel: String,
     val subKind: DayCellLabelKind,
     val isWeekend: Boolean,
-    val hasEvent: Boolean
+    val hasEvent: Boolean,
+    /** 右上角圆标：true=休（放假），false=班（调休补班），null=无节假日数据 */
+    val holidayMark: Boolean? = null
 )
 
 /**
  * tyme4kt 调用收口：某日格副标签。
  * 优先级：交节节气 > 公历节日 > 农历节日 > 法定节假日 > 农历日（初一显示月名）。
+ * 法定节假日层联网优先：[holidays] 覆盖该年（holiday-cn 数据已下载）时该层完全以联网数据为准，
+ * 未覆盖的年份回退 tyme4kt 离线口径。
  */
 internal object DayCellFormatter {
 
-    fun subLabel(date: LocalDate): Pair<String, DayCellLabelKind> {
+    fun subLabel(date: LocalDate, holidays: Map<LocalDate, HolidayDay> = emptyMap()): Pair<String, DayCellLabelKind> =
+        subLabel(date, holidays, holidays.keys.any { it.year == date.year })
+
+    /** [holidayYearCovered] 由调用方按月预计算，避免逐日扫描年份 */
+    fun subLabel(
+        date: LocalDate,
+        holidays: Map<LocalDate, HolidayDay>,
+        holidayYearCovered: Boolean
+    ): Pair<String, DayCellLabelKind> {
         val solar = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth)
         // 仅在交节当天显示节气名（getTerm 返回"所在节气"，需比对交节日）
         val term = solar.getTerm()
@@ -99,15 +113,27 @@ internal object DayCellFormatter {
         if (lunarFestival != null) {
             return lunarFestival.getName() to DayCellLabelKind.FESTIVAL
         }
-        val legalHoliday = solar.getLegalHoliday()
-        if (legalHoliday != null && !legalHoliday.isWork()) {
-            // 法定节假日按调休连休区间逐日返回同名 → 仅在连休首日（节日当天）显示，
-            // 其余补休日照常显示农历（如国庆 10/1 显示，10/2-7 不重复显示）
-            val prev = date.minusDays(1)
-            val prevHoliday = SolarDay.fromYmd(prev.year, prev.monthValue, prev.dayOfMonth).getLegalHoliday()
-            val isRunStart = prevHoliday == null || prevHoliday.isWork() || prevHoliday.getName() != legalHoliday.getName()
-            if (isRunStart) {
-                return legalHoliday.getName() to DayCellLabelKind.HOLIDAY
+        if (holidayYearCovered) {
+            // 联网法定节假日层：同名连休仅首日显示（与 tyme4kt 口径一致），补班日（班）不占副标签
+            val networkHoliday = holidays[date]
+            if (networkHoliday != null && networkHoliday.isOffDay) {
+                val prev = holidays[date.minusDays(1)]
+                val isRunStart = prev == null || !prev.isOffDay || prev.name != networkHoliday.name
+                if (isRunStart) {
+                    return networkHoliday.name to DayCellLabelKind.HOLIDAY
+                }
+            }
+        } else {
+            val legalHoliday = solar.getLegalHoliday()
+            if (legalHoliday != null && !legalHoliday.isWork()) {
+                // 法定节假日按调休连休区间逐日返回同名 → 仅在连休首日（节日当天）显示，
+                // 其余补休日照常显示农历（如国庆 10/1 显示，10/2-7 不重复显示）
+                val prev = date.minusDays(1)
+                val prevHoliday = SolarDay.fromYmd(prev.year, prev.monthValue, prev.dayOfMonth).getLegalHoliday()
+                val isRunStart = prevHoliday == null || prevHoliday.isWork() || prevHoliday.getName() != legalHoliday.getName()
+                if (isRunStart) {
+                    return legalHoliday.getName() to DayCellLabelKind.HOLIDAY
+                }
             }
         }
         return if (lunar.day == 1) {
@@ -125,23 +151,27 @@ internal object DayCellFormatter {
  */
 fun buildMonthCells(
     month: YearMonth,
-    dayMap: Map<LocalDate, List<CalendarOccurrence>>
+    dayMap: Map<LocalDate, List<CalendarOccurrence>>,
+    holidays: Map<LocalDate, HolidayDay> = emptyMap()
 ): List<CalendarDayCell> {
     val firstDay = month.atDay(1)
     // 周日为首列：回退到当月 1 日所在周的周日（SUN=7 -> 0，MON=1 -> 1 … SAT=6 -> 6）
     val lead = firstDay.dayOfWeek.value % 7
     val start = firstDay.minusDays(lead.toLong())
     val totalCells = ((lead + month.lengthOfMonth()) + 6) / 7 * 7
+    // 补位周可能侵入相邻年：覆盖判定按年集合逐日比对（该年已下载联网数据 → 该年假日层完全联网优先）
+    val coveredYears = holidays.keys.mapTo(mutableSetOf()) { it.year }
     return (0 until totalCells).map { i ->
         val date = start.plusDays(i.toLong())
-        val (label, kind) = DayCellFormatter.subLabel(date)
+        val (label, kind) = DayCellFormatter.subLabel(date, holidays, date.year in coveredYears)
         CalendarDayCell(
             date = date,
             inMonth = YearMonth.from(date) == month,
             subLabel = label,
             subKind = kind,
             isWeekend = date.dayOfWeek == DayOfWeek.SUNDAY || date.dayOfWeek == DayOfWeek.SATURDAY,
-            hasEvent = dayMap.containsKey(date)
+            hasEvent = dayMap.containsKey(date),
+            holidayMark = holidays[date]?.isOffDay
         )
     }
 }
@@ -190,6 +220,10 @@ internal const val SWIPE_COMMIT_FRACTION = 0.3f
  */
 internal const val SWIPE_COMMIT_VELOCITY_DP_PER_SEC = 300f
 
+/** 右上角休/班圆标配色（用户钦定：休=绿色、班=橙黄色） */
+internal val HolidayOffBadgeColor = Color(0xFF43A047)
+internal val HolidayWorkBadgeColor = Color(0xFFF57C00)
+
 /** 覆盖 [month] 全部日期的完整周数（5 或 6），与 buildMonthCells 行数口径一致 */
 internal fun weekCountFor(month: YearMonth): Int {
     val lead = month.atDay(1).dayOfWeek.value % 7
@@ -219,6 +253,7 @@ fun MonthCalendar(
     today: LocalDate,
     selectedDate: LocalDate,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
+    holidays: Map<LocalDate, HolidayDay>,
     collapsePx: Float,
     maxCollapsePx: Float,
     onCollapseChange: (Float) -> Unit,
@@ -423,6 +458,7 @@ fun MonthCalendar(
                         today = today,
                         selectedDate = selectedDate,
                         dayMap = dayMap,
+                        holidays = holidays,
                         collapsePx = collapsePx,
                         maxCollapsePx = maxCollapsePx,
                         weekDragFraction = weekDragFraction,
@@ -456,6 +492,7 @@ private fun MonthPager(
     today: LocalDate,
     selectedDate: LocalDate,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
+    holidays: Map<LocalDate, HolidayDay>,
     collapsePx: Float,
     maxCollapsePx: Float,
     weekDragFraction: Float,
@@ -500,6 +537,7 @@ private fun MonthPager(
         MonthGrid(
             month = m,
             dayMap = dayMap,
+            holidays = holidays,
             today = today,
             selectedDate = selectedDate,
             collapsePx = collapsePx,
@@ -531,6 +569,7 @@ internal fun weekIndexFor(date: LocalDate): Int {
 private fun MonthGrid(
     month: YearMonth,
     dayMap: Map<LocalDate, List<CalendarOccurrence>>,
+    holidays: Map<LocalDate, HolidayDay>,
     today: LocalDate,
     selectedDate: LocalDate,
     collapsePx: Float,
@@ -541,9 +580,10 @@ private fun MonthGrid(
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    // 标签/补位等静态内容仅随月份重建（逐格 tyme4kt 计算昂贵）；
+    // 标签/补位等静态内容仅随月份/节假日数据重建（逐格 tyme4kt 计算昂贵）；
+    // holidays 为 StateFlow 快照 map，identity 更新即整批重算（休/班圆标与假日层副标签随下载刷新）；
     // 事件点渲染时按 dayMap 现查，切月 dayMap 身份变化不再触发整批网格重建（滑动卡顿源）
-    val cells = remember(month) { buildMonthCells(month, emptyMap()) }
+    val cells = remember(month, holidays) { buildMonthCells(month, emptyMap(), holidays) }
     val rowCount = cells.size / 7
     // SpaceEvenly：n 行产生 n+1 段等距空隙，每段 =（内容区高 - n*行高）/(n+1)
     val gapDp = (EXPANDED_GRID_HEIGHT_DP - 2 * GRID_VERTICAL_PADDING_DP - rowCount * WEEK_ROW_HEIGHT_DP) / (rowCount + 1)
@@ -559,8 +599,8 @@ private fun MonthGrid(
             .coerceAtLeast(0f).toDp().toPx()
     }
     // 上/下一周行格：跨月从对应月网格取行；仅随月份/选中日重建，避免拖拽每帧计算
-    val stripCells = remember(month, selectedDate) {
-        if (isSelMonth) weekRowCells(selectedDate.minusDays(7)) to weekRowCells(selectedDate.plusDays(7)) else null
+    val stripCells = remember(month, selectedDate, holidays) {
+        if (isSelMonth) weekRowCells(selectedDate.minusDays(7), holidays) to weekRowCells(selectedDate.plusDays(7), holidays) else null
     }
     // 空白化仅在容器完全收缩（高度=76dp 只剩一行窗口）后进行；
     // 若按位移封顶（centeredCap）判定，收缩中途容器仍高、下方行已被空白 → "顶部到位下方变空白"
@@ -628,8 +668,8 @@ private fun MonthGrid(
 }
 
 /** [date] 所在周的行格（收缩态横滑预览行，跨月时取对应月的网格） */
-private fun weekRowCells(date: LocalDate): List<CalendarDayCell> {
-    val cells = buildMonthCells(YearMonth.from(date), emptyMap())
+private fun weekRowCells(date: LocalDate, holidays: Map<LocalDate, HolidayDay>): List<CalendarDayCell> {
+    val cells = buildMonthCells(YearMonth.from(date), emptyMap(), holidays)
     return cells.chunked(7).getOrElse(weekIndexFor(date)) { emptyList() }
 }
 
@@ -814,6 +854,36 @@ private fun DayCell(
                         shape = CircleShape
                     )
             )
+            // 右上角"休/班"圆形标记：联网节假日数据驱动（休=绿色放假、班=橙黄调休补班）；
+            // 10dp 小圆 + 2dp 内边距不触 12dp 圆角弧；文字须显式压行高并关字体 padding——
+            // labelSmall 默认 16sp 行高 + 字体上下 padding 在 10dp 容器内溢出，基线顶偏导致"看似没居中"
+            cell.holidayMark?.let { isOff ->
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopEnd)
+                        .padding(top = 2.dp, end = 2.dp)
+                        .size(10.dp)
+                        .background(
+                            color = if (isOff) HolidayOffBadgeColor else HolidayWorkBadgeColor,
+                            shape = CircleShape
+                        ),
+                    contentAlignment = Alignment.Center
+                ) {
+                    Text(
+                        text = if (isOff) "休" else "班",
+                        style = MaterialTheme.typography.labelSmall.copy(
+                            platformStyle = androidx.compose.ui.text.PlatformTextStyle(
+                                includeFontPadding = false
+                            )
+                        ),
+                        fontSize = 7.sp,
+                        lineHeight = 8.sp,
+                        fontWeight = FontWeight.Bold,
+                        color = Color.White,
+                        maxLines = 1
+                    )
+                }
+            }
         }
     }
 }

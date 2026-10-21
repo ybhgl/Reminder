@@ -1,6 +1,7 @@
 package com.ybhgl.reminder.ui.calendar
 
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -33,12 +34,14 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.AddCircle
+import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
@@ -54,11 +57,24 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.core.net.toUri
+import android.content.Intent
 import com.ybhgl.reminder.data.ReminderItem
+import com.ybhgl.reminder.data.holidayAlertDismissedFlow
+import com.ybhgl.reminder.data.holidayPromptDoneFlow
+import com.ybhgl.reminder.data.markHolidayPromptDone
+import com.ybhgl.reminder.data.saveHolidayAlertDismissed
+import com.ybhgl.reminder.data.saveHolidayNetworkGranted
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
+import com.ybhgl.reminder.ui.common.AppAlertDialog
+import com.ybhgl.reminder.ui.common.CustomToast
+import com.ybhgl.reminder.util.HolidayManager
+import com.ybhgl.reminder.util.HolidaySyncResult
 import kotlinx.coroutines.launch
 import java.time.LocalDate
 import java.time.YearMonth
@@ -87,6 +103,7 @@ fun CalendarScreen(
     items: List<ReminderItem>,
     onNavigateDetail: (Int) -> Unit,
     onAddReminder: (LocalDate) -> Unit,
+    isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
     val today = remember { LocalDate.now() }
@@ -168,6 +185,51 @@ fun CalendarScreen(
     // 收缩态判定（与收展吸附口径一致：过半即视为收缩）：驱动事件区末尾"添加事件"卡的显隐
     val isCollapsed = collapsePx > maxCollapsePx / 2f
 
+    // ===== 节假日数据：联网授权弹窗 / 进页触发更新 / 失败 alert 图标 =====
+    val context = LocalContext.current
+    val holidayDays by HolidayManager.holidayDays.collectAsState()
+    // 授权弹窗只弹一次：done 仅在点击按钮后写入（与联网模块弹窗同套路）；
+    // 标志持续收集 Flow（.first() 快照跨导航失效），initial=true 防未读盘先闪弹窗
+    val holidayPromptDone by remember(context) { holidayPromptDoneFlow(context) }
+        .collectAsState(initial = true)
+    val holidayAlertDismissed by remember(context) { holidayAlertDismissedFlow(context) }
+        .collectAsState(initial = false)
+    var holidayUpdateFailed by rememberSaveable { mutableStateOf(false) }
+
+    // 同步结果统一处置：有新增→年份口径成功 Toast；无新增→静默；任一源全失败→失败 Toast + 重新显示 alert 图标
+    suspend fun applyHolidaySyncResult(result: HolidaySyncResult) {
+        if (!result.attempted) return
+        if (result.failed) {
+            holidayUpdateFailed = true
+            saveHolidayAlertDismissed(context, false)
+            CustomToast.show(context, "节假日数据更新失败", CustomToast.Type.ERROR)
+        } else {
+            holidayUpdateFailed = false
+            if (result.updatedYears.isNotEmpty()) {
+                // 单年→「2026年」；回溯多年→首末连范围「2020-2026年」
+                val yearText = if (result.updatedYears.size == 1) {
+                    "${result.updatedYears.first()}年"
+                } else {
+                    "${result.updatedYears.first()}-${result.updatedYears.last()}年"
+                }
+                CustomToast.show(
+                    context,
+                    "已更新「${yearText}」节假日数据",
+                    CustomToast.Type.SUCCESS
+                )
+            }
+        }
+    }
+
+    // 进入日历页即触发同步检查（内部含联网门禁：未授权绝不发请求）；
+    // 主页 pager beyondViewportPageCount=1 会预组合日历页，必须用 isActive 门控"真正进入"
+    LaunchedEffect(isActive) {
+        HolidayManager.loadFromDisk(context)
+        if (isActive) {
+            applyHolidaySyncResult(HolidayManager.syncIfNeeded(context))
+        }
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
@@ -195,6 +257,27 @@ fun CalendarScreen(
                     )
             )
             Spacer(modifier = Modifier.weight(1f))
+            // 节假日数据更新失败提示：按钮组左侧 error 色 alert 图标，点击重试、长按隐藏
+            if (holidayUpdateFailed && !holidayAlertDismissed) {
+                Icon(
+                    imageVector = Icons.Filled.Warning,
+                    contentDescription = "节假日数据更新失败，点击重试",
+                    tint = MaterialTheme.colorScheme.error,
+                    modifier = Modifier
+                        .size(24.dp)
+                        .combinedClickable(
+                            onClick = {
+                                scope.launch {
+                                    applyHolidaySyncResult(HolidayManager.syncIfNeeded(context))
+                                }
+                            },
+                            onLongClick = {
+                                scope.launch { saveHolidayAlertDismissed(context, true) }
+                            }
+                        )
+                )
+                Spacer(modifier = Modifier.width(12.dp))
+            }
             // 选中日非今天时显示回今天按钮（切月/切周后选中日会跟随，故只需比对今天）
             if (selectedDate != today) {
                 // "今"字圆形按钮：回到今天
@@ -249,6 +332,7 @@ fun CalendarScreen(
             today = today,
             selectedDate = selectedDate,
             dayMap = dayMap,
+            holidays = holidayDays,
             collapsePx = collapsePx,
             maxCollapsePx = maxCollapsePx,
             onCollapseChange = { setCollapseManual(it) },
@@ -300,6 +384,7 @@ fun CalendarScreen(
                 CalendarDetailCard(
                     date = selectedDate,
                     today = today,
+                    holidays = holidayDays,
                     onClick = { showAlmanac = true }
                 )
             }
@@ -346,6 +431,58 @@ fun CalendarScreen(
             date = selectedDate,
             today = today,
             onDismissRequest = { showAlmanac = false }
+        )
+    }
+
+    // 首次进入日历视图：节假日数据联网授权弹窗（同意/拒绝均写 done，仅弹一次；仅可经按钮关闭）
+    if (isActive && !holidayPromptDone) {
+        AppAlertDialog(
+            onDismissRequest = { /* 仅可经按钮关闭 */ },
+            title = "允许获取节假日数据？",
+            content = {
+                Column {
+                    Text(
+                        text = "开启后将自动联网获取中国节假日数据，可随时在「设置-安全-权限管理」中更改",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                    Spacer(modifier = Modifier.height(10.dp))
+                    Text(
+                        text = "数据来源：${HolidayManager.REPO_URL}",
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
+                        modifier = Modifier.clickable {
+                            runCatching {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, HolidayManager.REPO_URL.toUri())
+                                )
+                            }
+                        }
+                    )
+                }
+            },
+            confirmText = "允许",
+            onConfirm = {
+                scope.launch {
+                    saveHolidayNetworkGranted(context, true)
+                    markHolidayPromptDone(context)
+                    // 刚授权立即尝试一次更新
+                    applyHolidaySyncResult(HolidayManager.syncIfNeeded(context))
+                }
+            },
+            dismissText = "不允许",
+            onDismiss = {
+                scope.launch {
+                    saveHolidayNetworkGranted(context, false)
+                    markHolidayPromptDone(context)
+                }
+                CustomToast.show(
+                    context,
+                    "已拒绝，可随时前往「设置-安全-权限管理」中管理权限",
+                    CustomToast.Type.NORMAL
+                )
+            }
         )
     }
 }

@@ -21,6 +21,8 @@ import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.tyme.solar.SolarDay
 import com.ybhgl.reminder.util.CalendarUtil
+import com.ybhgl.reminder.util.HolidayDay
+import com.ybhgl.reminder.util.HolidayManager
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
 
@@ -42,7 +44,11 @@ data class DayAlmanac(
  * 计算某日黄历详情。年柱取 `SixtyCycleDay.getYear()`（立春分界，黄历惯例），
  * 与详情页 `CalendarUtil.formatLunarDate` 的春节分界口径有意不同。
  */
-fun dayAlmanac(date: LocalDate, today: LocalDate = LocalDate.now()): DayAlmanac {
+fun dayAlmanac(
+    date: LocalDate,
+    today: LocalDate = LocalDate.now(),
+    holidays: Map<LocalDate, HolidayDay> = HolidayManager.holidayDays.value
+): DayAlmanac {
     val solar = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth)
     val lunar = solar.getLunarDay()
     val lunarMonthDay = CalendarUtil.getMappedMonthName(lunar.getLunarMonth()!!.getName()) + lunar.getName()
@@ -50,9 +56,9 @@ fun dayAlmanac(date: LocalDate, today: LocalDate = LocalDate.now()): DayAlmanac 
     val term = solar.getTerm()
     val termName = if (term != null && term.getSolarDay() == solar) term.getName() else null
 
-    // 节日口径复用日历格 DayCellFormatter（公历节日>农历节日>法定节假日连休首日；
+    // 节日口径复用日历格 DayCellFormatter（公历节日>农历节日>法定节假日连休首日；联网数据年优先；
     // 交节日节气优先于节日，subLabel 返回节气名，此处自然得 null，两行互斥不重复）
-    val (subLabel, subKind) = DayCellFormatter.subLabel(date)
+    val (subLabel, subKind) = DayCellFormatter.subLabel(date, holidays)
     val festivalName =
         if (subKind == DayCellLabelKind.FESTIVAL || subKind == DayCellLabelKind.HOLIDAY) subLabel else null
 
@@ -81,9 +87,10 @@ fun CalendarDetailCard(
     date: LocalDate,
     today: LocalDate,
     onClick: () -> Unit,
+    holidays: Map<LocalDate, HolidayDay> = HolidayManager.holidayDays.value,
     modifier: Modifier = Modifier
 ) {
-    val almanac = remember(date, today) { dayAlmanac(date, today) }
+    val almanac = remember(date, today, holidays) { dayAlmanac(date, today, holidays) }
     val (recommends, avoids) = remember(date) { dayTaboos(date) }
     Surface(
         onClick = onClick,
