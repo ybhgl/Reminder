@@ -381,10 +381,12 @@ class MainActivity : FragmentActivity() {
 
             // 联网权限模块一次性启动弹窗：新用户=检查更新申请；老用户=「知道了」告知（互斥二选一）
             // 渲染块位于 ReminderTheme 内（跟随深浅色），见下方 Box 中 when(netModulePrompt)
+            // 时序约束：首次进入时须等日历/通知系统权限弹窗全部响应完毕后再弹出（由 ReminderApp 回调置位）
             var netModulePrompt by remember { mutableStateOf<com.ybhgl.reminder.data.NetworkModuleLaunchPrompt?>(null) }
             LaunchedEffect(Unit) {
                 netModulePrompt = com.ybhgl.reminder.data.resolveNetworkModuleLaunch(context)
             }
+            var permissionsFlowSettled by remember { mutableStateOf(false) }
 
             LaunchedEffect(themeOption) {
                 com.ybhgl.reminder.ui.common.CustomToast.currentAppTheme = themeOption
@@ -433,7 +435,7 @@ class MainActivity : FragmentActivity() {
                                 onUnlockSuccess = { com.ybhgl.reminder.data.AppLockState.isUnlocked.value = true }
                             )
                         } else {
-                            ReminderApp()
+                            ReminderApp(onPermissionsFlowSettled = { permissionsFlowSettled = true })
                         }
 
                         if (showPermissionDialog && (!isAppLockEnabled || com.ybhgl.reminder.data.AppLockState.isUnlocked.value)) {
@@ -453,51 +455,53 @@ class MainActivity : FragmentActivity() {
                             )
                         }
 
-                        // 联网权限模块启动双弹窗（渲染在主题内，跟随深浅色）
-                        when (netModulePrompt) {
-                            com.ybhgl.reminder.data.NetworkModuleLaunchPrompt.NEW_USER_GRANT -> {
-                                AppAlertDialog(
-                                    onDismissRequest = { /* 仅可经按钮关闭 */ },
-                                    title = "允许自动检查更新？",
-                                    text = "开启后每次启动应用将联网检查新版本，可随时在「设置-安全-权限管理」中更改",
-                                    confirmText = "允许",
-                                    onConfirm = {
-                                        netModulePrompt = null
-                                        lifecycleScope.launch {
-                                            com.ybhgl.reminder.data.saveUpdateCheckNetworkGranted(context, true)
-                                            com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
+                        // 联网权限模块启动双弹窗（渲染在主题内，跟随深浅色）；须待权限流程结束后再弹出
+                        if (permissionsFlowSettled) {
+                            when (netModulePrompt) {
+                                com.ybhgl.reminder.data.NetworkModuleLaunchPrompt.NEW_USER_GRANT -> {
+                                    AppAlertDialog(
+                                        onDismissRequest = { /* 仅可经按钮关闭 */ },
+                                        title = "允许自动检查更新？",
+                                        text = "开启后每次启动应用将联网检查新版本，可随时在「设置-安全-权限管理」中更改",
+                                        confirmText = "允许",
+                                        onConfirm = {
+                                            netModulePrompt = null
+                                            lifecycleScope.launch {
+                                                com.ybhgl.reminder.data.saveUpdateCheckNetworkGranted(context, true)
+                                                com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
+                                            }
+                                        },
+                                        dismissText = "不允许",
+                                        onDismiss = {
+                                            netModulePrompt = null
+                                            lifecycleScope.launch {
+                                                com.ybhgl.reminder.data.saveUpdateCheckNetworkGranted(context, false)
+                                                com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
+                                            }
+                                            CustomToast.show(
+                                                context,
+                                                "已拒绝，可随时前往「设置-安全-权限管理」中管理权限",
+                                                CustomToast.Type.NORMAL
+                                            )
                                         }
-                                    },
-                                    dismissText = "不允许",
-                                    onDismiss = {
-                                        netModulePrompt = null
-                                        lifecycleScope.launch {
-                                            com.ybhgl.reminder.data.saveUpdateCheckNetworkGranted(context, false)
-                                            com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
+                                    )
+                                }
+                                com.ybhgl.reminder.data.NetworkModuleLaunchPrompt.LEGACY_USER_NOTICE -> {
+                                    AppAlertDialog(
+                                        onDismissRequest = { /* 仅可经「知道了」关闭 */ },
+                                        title = "权限提醒",
+                                        text = "本次更新新增了联网权限控制，WebDAV 联网权限和检查更新联网权限已默认授予，可随时在「设置-安全-权限管理」中进行管理",
+                                        confirmText = "知道了",
+                                        onConfirm = {
+                                            netModulePrompt = null
+                                            lifecycleScope.launch {
+                                                com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
+                                            }
                                         }
-                                        CustomToast.show(
-                                            context,
-                                            "已拒绝，可随时前往「设置-安全-权限管理」中管理权限",
-                                            CustomToast.Type.NORMAL
-                                        )
-                                    }
-                                )
+                                    )
+                                }
+                                null -> Unit
                             }
-                            com.ybhgl.reminder.data.NetworkModuleLaunchPrompt.LEGACY_USER_NOTICE -> {
-                                AppAlertDialog(
-                                    onDismissRequest = { /* 仅可经「知道了」关闭 */ },
-                                    title = "新增联网权限控制",
-                                    text = "本次更新新增了联网权限控制开关，WebDAV 联网权限和检查更新联网权限已默认授予，可随时在「设置-安全-权限管理」中进行管理",
-                                    confirmText = "知道了",
-                                    onConfirm = {
-                                        netModulePrompt = null
-                                        lifecycleScope.launch {
-                                            com.ybhgl.reminder.data.markNetworkModuleSetupDone(context)
-                                        }
-                                    }
-                                )
-                            }
-                            null -> Unit
                         }
                     }
                 }
@@ -764,7 +768,7 @@ object Routes {
 
 @OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class)
 @Composable
-fun ReminderApp() {
+fun ReminderApp(onPermissionsFlowSettled: () -> Unit = {}) {
     val context = LocalContext.current
     val permissionsToRequest = remember {
         val list = mutableListOf(
@@ -777,7 +781,12 @@ fun ReminderApp() {
         list
     }
 
-    val permissionState = rememberMultiplePermissionsState(permissions = permissionsToRequest)
+    // 系统权限弹窗批次结果信号：日历+通知两组弹窗全部响应完毕后，accompanist 一次性回调
+    val permissionDialogsFinished = remember { kotlinx.coroutines.flow.MutableStateFlow(false) }
+    val permissionState = rememberMultiplePermissionsState(
+        permissions = permissionsToRequest,
+        onPermissionsResult = { permissionDialogsFinished.value = true }
+    )
     var showPermissionRationale by rememberSaveable { mutableStateOf(false) }
     
     LaunchedEffect(Unit) {
@@ -785,6 +794,15 @@ fun ReminderApp() {
             showPermissionRationale = true
             permissionState.launchMultiplePermissionRequest()
         }
+    }
+
+    // 启动弹窗时序：待日历/通知系统权限弹窗全部结束后，再放行 MainActivity 侧的联网权限（检查更新）弹窗；
+    // 已授权用户（无系统弹窗）立即放行
+    LaunchedEffect(Unit) {
+        if (!permissionState.allPermissionsGranted) {
+            permissionDialogsFinished.first { it }
+        }
+        onPermissionsFlowSettled()
     }
 
     if (permissionState.allPermissionsGranted) {

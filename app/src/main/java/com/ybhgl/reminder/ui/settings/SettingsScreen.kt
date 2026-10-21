@@ -654,8 +654,8 @@ fun SettingsScreen(
     if (showUpdateNetDialog) {
         AppAlertDialog(
             onDismissRequest = { showUpdateNetDialog = false },
-            title = "检查更新联网未开启",
-            text = "需要先开启「检查更新联网」权限，才能检查新版本。",
+            title = "权限提醒",
+            text = "需要先开启「检查更新」的联网权限，才能检查新版本",
             confirmText = "前往设置",
             onConfirm = {
                 showUpdateNetDialog = false
