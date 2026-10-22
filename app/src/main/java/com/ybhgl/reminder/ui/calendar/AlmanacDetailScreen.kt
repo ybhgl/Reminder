@@ -78,7 +78,8 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.CHINA)
+// Android/ICU 下 pattern 里的 `/` 是"本地化日期分隔符"占位，zh-CN 会被换成 `-`，必须加引号转义
+private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy'/'MM'/'dd", Locale.CHINA)
 
 /** 顶栏标题：当前查看的公历日期，如"2026/10/22" */
 private fun topBarDateText(date: LocalDate): String = TOP_BAR_DATE_FORMAT.format(date)
@@ -569,9 +570,12 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
 }
 
 /**
- * 等宽等高信息行：按子项数均分宽度，先量出最高子项，再以等高约束二次测量下发，
- * 使矮格的背景也撑满整行（避免右侧短内容下方露出卡片底色形成空洞）。
- * 不用 `IntrinsicSize.Min`：weight 在固有高度测量阶段不参与，文本会按整行宽换行而低估高度。
+ * 等宽等高信息行：按子项数均分宽度，行高取各子项在该宽度下的固有高度最大值，
+ * 再以固定宽高约束一次性测量，使矮格背景也撑满整行（避免短内容下方露出卡片底色）。
+ *
+ * 注意：同一 Measurable 只能 measure() 一次（两次直接 IllegalStateException 崩溃），
+ * 所以行高必须走 maxIntrinsicHeight(width)，不能"先 measure 再重测"；
+ * 也不能用 `Row(height(IntrinsicSize.Min))`——weight 不参与固有测量，文本会按整行宽换行而低估高度。
  */
 @Composable
 private fun EqualHeightRow(
@@ -583,11 +587,14 @@ private fun EqualHeightRow(
         val gapPx = gap.roundToPx()
         val count = measurables.size.coerceAtLeast(1)
         val childWidth = ((constraints.maxWidth - gapPx * (count - 1)) / count).coerceAtLeast(0)
-        val widthConstraints = Constraints(maxWidth = childWidth)
-        val rowHeight = measurables.maxOf { it.measure(widthConstraints).height }
-        val placeables = measurables.map {
-            it.measure(widthConstraints.copy(minHeight = rowHeight, maxHeight = rowHeight))
-        }
+        val rowHeight = measurables.maxOf { it.maxIntrinsicHeight(childWidth) }
+        val childConstraints = Constraints(
+            minWidth = childWidth,
+            maxWidth = childWidth,
+            minHeight = rowHeight,
+            maxHeight = rowHeight
+        )
+        val placeables = measurables.map { it.measure(childConstraints) }
         layout(constraints.maxWidth, rowHeight) {
             var x = 0
             placeables.forEach { placeable ->
