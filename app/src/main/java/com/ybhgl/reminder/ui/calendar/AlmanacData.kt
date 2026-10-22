@@ -25,10 +25,12 @@ private val TWELVE_VALUE_GODS =
  */
 private val HOUR_LUCK_START = intArrayOf(0, 3, 4, 6, 8, 10, 0, 3, 4, 6, 8, 10)
 
-/** 时辰钟点段（自夜半子时起排） */
-private val HOUR_TIME_RANGES = listOf(
-    "23-1", "1-3", "3-5", "5-7", "7-9", "9-11", "11-13", "13-15", "15-17", "17-19", "19-21", "21-23"
-)
+/** 时辰钟点区间（自夜半子时起排）：子=23:00-00:59、丑=01:00-02:59… */
+private val HOUR_TIME_RANGES = (0 until 12).map { i ->
+    val start = (23 + 2 * i) % 24
+    val end = (start + 1) % 24
+    "%02d:00-%02d:59".format(start, end)
+}
 
 /**
  * 财神/喜神/福神/阳贵/阴贵方位（按日干查，协纪辨方书口诀）：
@@ -230,7 +232,11 @@ data class HourLuck(
     /** 值神名，如"青龙" */
     val god: String,
     /** 吉=黄道值神，凶=黑道值神 */
-    val lucky: Boolean
+    val lucky: Boolean,
+    /** 该时辰宜事（库直给，可能为空） */
+    val recommends: List<String> = emptyList(),
+    /** 该时辰忌事（库直给，可能为空） */
+    val avoids: List<String> = emptyList()
 )
 
 /** 某日黄历完整信息（黄历详情页数据聚合，纯 JVM 可测） */
@@ -308,17 +314,19 @@ fun fullAlmanac(date: LocalDate): FullAlmanac {
     val clashStem = (daySixty.getIndex() + 6) % 10
     val clashGanzhi = SixtyCycle.fromIndex(sixtyIndex(clashStem, clashBranch)).getName()
 
-    // 十二值时：青龙居当日时辰支序=HOUR_LUCK_START[日支序]，自青龙顺行；
-    // 时柱按五鼠遁：时干序=(日干序%5)*2+时支序
+    // 时柱与时辰宜忌取库直给（SixtyCycleDay.getHours() 按五鼠遁排当日十二时辰）；
+    // 时辰吉凶库未提供，按十二值时口诀补：青龙居 HOUR_LUCK_START[日支序]，顺行十二值神
     val start = HOUR_LUCK_START[branchIndex]
-    val hours = (0 until 12).map { i ->
+    val hours = scd.getHours().mapIndexed { i, hour ->
         val godIdx = (i - start + 12) % 12
         HourLuck(
-            ganzhi = SixtyCycle.fromIndex(sixtyIndex(((stemIndex % 5) * 2 + i) % 10, i)).getName(),
+            ganzhi = hour.getName().removeSuffix("时"),
             branchIndex = i,
             timeRange = HOUR_TIME_RANGES[i],
             god = TWELVE_VALUE_GODS[godIdx],
-            lucky = godIdx in HUANGDAO_INDICES
+            lucky = godIdx in HUANGDAO_INDICES,
+            recommends = hour.getRecommends().map { it.getName() },
+            avoids = hour.getAvoids().map { it.getName() }
         )
     }
 

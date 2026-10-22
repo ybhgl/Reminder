@@ -28,9 +28,14 @@ class AlmanacDataTest {
         // 彭祖百忌/胎神（库直给）
         assertEquals("\u5df1\u4e0d\u7834\u5238\u4e8c\u6bd4\u5e76\u4ea1", a.pengZuStem)
         assertEquals("\u5df3\u4e0d\u8fdc\u884c\u8d22\u7269\u4f0f\u85cf", a.pengZuBranch)
-        assertEquals("\u5360\u95e8\u5e8a \u5916\u6b63\u5357", a.fetus)        // 五鼠遁：甲己日起甲子时
+        assertEquals("\u5360\u95e8\u5e8a \u5916\u6b63\u5357", a.fetus)
+        // 五鼠遁：甲己日起甲子时
         assertEquals("\u7532\u5b50", a.hours[0].ganzhi)
         assertEquals("\u4e19\u5bc5", a.hours[2].ganzhi)
+        // 时辰钟点用完整时刻写法（气泡内容需要），且宜忌由库直给
+        assertEquals("23:00-00:59", a.hours[0].timeRange)
+        assertEquals("21:00-22:59", a.hours[11].timeRange)
+        assertTrue(a.hours[0].recommends.isNotEmpty())
         // 十二值时：巳日青龙起戌
         assertEquals("\u9752\u9f99", a.hours[10].god)
         assertTrue(a.hours[10].lucky)

@@ -1,9 +1,9 @@
 package com.ybhgl.reminder.ui.calendar
 
-import androidx.compose.foundation.ExperimentalFoundationApi
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.combinedClickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -21,7 +21,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -58,11 +57,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
@@ -71,7 +70,14 @@ import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import java.time.LocalDate
 import java.time.LocalDateTime
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.util.Locale
+
+private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.CHINA)
+
+/** 顶栏标题：当前查看的公历日期，如"2026/10/22" */
+private fun topBarDateText(date: LocalDate): String = TOP_BAR_DATE_FORMAT.format(date)
 
 /**
  * 黄历详情页：日历卡（可左右横滑/点箭头切日）+ 宜忌卡（词条点击出白话气泡、可进择日）+
@@ -111,8 +117,10 @@ fun AlmanacDetailScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             val density = LocalDensity.current
             val topBarHeightDp = with(density) { topBarState.topBarHeightPx.toDp() }
+            // 占位用 contentOffsetPx（与顶栏位移同源同帧）：用 titleOffsetPx 会与滚动消费错位，
+            // 顶栏高度未测量时更是直接把首卡盖住
             val dynamicTopPadding =
-                (topBarHeightDp + with(density) { topBarState.titleOffsetPx.toDp() } + 16.dp)
+                (topBarHeightDp + with(density) { topBarState.contentOffsetPx.toDp() } + 16.dp)
                     .coerceAtLeast(0.dp)
 
             LazyColumn(
@@ -186,11 +194,17 @@ fun AlmanacDetailScreen(
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
-                    .graphicsLayer { translationY = topBarState.titleOffsetPx }
+                    .onSizeChanged { size ->
+                        // 顶栏高度回写状态：缺失时收起逻辑不触发、内容占位也算不出高度
+                        if (size.height > 0) topBarState.topBarHeightPx = size.height.toFloat()
+                    }
+                    .graphicsLayer {
+                        translationY = topBarState.titleOffsetPx
+                    }
                     .then(topAppBarModifier)
             ) {
                 TopAppBar(
-                    title = { Text("黄历") },
+                    title = { Text(topBarDateText(date)) },
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = topAppBarColors,
                     navigationIcon = {
@@ -240,7 +254,10 @@ private fun Modifier.swipeToShiftDay(onShift: (Int) -> Unit): Modifier = pointer
     )
 }
 
-/** 日历卡：大字日期 + 农历干支 + 星期 + 周数/星座/距节气标签，左右箭头切日 */
+/**
+ * 日历卡（页面主视觉）：左右箭头夹着超大公历日，下方农历大字 + 干支，
+ * 周数/星座/距节气等次要信息收敛成底部一行小字，避免抢主体层级。
+ */
 @Composable
 private fun AlmanacDateCard(
     date: LocalDate,
@@ -252,74 +269,92 @@ private fun AlmanacDateCard(
 ) {
     Surface(
         modifier = modifier.fillMaxWidth(),
-        shape = RoundedCornerShape(24.dp),
-        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+        shape = RoundedCornerShape(28.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHigh
     ) {
-        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 14.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 DayShiftButton(icon = Icons.Filled.ChevronLeft, desc = "前一天", onClick = { onShiftDay(-1) })
-                Spacer(modifier = Modifier.width(8.dp))
-                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Column(
+                    horizontalAlignment = Alignment.CenterHorizontally,
+                    modifier = Modifier.weight(1f)
+                ) {
                     Text(
-                        text = "${date.dayOfMonth}",
-                        style = MaterialTheme.typography.displaySmall,
-                        fontWeight = FontWeight.Bold,
-                        color = if (date == today) MaterialTheme.colorScheme.primary
-                        else MaterialTheme.colorScheme.onSurface
-                    )
-                    Text(
-                        text = "${date.monthValue}月",
-                        style = MaterialTheme.typography.bodySmall,
+                        text = "${date.year}年${date.monthValue}月",
+                        style = MaterialTheme.typography.labelLarge,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
-                }
-                Spacer(modifier = Modifier.width(16.dp))
-                Column(modifier = Modifier.weight(1f)) {
                     Text(
-                        text = "${dayInfo.lunarMonthDay}${dayInfo.termName?.let { " · $it" } ?: ""}" +
-                            "${dayInfo.festivalName?.let { " · $it" } ?: ""}",
-                        style = MaterialTheme.typography.titleMedium,
+                        text = "${date.dayOfMonth}",
+                        style = MaterialTheme.typography.displayLarge,
                         fontWeight = FontWeight.Bold,
+                        color = if (date == today) MaterialTheme.colorScheme.primary
+                        else MaterialTheme.colorScheme.onSurface,
+                        lineHeight = MaterialTheme.typography.displayLarge.fontSize
+                    )
+                    Text(
+                        text = weekdayCn(date),
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.Medium,
                         color = MaterialTheme.colorScheme.onSurface
                     )
-                    Text(
-                        text = weekdayCn(date) + "  " + cardDateText(date),
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 4.dp)
-                    )
-                    Text(
-                        text = almanac.ganzhiLine,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(top = 2.dp)
-                    )
                 }
-                Spacer(modifier = Modifier.width(8.dp))
                 DayShiftButton(icon = Icons.Filled.ChevronRight, desc = "后一天", onClick = { onShiftDay(1) })
             }
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(14.dp))
             Box(
                 modifier = Modifier
                     .fillMaxWidth()
                     .height(1.dp)
                     .background(MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.5f))
             )
-            FlowRow(
-                modifier = Modifier.padding(top = 12.dp),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-                verticalArrangement = Arrangement.spacedBy(8.dp)
+            Row(
+                modifier = Modifier.padding(top = 14.dp),
+                verticalAlignment = Alignment.Bottom
             ) {
-                val days = ChronoUnit.DAYS.between(today, date)
-                DateChip(text = "第${isoWeekOfYear(date)}周")
-                DateChip(text = BirthdayCalculator.getZodiacSign(date.monthValue, date.dayOfMonth))
-                when {
-                    days == 0L -> DateChip(text = "今天", highlight = true)
-                    days > 0 -> DateChip(text = "${days}天后", highlight = true)
-                    else -> DateChip(text = "${-days}天前", highlight = true)
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "${dayInfo.lunarMonthDay}${dayInfo.termName?.let { " · $it" } ?: ""}" +
+                            "${dayInfo.festivalName?.let { " · $it" } ?: ""}",
+                        style = MaterialTheme.typography.headlineSmall,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.primary
+                    )
+                    Text(
+                        text = almanac.ganzhiLine,
+                        style = MaterialTheme.typography.bodyLarge,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        modifier = Modifier.padding(top = 4.dp)
+                    )
                 }
-                DateChip(text = "距${almanac.nextTermName} ${almanac.daysToNextTerm}天")
+                val days = ChronoUnit.DAYS.between(today, date)
+                if (days != 0L) {
+                    Text(
+                        text = if (days > 0) "${days}天后" else "${-days}天前",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+                    )
+                } else {
+                    Text(
+                        text = "今天",
+                        style = MaterialTheme.typography.titleMedium,
+                        fontWeight = FontWeight.SemiBold,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+                    )
+                }
             }
+            // 次要信息收一行：周数 / 星座 / 距节气，不与农历干支争层级
+            Text(
+                text = "第${isoWeekOfYear(date)}周 · " +
+                    BirthdayCalculator.getZodiacSign(date.monthValue, date.dayOfMonth) +
+                    " · 距${almanac.nextTermName} ${almanac.daysToNextTerm}天",
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 8.dp)
+            )
         }
     }
 }
@@ -333,30 +368,13 @@ private fun DayShiftButton(
     Surface(
         onClick = onClick,
         shape = CircleShape,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest,
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f),
         contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-        modifier = Modifier.size(36.dp)
+        modifier = Modifier.size(44.dp)
     ) {
         Box(contentAlignment = Alignment.Center) {
-            Icon(imageVector = icon, contentDescription = desc, modifier = Modifier.size(20.dp))
+            Icon(imageVector = icon, contentDescription = desc, modifier = Modifier.size(24.dp))
         }
-    }
-}
-
-@Composable
-private fun DateChip(text: String, highlight: Boolean = false) {
-    Surface(
-        shape = RoundedCornerShape(50),
-        color = if (highlight) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surfaceContainerHighest,
-        contentColor = if (highlight) MaterialTheme.colorScheme.onPrimaryContainer
-        else MaterialTheme.colorScheme.onSurfaceVariant
-    ) {
-        Text(
-            text = text,
-            style = MaterialTheme.typography.labelMedium,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 5.dp)
-        )
     }
 }
 
@@ -411,18 +429,24 @@ private fun TabooTermRow(
 ) {
     if (terms.isEmpty()) return
     Row(verticalAlignment = Alignment.Top) {
+        // 外层容器与首行 chip 等高（32dp），圆徽在其中居中，避免徽标浮在 chip 之上
         Box(
-            modifier = Modifier
-                .size(28.dp)
-                .background(accent, CircleShape),
+            modifier = Modifier.size(32.dp),
             contentAlignment = Alignment.Center
         ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.surface
-            )
+            Box(
+                modifier = Modifier
+                    .size(28.dp)
+                    .background(accent, CircleShape),
+                contentAlignment = Alignment.Center
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.surface
+                )
+            }
         }
         Spacer(modifier = Modifier.width(12.dp))
         FlowRow(
@@ -457,28 +481,37 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
             Text(
                 text = term,
                 style = MaterialTheme.typography.bodyMedium,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
+                textAlign = TextAlign.Center,
+                modifier = Modifier
+                    .height(32.dp)
+                    .padding(horizontal = 12.dp),
+                maxLines = 1
             )
-            // DropdownMenu 以父 Box 为锚点定位（Popup 的 alignment 是相对整屏，会把气泡甩到屏幕角）
+            // DropdownMenu 以父 Box 为锚点定位（Popup 的 alignment 相对整屏，会把气泡甩到屏幕角）
             DropdownMenu(
                 expanded = expanded && explanation != null,
                 onDismissRequest = onClick,
-                containerColor = MaterialTheme.colorScheme.inverseSurface,
-                modifier = Modifier.widthIn(max = 260.dp)
+                shape = RoundedCornerShape(20.dp),
+                modifier = Modifier
+                    .width(300.dp)
+                    .border(
+                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                        shape = RoundedCornerShape(20.dp)
+                    )
             ) {
                 if (explanation != null) {
-                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp)
+                    ) {
                         Text(
                             text = term,
-                            style = MaterialTheme.typography.labelLarge,
-                            fontWeight = FontWeight.Bold,
-                            color = MaterialTheme.colorScheme.inverseOnSurface
+                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
                         )
-                        Spacer(modifier = Modifier.height(4.dp))
                         Text(
                             text = explanation,
                             style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.inverseOnSurface
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
                 }
@@ -518,8 +551,9 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
             }
             Spacer(modifier = Modifier.height(10.dp))
             InfoCell(
-                "彭祖百忌",
-                "${almanac.pengZuStem} · ${almanac.pengZuBranch}"
+                label = "彭祖百忌",
+                value = "${almanac.pengZuStem} · ${almanac.pengZuBranch}",
+                modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(10.dp))
             Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -575,7 +609,7 @@ private fun DirectionCell(label: String, direction: String, modifier: Modifier =
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(vertical = 8.dp)
+            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
         ) {
             Text(
                 text = label,
@@ -584,8 +618,7 @@ private fun DirectionCell(label: String, direction: String, modifier: Modifier =
             )
             Text(
                 text = direction,
-                style = MaterialTheme.typography.labelLarge,
-                fontWeight = FontWeight.SemiBold,
+                style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurface,
                 textAlign = TextAlign.Center
             )
@@ -593,12 +626,16 @@ private fun DirectionCell(label: String, direction: String, modifier: Modifier =
     }
 }
 
-/** 时辰吉凶卡：十二列竖排干支+吉凶，当前时辰高亮 */
+/**
+ * 时辰吉凶卡：十二列竖排「干支 + 吉凶」，当前时辰高亮；
+ * 点某列浮出气泡显示该时辰钟点区间与宜忌（钟点/宜忌不再常驻列内，避免 12 列挤压）。
+ */
 @Composable
 private fun HourLuckCard(
     hours: List<HourLuck>,
     highlightIndex: Int
 ) {
+    var expandedIndex by remember { mutableStateOf(-1) }
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
@@ -616,14 +653,6 @@ private fun HourLuckCard(
                 LuckDot(color = MaterialTheme.colorScheme.primary, label = "吉")
                 Spacer(modifier = Modifier.width(10.dp))
                 LuckDot(color = MaterialTheme.colorScheme.outline, label = "凶")
-                if (highlightIndex >= 0) {
-                    Spacer(modifier = Modifier.width(12.dp))
-                    Text(
-                        text = "当前·${hours[highlightIndex].ganzhi.drop(1)}时",
-                        style = MaterialTheme.typography.labelMedium,
-                        color = MaterialTheme.colorScheme.primary
-                    )
-                }
             }
             Spacer(modifier = Modifier.height(12.dp))
             Row(modifier = Modifier.fillMaxWidth()) {
@@ -631,6 +660,8 @@ private fun HourLuckCard(
                     HourColumn(
                         hour = hour,
                         highlighted = index == highlightIndex,
+                        expanded = expandedIndex == index,
+                        onClick = { expandedIndex = if (expandedIndex == index) -1 else index },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -654,47 +685,100 @@ private fun LuckDot(color: Color, label: String) {
 }
 
 @Composable
-private fun HourColumn(hour: HourLuck, highlighted: Boolean, modifier: Modifier = Modifier) {
+private fun HourColumn(
+    hour: HourLuck,
+    highlighted: Boolean,
+    expanded: Boolean,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
     val luckColor = if (hour.lucky) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
-    Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = if (highlighted) MaterialTheme.colorScheme.primary else Color.Transparent,
-        modifier = modifier
-    ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(vertical = 8.dp)
+    // 外层 Box 承载 weight：气泡锚点须与所属时辰列同位，且不能作为 Row 的兄弟节点占宽
+    Box(modifier = modifier) {
+        Surface(
+            shape = RoundedCornerShape(10.dp),
+            color = when {
+                highlighted -> MaterialTheme.colorScheme.primary
+                expanded -> MaterialTheme.colorScheme.primaryContainer
+                else -> Color.Transparent
+            },
+            modifier = Modifier
+                .fillMaxWidth()
+                .clickable(onClick = onClick)
         ) {
-            val onColumn = if (highlighted) MaterialTheme.colorScheme.onPrimary
-            else MaterialTheme.colorScheme.onSurface
-            Text(
-                text = hour.ganzhi.take(1),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = onColumn
-            )
-            Text(
-                text = hour.ganzhi.drop(1),
-                style = MaterialTheme.typography.bodyMedium,
-                fontWeight = FontWeight.SemiBold,
-                color = onColumn
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = if (hour.lucky) "吉" else "凶",
-                style = MaterialTheme.typography.labelSmall,
-                color = if (highlighted) MaterialTheme.colorScheme.onPrimary else luckColor
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = hour.timeRange,
-                // 12 列等宽下钟点段最宽（"11-13"），压到 9sp 才不挤邻列
-                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
-                color = if (highlighted) MaterialTheme.colorScheme.onPrimary
-                else MaterialTheme.colorScheme.onSurfaceVariant,
-                maxLines = 1
-            )
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(vertical = 8.dp)
+            ) {
+                val onColumn = if (highlighted) MaterialTheme.colorScheme.onPrimary
+                else MaterialTheme.colorScheme.onSurface
+                Text(
+                    text = hour.ganzhi.take(1),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onColumn
+                )
+                Text(
+                    text = hour.ganzhi.drop(1),
+                    style = MaterialTheme.typography.bodyLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    color = onColumn
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = if (hour.lucky) "吉" else "凶",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = if (highlighted) MaterialTheme.colorScheme.onPrimary else luckColor
+                )
+            }
+        }
+        DropdownMenu(
+            expanded = expanded,
+            onDismissRequest = onClick,
+            shape = RoundedCornerShape(20.dp),
+            modifier = Modifier
+                .width(300.dp)
+                .border(
+                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    shape = RoundedCornerShape(20.dp)
+                )
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp)
+            ) {
+                Text(
+                    text = hour.ganzhi,
+                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                )
+                Text(
+                    text = hour.timeRange,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                HourTermLine(label = "宜", terms = hour.recommends)
+                HourTermLine(label = "忌", terms = hour.avoids)
+            }
         }
     }
 }
 
+/** 时辰气泡内的一行宜/忌：无条目时整行不显示 */
+@Composable
+private fun HourTermLine(label: String, terms: List<String>) {
+    if (terms.isEmpty()) return
+    Row(verticalAlignment = Alignment.Top) {
+        Text(
+            text = label,
+            style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
+            color = MaterialTheme.colorScheme.primary
+        )
+        Spacer(modifier = Modifier.width(8.dp))
+        Text(
+            text = terms.joinToString(" "),
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurface,
+            modifier = Modifier.weight(1f)
+        )
+    }
+}
