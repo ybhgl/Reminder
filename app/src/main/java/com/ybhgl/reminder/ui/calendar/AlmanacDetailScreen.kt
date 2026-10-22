@@ -57,10 +57,14 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.DpOffset
+import androidx.compose.ui.unit.Constraints
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.util.BirthdayCalculator
@@ -74,7 +78,7 @@ import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
 
-private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy-MM-dd", Locale.CHINA)
+private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy/MM/dd", Locale.CHINA)
 
 /** 顶栏标题：当前查看的公历日期，如"2026/10/22" */
 private fun topBarDateText(date: LocalDate): String = TOP_BAR_DATE_FORMAT.format(date)
@@ -204,7 +208,7 @@ fun AlmanacDetailScreen(
                     .then(topAppBarModifier)
             ) {
                 TopAppBar(
-                    title = { Text(topBarDateText(date)) },
+                    title = { Text(topBarDateText(date), fontWeight = FontWeight.Bold) },
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = topAppBarColors,
                     navigationIcon = {
@@ -288,7 +292,8 @@ private fun AlmanacDateCard(
                         text = "${date.dayOfMonth}",
                         style = MaterialTheme.typography.displayLarge,
                         fontWeight = FontWeight.Bold,
-                        color = if (date == today) MaterialTheme.colorScheme.primary
+                        // 周末着色（与月历格口径一致）；今天改由下方"今天"标记表达
+                        color = if (date.dayOfWeek.value >= 6) MaterialTheme.colorScheme.primary
                         else MaterialTheme.colorScheme.onSurface,
                         lineHeight = MaterialTheme.typography.displayLarge.fontSize
                     )
@@ -328,23 +333,17 @@ private fun AlmanacDateCard(
                     )
                 }
                 val days = ChronoUnit.DAYS.between(today, date)
-                if (days != 0L) {
-                    Text(
-                        text = if (days > 0) "${days}天后" else "${-days}天前",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
-                    )
-                } else {
-                    Text(
-                        text = "今天",
-                        style = MaterialTheme.typography.titleMedium,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
-                    )
-                }
+                Text(
+                    text = when {
+                        days == 0L -> "今天"
+                        days > 0 -> "${days}天后"
+                        else -> "${-days}天前"
+                    },
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.primary,
+                    modifier = Modifier.padding(start = 8.dp, bottom = 4.dp)
+                )
             }
             // 次要信息收一行：周数 / 星座 / 距节气，不与农历干支争层级
             Text(
@@ -478,19 +477,20 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
         modifier = Modifier.clickable(enabled = explanation != null, onClick = onClick)
     ) {
         Box {
-            Text(
-                text = term,
-                style = MaterialTheme.typography.bodyMedium,
-                textAlign = TextAlign.Center,
+            // 定高 Box 居中：Text 实测高常小于 32dp，直接给 Text 设 height 会顶在上沿
+            Box(
                 modifier = Modifier
                     .height(32.dp)
                     .padding(horizontal = 12.dp),
-                maxLines = 1
-            )
+                contentAlignment = Alignment.Center
+            ) {
+                Text(text = term, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+            }
             // DropdownMenu 以父 Box 为锚点定位（Popup 的 alignment 相对整屏，会把气泡甩到屏幕角）
             DropdownMenu(
                 expanded = expanded && explanation != null,
                 onDismissRequest = onClick,
+                offset = DpOffset(0.dp, 10.dp),
                 shape = RoundedCornerShape(20.dp),
                 modifier = Modifier
                     .width(300.dp)
@@ -536,18 +536,14 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(12.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                InfoCell("吉神宜趋", almanac.auspiciousGods.joinToString(" "), modifier = Modifier.weight(1f))
-                InfoCell("凶神宜忌", almanac.inauspiciousGods.joinToString(" "), modifier = Modifier.weight(1f))
+            EqualHeightRow {
+                InfoCell("吉神宜趋", almanac.auspiciousGods.joinToString(" "))
+                InfoCell("凶神宜忌", almanac.inauspiciousGods.joinToString(" "))
             }
             Spacer(modifier = Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                InfoCell("五行", "${almanac.sound} · ${almanac.duty}执位", modifier = Modifier.weight(1f))
-                InfoCell(
-                    "值神 · 十二宫",
-                    "${almanac.dayGod}（${almanac.ecliptic}）",
-                    modifier = Modifier.weight(1f)
-                )
+            EqualHeightRow {
+                InfoCell("五行", "${almanac.sound} · ${almanac.duty}执位")
+                InfoCell("值神 · 十二宫", "${almanac.dayGod}（${almanac.ecliptic}）")
             }
             Spacer(modifier = Modifier.height(10.dp))
             InfoCell(
@@ -556,21 +552,47 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
                 modifier = Modifier.fillMaxWidth()
             )
             Spacer(modifier = Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                InfoCell("胎神", almanac.fetus, modifier = Modifier.weight(1f))
-                InfoCell(
-                    "冲煞",
-                    "${almanac.clashZodiac}（${almanac.clashGanzhi}） ${almanac.shaDirection}",
-                    modifier = Modifier.weight(1f)
-                )
+            EqualHeightRow {
+                InfoCell("胎神", almanac.fetus)
+                InfoCell("冲煞", "${almanac.clashZodiac}（${almanac.clashGanzhi}） ${almanac.shaDirection}")
             }
             Spacer(modifier = Modifier.height(10.dp))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                DirectionCell("财神", almanac.caiShen, Modifier.weight(1f))
-                DirectionCell("喜神", almanac.xiShen, Modifier.weight(1f))
-                DirectionCell("福神", almanac.fuShen, Modifier.weight(1f))
-                DirectionCell("阳贵", almanac.yangGui, Modifier.weight(1f))
-                DirectionCell("阴贵", almanac.yinGui, Modifier.weight(1f))
+            EqualHeightRow(gap = 8.dp) {
+                DirectionCell("财神", almanac.caiShen)
+                DirectionCell("喜神", almanac.xiShen)
+                DirectionCell("福神", almanac.fuShen)
+                DirectionCell("阳贵", almanac.yangGui)
+                DirectionCell("阴贵", almanac.yinGui)
+            }
+        }
+    }
+}
+
+/**
+ * 等宽等高信息行：按子项数均分宽度，先量出最高子项，再以等高约束二次测量下发，
+ * 使矮格的背景也撑满整行（避免右侧短内容下方露出卡片底色形成空洞）。
+ * 不用 `IntrinsicSize.Min`：weight 在固有高度测量阶段不参与，文本会按整行宽换行而低估高度。
+ */
+@Composable
+private fun EqualHeightRow(
+    modifier: Modifier = Modifier,
+    gap: Dp = 10.dp,
+    content: @Composable () -> Unit
+) {
+    Layout(content, modifier = modifier.fillMaxWidth()) { measurables, constraints ->
+        val gapPx = gap.roundToPx()
+        val count = measurables.size.coerceAtLeast(1)
+        val childWidth = ((constraints.maxWidth - gapPx * (count - 1)) / count).coerceAtLeast(0)
+        val widthConstraints = Constraints(maxWidth = childWidth)
+        val rowHeight = measurables.maxOf { it.measure(widthConstraints).height }
+        val placeables = measurables.map {
+            it.measure(widthConstraints.copy(minHeight = rowHeight, maxHeight = rowHeight))
+        }
+        layout(constraints.maxWidth, rowHeight) {
+            var x = 0
+            placeables.forEach { placeable ->
+                placeable.placeRelative(x, 0)
+                x += childWidth + gapPx
             }
         }
     }
@@ -714,14 +736,12 @@ private fun HourColumn(
                 else MaterialTheme.colorScheme.onSurface
                 Text(
                     text = hour.ganzhi.take(1),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = onColumn
                 )
                 Text(
                     text = hour.ganzhi.drop(1),
-                    style = MaterialTheme.typography.bodyLarge,
-                    fontWeight = FontWeight.SemiBold,
+                    style = MaterialTheme.typography.bodyMedium,
                     color = onColumn
                 )
                 Spacer(modifier = Modifier.height(4.dp))
@@ -735,6 +755,7 @@ private fun HourColumn(
         DropdownMenu(
             expanded = expanded,
             onDismissRequest = onClick,
+            offset = DpOffset(0.dp, 10.dp),
             shape = RoundedCornerShape(20.dp),
             modifier = Modifier
                 .width(300.dp)
