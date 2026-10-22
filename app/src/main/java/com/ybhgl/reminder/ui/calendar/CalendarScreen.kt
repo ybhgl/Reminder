@@ -104,6 +104,9 @@ fun CalendarScreen(
     onNavigateDetail: (Int) -> Unit,
     onAddReminder: (LocalDate) -> Unit,
     onNavigateAlmanac: (LocalDate) -> Unit,
+    /** 黄历页回传的查看日期：非空则同步选中日与显示月，随后由调用方置空 */
+    externalSelectedDate: LocalDate? = null,
+    onExternalDateConsumed: () -> Unit = {},
     isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -114,6 +117,14 @@ fun CalendarScreen(
     var displayMonth by rememberSaveable(stateSaver = YearMonthSaver) { mutableStateOf(YearMonth.from(selectedDate)) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     val headerInteraction = remember { MutableInteractionSource() }
+
+    LaunchedEffect(externalSelectedDate) {
+        externalSelectedDate?.let {
+            selectedDate = it
+            displayMonth = YearMonth.from(it)
+            onExternalDateConsumed()
+        }
+    }
 
     // ===== 日历跟手收展（riji collapsePx 像素模型）=====
     // 收缩像素是唯一状态：0=完全展开，maxCollapsePx=收缩到仅选中行；

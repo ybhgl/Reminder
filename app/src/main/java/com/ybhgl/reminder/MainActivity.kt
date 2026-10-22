@@ -750,6 +750,8 @@ object Routes {
     /** 择日详情页：某事件的吉日/忌日筛选（term 为黄历事件名） */
     const val ZEJI_DETAIL = "zeji_detail"
     const val ZEJI_DETAIL_PATTERN = "$ZEJI_DETAIL?term={term}&recommended={recommended}"
+    /** 黄历页当前查看日期回传键（写回 reminder_list 条目，返回后日历页同步选中） */
+    const val ALMANAC_DATE_RESULT_KEY = "almanacDate"
 
     fun editReminder(reminderId: Int, readOnly: Boolean = false): String = "$EDIT_REMINDER_BASE/$reminderId?readOnly=$readOnly"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
@@ -1460,6 +1462,20 @@ fun ReminderListScreen(
 ) {
     val reminderListUiState by viewModel.reminderListUiState.collectAsState()
     val context = LocalContext.current
+
+    // 黄历页回传的查看日期：非空即让日历页同步选中同一天，消费后清空避免重复应用。
+    // 走 savedStateHandle 而非返回参数，系统返回手势/预测返回同样生效。
+    val listBackStackEntry = remember { navController.getBackStackEntry(Routes.REMINDER_LIST) }
+    val almanacDateResult by listBackStackEntry.savedStateHandle
+        .getStateFlow(Routes.ALMANAC_DATE_RESULT_KEY, "")
+        .collectAsState()
+    var pendingAlmanacDate by remember { mutableStateOf<LocalDate?>(null) }
+    LaunchedEffect(almanacDateResult) {
+        if (almanacDateResult.isNotEmpty()) {
+            pendingAlmanacDate = runCatching { LocalDate.parse(almanacDateResult) }.getOrNull()
+            listBackStackEntry.savedStateHandle[Routes.ALMANAC_DATE_RESULT_KEY] = ""
+        }
+    }
     val backupReminderEnabled by remember(context) { BackupPreferences.backupReminderEnabledFlow(context) }.collectAsState(initial = false)
     val lastBackupTimestamp by remember(context) { BackupPreferences.lastBackupTimestampFlow(context) }.collectAsState(initial = 0L)
     val lastDataChangeTimestamp by remember(context) { BackupPreferences.lastDataChangeTimestampFlow(context) }.collectAsState(initial = 0L)
@@ -1882,6 +1898,8 @@ fun ReminderListScreen(
                             navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
                         },
                         onNavigateAlmanac = { date -> navController.navigate(Routes.almanacDetail(date)) },
+                        externalSelectedDate = pendingAlmanacDate,
+                        onExternalDateConsumed = { pendingAlmanacDate = null },
                         // 主页 pager 会预组合日历页，"进入日历页"须以落页为准（授权弹窗/节假日同步门控）
                         isActive = pagerState.currentPage == 0
                     )
@@ -4174,6 +4192,12 @@ private fun ReminderNavContent(
                 onNavigateDetail = { id -> navController.navigate(Routes.detailReminder(id)) },
                 onAddReminder = { date ->
                     navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
+                },
+                onDateChanged = { date ->
+                    // 回写给日历页所在条目；previousBackStackEntry 即 reminder_list
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set(Routes.ALMANAC_DATE_RESULT_KEY, date.toString())
                 }
             )
         }

@@ -1,12 +1,20 @@
 package com.ybhgl.reminder.ui.calendar
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.core.tween
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -21,6 +29,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,7 +40,9 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.material3.DropdownMenu
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,8 +54,11 @@ import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableFloatStateOf
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -62,9 +76,12 @@ import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.DpOffset
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.util.BirthdayCalculator
@@ -85,6 +102,71 @@ private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy'/'MM'/'dd", 
 private fun topBarDateText(date: LocalDate): String = TOP_BAR_DATE_FORMAT.format(date)
 
 /**
+ * 黄历页气泡定位：默认贴在锚点下方 [gapPx] 处；下方放不下时翻到锚点上方同样留 [gapPx]
+ * （DropdownMenu 的固定 offset 在翻转后会变成"顶进锚点"，故不能沿用），
+ * 并把左右夹在屏幕边距内，避免贴边或被裁。
+ */
+private class BubblePositionProvider(
+    private val gapPx: Int,
+    private val marginPx: Int
+) : PopupPositionProvider {
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        popupContentSize: IntSize,
+        layoutDirection: LayoutDirection,
+        windowSize: IntSize
+    ): IntOffset {
+        val belowY = anchorBounds.bottom + gapPx
+        val fitsBelow = belowY + popupContentSize.height <= windowSize.height - marginPx
+        val y = if (fitsBelow) belowY
+        else (anchorBounds.top - gapPx - popupContentSize.height).coerceAtLeast(marginPx)
+        val maxX = (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
+        return IntOffset(anchorBounds.left.coerceIn(marginPx, maxX), y)
+    }
+}
+
+/**
+ * 锚定气泡：宽度随内容（上限 [maxWidth]），上下左右与屏幕边缘保持间距。
+ * 挂在锚点（词条/时辰列）的 Box 内，Popup 以该 Box 为定位锚。
+ */
+@Composable
+private fun AnchorBubble(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    if (!expanded) return
+    val density = LocalDensity.current
+    val provider = remember(density) {
+        BubblePositionProvider(
+            gapPx = with(density) { 10.dp.roundToPx() },
+            marginPx = with(density) { 16.dp.roundToPx() }
+        )
+    }
+    Popup(
+        popupPositionProvider = provider,
+        onDismissRequest = onDismissRequest,
+        properties = PopupProperties(focusable = true)
+    ) {
+        Surface(
+            shape = RoundedCornerShape(20.dp),
+            color = MaterialTheme.colorScheme.surfaceContainer,
+            contentColor = MaterialTheme.colorScheme.onSurface,
+            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+            shadowElevation = 6.dp,
+            modifier = modifier.widthIn(max = 300.dp)
+        ) {
+            Column(
+                modifier = Modifier.padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(6.dp),
+                content = content
+            )
+        }
+    }
+}
+
+/**
  * 黄历详情页：日历卡（可左右横滑/点箭头切日）+ 宜忌卡（词条点击出白话气泡、可进择日）+
  * 黄历信息卡（吉神凶煞/五行/值神/彭祖/胎神/冲煞/财神五方位）+ 时辰吉凶卡 + 当日事件与添加卡。
  * 数据由 [fullAlmanac] 聚合（tyme4kt + 本地口诀表），全程离线。
@@ -97,10 +179,25 @@ fun AlmanacDetailScreen(
     onNavigateZeji: () -> Unit,
     onNavigateDetail: (Int) -> Unit,
     onAddReminder: (LocalDate) -> Unit,
+    onDateChanged: (LocalDate) -> Unit,
     viewModel: ReminderListViewModel = viewModel(factory = AppViewModelProvider.Factory)
 ) {
     val today = remember { LocalDate.now() }
     var date by rememberSaveable(stateSaver = AlmanacDateSaver) { mutableStateOf(initialDate) }
+    // 横滑跟手位移（px，松手归零）与本次切换方向（+1 下一天 / -1 前一天），供 AnimatedContent 取向
+    var dragPx by remember { mutableFloatStateOf(0f) }
+    var switchDirection by remember { mutableIntStateOf(1) }
+    val maxDragPx = with(LocalDensity.current) { 40.dp.toPx() }
+    val shiftThresholdPx = with(LocalDensity.current) { 64.dp.roundToPx() }
+    val slideDistancePx = with(LocalDensity.current) { 120.dp.roundToPx() }
+
+    fun shiftDay(direction: Int) {
+        switchDirection = direction
+        date = date.plusDays(direction.toLong())
+    }
+    // 页内切日实时上报：返回日历页时由日历页同步选中同一天（不等返回按钮，系统返回手势同样生效）
+    LaunchedEffect(date) { onDateChanged(date) }
+
     val almanac = remember(date) { fullAlmanac(date) }
     val dayInfo = remember(date, today) { dayAlmanac(date, today) }
     val uiState by viewModel.reminderListUiState.collectAsState()
@@ -140,15 +237,44 @@ fun AlmanacDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item(key = "date_card") {
-                    AlmanacDateCard(
-                        date = date,
-                        today = today,
-                        almanac = almanac,
-                        dayInfo = dayInfo,
-                        onShiftDay = { offset -> date = date.plusDays(offset.toLong()) },
-                        // 横滑切日：累计到阈值即切一天并扣减阈值，连续滑动可跨多天
-                        modifier = Modifier.swipeToShiftDay { offset -> date = date.plusDays(offset.toLong()) }
-                    )
+                    // 一次手势最多切一天（旧实现按屏宽 1/6 反复扣减，横穿屏幕会连切数天）；
+                    // 切日走 AnimatedContent 方向性滑入滑出，箭头与横滑共用同一套动画
+                    Box(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .graphicsLayer { translationX = dragPx.coerceIn(-maxDragPx, maxDragPx) }
+                            .swipeToShiftDay(
+                                thresholdPx = shiftThresholdPx,
+                                onDragPx = { dragPx = it },
+                                onShift = { direction ->
+                                    dragPx = 0f
+                                    shiftDay(direction)
+                                },
+                                onDragEnd = { dragPx = 0f }
+                            )
+                    ) {
+                        AnimatedContent(
+                            targetState = date,
+                            transitionSpec = {
+                                // 固定滑距（1/4 屏宽）：AnimatedContentScope.size 在本版本被 Modifier.size 遮蔽
+                                val slide = slideDistancePx * switchDirection
+                                (slideInHorizontally(tween(240)) { slide } + fadeIn(tween(240)))
+                                    .togetherWith(
+                                        slideOutHorizontally(tween(240)) { -slide } + fadeOut(tween(160))
+                                    )
+                            },
+                            label = "almanacDateCard"
+                        ) { pageDate ->
+                            AlmanacDateCard(
+                                date = pageDate,
+                                today = today,
+                                almanac = if (pageDate == date) almanac else remember(pageDate) { fullAlmanac(pageDate) },
+                                dayInfo = if (pageDate == date) dayInfo
+                                else remember(pageDate, today) { dayAlmanac(pageDate, today) },
+                                onShiftDay = ::shiftDay
+                            )
+                        }
+                    }
                 }
                 item(key = "taboo_card") {
                     AlmanacTabooCard(
@@ -222,7 +348,9 @@ fun AlmanacDetailScreen(
                     },
                     actions = {
                         if (date != today) {
-                            TextButton(onClick = { date = today }) { Text("今天") }
+                            TextButton(onClick = { shiftDay(if (today.isAfter(date)) 1 else -1) }) {
+                                Text("今天")
+                            }
                         }
                     }
                 )
@@ -238,22 +366,28 @@ private val AlmanacDateSaver: androidx.compose.runtime.saveable.Saver<LocalDate,
         restore = { LocalDate.ofEpochDay(it) }
     )
 
-/** 横滑切日手势：累计位移超阈值触发一次切换（阈值=屏宽 1/6，跟手不回弹） */
-private fun Modifier.swipeToShiftDay(onShift: (Int) -> Unit): Modifier = pointerInput(Unit) {
-    val threshold = size.width / 6f
+/**
+ * 横滑切日手势：累计位移过 [thresholdPx] 触发一次切换，且**本次手势内不再触发**，
+ * 避免一次长距离横滑连切多天；[onDragPx] 实时回传累计位移供卡片跟手微移。
+ */
+private fun Modifier.swipeToShiftDay(
+    thresholdPx: Int,
+    onDragPx: (Float) -> Unit,
+    onShift: (Int) -> Unit,
+    onDragEnd: () -> Unit
+): Modifier = pointerInput(Unit) {
     var accumulated = 0f
+    var switched = false
     detectHorizontalDragGestures(
-        onDragEnd = { accumulated = 0f },
-        onDragCancel = { accumulated = 0f },
+        onDragEnd = { accumulated = 0f; switched = false; onDragEnd() },
+        onDragCancel = { accumulated = 0f; switched = false; onDragEnd() },
         onHorizontalDrag = { _, dragAmount ->
+            if (switched) return@detectHorizontalDragGestures
             accumulated += dragAmount
-            while (accumulated <= -threshold) {
-                onShift(1)
-                accumulated += threshold
-            }
-            while (accumulated >= threshold) {
-                onShift(-1)
-                accumulated -= threshold
+            onDragPx(accumulated)
+            when {
+                accumulated <= -thresholdPx -> { switched = true; accumulated = 0f; onDragPx(0f); onShift(1) }
+                accumulated >= thresholdPx -> { switched = true; accumulated = 0f; onDragPx(0f); onShift(-1) }
             }
         }
     )
@@ -487,34 +621,18 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
             ) {
                 Text(text = term, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
             }
-            // DropdownMenu 以父 Box 为锚点定位（Popup 的 alignment 相对整屏，会把气泡甩到屏幕角）
-            DropdownMenu(
-                expanded = expanded && explanation != null,
-                onDismissRequest = onClick,
-                offset = DpOffset(0.dp, 10.dp),
-                shape = RoundedCornerShape(20.dp),
-                modifier = Modifier
-                    .width(300.dp)
-                    .border(
-                        BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                        shape = RoundedCornerShape(20.dp)
-                    )
-            ) {
+            // 白话气泡：锚在词条下方，空间不足自动翻到上方
+            AnchorBubble(expanded = expanded && explanation != null, onDismissRequest = onClick) {
                 if (explanation != null) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp)
-                    ) {
-                        Text(
-                            text = term,
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                        )
-                        Text(
-                            text = explanation,
-                            style = MaterialTheme.typography.bodySmall,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
+                    Text(
+                        text = term,
+                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+                    )
+                    Text(
+                        text = explanation,
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
                 }
             }
         }
@@ -759,34 +877,18 @@ private fun HourColumn(
                 )
             }
         }
-        DropdownMenu(
-            expanded = expanded,
-            onDismissRequest = onClick,
-            offset = DpOffset(0.dp, 10.dp),
-            shape = RoundedCornerShape(20.dp),
-            modifier = Modifier
-                .width(300.dp)
-                .border(
-                    BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                    shape = RoundedCornerShape(20.dp)
-                )
-        ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp)
-            ) {
-                Text(
-                    text = hour.ganzhi,
-                    style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                )
-                Text(
-                    text = hour.timeRange,
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
-                HourTermLine(label = "宜", terms = hour.recommends)
-                HourTermLine(label = "忌", terms = hour.avoids)
-            }
+        AnchorBubble(expanded = expanded, onDismissRequest = onClick) {
+            Text(
+                text = hour.ganzhi,
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+            )
+            Text(
+                text = hour.timeRange,
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            HourTermLine(label = "宜", terms = hour.recommends)
+            HourTermLine(label = "忌", terms = hour.avoids)
         }
     }
 }
