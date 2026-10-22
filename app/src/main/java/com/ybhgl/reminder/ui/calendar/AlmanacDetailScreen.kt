@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -31,6 +32,7 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -59,9 +61,8 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.window.Popup
+import androidx.compose.ui.unit.sp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
@@ -440,7 +441,7 @@ private fun TabooTermRow(
     }
 }
 
-/** 宜忌词条：点击弹出白话解释气泡（数据集外的无解释词条不可点） */
+/** 宜忌词条：点击在词条下方浮出白话解释气泡（数据集外的无解释词条不可点） */
 @Composable
 private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
     val explanation = tabooExplanation(term)
@@ -458,31 +459,27 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
                 style = MaterialTheme.typography.bodyMedium,
                 modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp)
             )
-            if (expanded && explanation != null) {
-                Popup(
-                    alignment = Alignment.BottomStart,
-                    offset = IntOffset(0, 8),
-                    onDismissRequest = onClick
-                ) {
-                    Surface(
-                        shape = RoundedCornerShape(16.dp),
-                        color = MaterialTheme.colorScheme.inverseSurface,
-                        contentColor = MaterialTheme.colorScheme.inverseOnSurface,
-                        shadowElevation = 6.dp,
-                        modifier = Modifier.width(240.dp)
-                    ) {
-                        Column(modifier = Modifier.padding(12.dp)) {
-                            Text(
-                                text = term,
-                                style = MaterialTheme.typography.labelLarge,
-                                fontWeight = FontWeight.Bold
-                            )
-                            Spacer(modifier = Modifier.height(4.dp))
-                            Text(
-                                text = explanation,
-                                style = MaterialTheme.typography.bodySmall
-                            )
-                        }
+            // DropdownMenu 以父 Box 为锚点定位（Popup 的 alignment 是相对整屏，会把气泡甩到屏幕角）
+            DropdownMenu(
+                expanded = expanded && explanation != null,
+                onDismissRequest = onClick,
+                containerColor = MaterialTheme.colorScheme.inverseSurface,
+                modifier = Modifier.widthIn(max = 260.dp)
+            ) {
+                if (explanation != null) {
+                    Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 12.dp)) {
+                        Text(
+                            text = term,
+                            style = MaterialTheme.typography.labelLarge,
+                            fontWeight = FontWeight.Bold,
+                            color = MaterialTheme.colorScheme.inverseOnSurface
+                        )
+                        Spacer(modifier = Modifier.height(4.dp))
+                        Text(
+                            text = explanation,
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.inverseOnSurface
+                        )
                     }
                 }
             }
@@ -691,7 +688,8 @@ private fun HourColumn(hour: HourLuck, highlighted: Boolean, modifier: Modifier 
             Spacer(modifier = Modifier.height(4.dp))
             Text(
                 text = hour.timeRange,
-                style = MaterialTheme.typography.labelSmall,
+                // 12 列等宽下钟点段最宽（"11-13"），压到 9sp 才不挤邻列
+                style = MaterialTheme.typography.labelSmall.copy(fontSize = 9.sp),
                 color = if (highlighted) MaterialTheme.colorScheme.onPrimary
                 else MaterialTheme.colorScheme.onSurfaceVariant,
                 maxLines = 1
