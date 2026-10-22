@@ -1,12 +1,16 @@
 package com.ybhgl.reminder.ui.calendar
 
+import androidx.compose.foundation.background
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -15,16 +19,45 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.unit.dp
 import com.tyme.solar.SolarDay
+import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.util.CalendarUtil
 import com.ybhgl.reminder.util.HolidayDay
 import com.ybhgl.reminder.util.HolidayManager
 import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
+import java.time.temporal.WeekFields
+import java.util.Locale
+
+private val CARD_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy年M月d日", Locale.CHINA)
+
+private val WEEKDAY_CN = listOf("周一", "周二", "周三", "周四", "周五", "周六", "周日")
+
+/** 星期短文本，如"周二" */
+internal fun weekdayCn(date: LocalDate): String = WEEKDAY_CN[date.dayOfWeek.value - 1]
+
+/** 卡片标题日期，如"2026年10月22日" */
+internal fun cardDateText(date: LocalDate): String = date.format(CARD_DATE_FORMAT)
+
+/** ISO 8601 周数：周一为一周开始，第1周=含当年首个周四的周 */
+internal fun isoWeekOfYear(date: LocalDate): Int = date.get(WeekFields.ISO.weekOfWeekBasedYear())
+
+/** "第xx周 xx座"行文本（周数 ISO 8601 口径；星座与详情页生日卡同口径） */
+internal fun weekConstellationLine(date: LocalDate): String =
+    "第${isoWeekOfYear(date)}周 ${BirthdayCalculator.getZodiacSign(date.monthValue, date.dayOfMonth)}"
+
+/** 某日宜忌（黄历），基于干支日的建除十二神等传统规则本地推算 */
+internal fun dayTaboos(date: LocalDate): Pair<List<String>, List<String>> {
+    val sixtyCycleDay = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth).getSixtyCycleDay()
+    return sixtyCycleDay.getRecommends().map { it.getName() } to
+        sixtyCycleDay.getAvoids().map { it.getName() }
+}
 
 /** 某日的黄历详情聚合（纯函数结果，避免重组时重复计算日历库） */
 data class DayAlmanac(
@@ -80,7 +113,7 @@ fun dayAlmanac(
 
 /**
  * 选中日期详情卡（M3E tonal 大圆角卡）：大字农历 + 节气 + 干支三柱，
- * 距今文本右对齐主题色。点击进入黄历宜忌弹窗。
+ * 距今文本右对齐主题色，其下为周数/星座行与宜忌预览。点击进入黄历详情页。
  */
 @Composable
 fun CalendarDetailCard(
@@ -151,13 +184,61 @@ fun CalendarDetailCard(
                     )
                 }
             }
-            // 底部宜忌预览（横向单排，宽度不足时两侧各 3→2→1 条递减）；完整内容点击进弹窗查看
+            // 周数+星座行（原宜忌弹窗内容上卡，样式与干支行一致）
+            Text(
+                text = weekConstellationLine(date),
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                modifier = Modifier.padding(top = 4.dp)
+            )
+            // 底部宜忌预览（横向单排，宽度不足时两侧各 3→2→1 条递减）；完整内容进详情页查看
             TabooPreviewRow(
                 recommends = recommends,
                 avoids = avoids,
                 modifier = Modifier.padding(top = 12.dp)
             )
         }
+    }
+}
+
+/**
+ * 宜/忌单区块：圆形字徽标 + 彩色条目文本。
+ * internal 供黄历详情页复用。
+ */
+@Composable
+internal fun TabooBlock(
+    label: String,
+    color: Color,
+    items: List<String>,
+    modifier: Modifier = Modifier
+) {
+    if (items.isEmpty()) return
+    Row(
+        modifier = modifier.fillMaxWidth(),
+        // 徽标与文字垂直居中对齐（卡片与详情页共用此组件，一处修复两处生效）
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Box(
+            modifier = Modifier
+                .size(28.dp)
+                .background(color, CircleShape),
+            contentAlignment = Alignment.Center
+        ) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelLarge,
+                fontWeight = FontWeight.Bold,
+                color = MaterialTheme.colorScheme.surface
+            )
+        }
+        Spacer(modifier = Modifier.width(12.dp))
+        Text(
+            text = items.joinToString(" "),
+            style = MaterialTheme.typography.bodyMedium,
+            color = color,
+            fontWeight = FontWeight.Medium,
+            modifier = Modifier.weight(1f)
+        )
     }
 }
 

@@ -101,7 +101,10 @@ import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.RestoreFromTrash
+import com.ybhgl.reminder.ui.calendar.AlmanacDetailScreen
 import com.ybhgl.reminder.ui.calendar.CalendarScreen
+import com.ybhgl.reminder.ui.calendar.ZejiDetailScreen
+import com.ybhgl.reminder.ui.calendar.ZejiScreen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowBack
@@ -739,6 +742,14 @@ object Routes {
     /** 权限管理页（功能权限/常规权限/联网开关）；target=webdav|update 时直达并高亮对应开关 */
     const val PERMISSION_MANAGEMENT = "permission_management"
     const val PERMISSION_MANAGEMENT_PATTERN = "$PERMISSION_MANAGEMENT?target={target}"
+    /** 黄历详情页（date=ISO 日期） */
+    const val ALMANAC_DETAIL_BASE = "almanac_detail"
+    const val ALMANAC_DETAIL_PATTERN = "$ALMANAC_DETAIL_BASE?date={date}"
+    /** 择日页：宜忌事件分类总览 */
+    const val ZEJI = "zeji"
+    /** 择日详情页：某事件的吉日/忌日筛选（term 为黄历事件名） */
+    const val ZEJI_DETAIL = "zeji_detail"
+    const val ZEJI_DETAIL_PATTERN = "$ZEJI_DETAIL?term={term}&recommended={recommended}"
 
     fun editReminder(reminderId: Int, readOnly: Boolean = false): String = "$EDIT_REMINDER_BASE/$reminderId?readOnly=$readOnly"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
@@ -764,6 +775,9 @@ object Routes {
     }
     fun tagManagement(isSortMode: Boolean = false): String = "$TAG_MANAGEMENT?isSortMode=$isSortMode"
     fun permissionManagement(target: String? = null): String = "$PERMISSION_MANAGEMENT?target=${target ?: ""}"
+    fun almanacDetail(date: LocalDate): String = "$ALMANAC_DETAIL_BASE?date=$date"
+    fun zejiDetail(term: String, recommended: Boolean): String =
+        "$ZEJI_DETAIL?term=${android.net.Uri.encode(term)}&recommended=$recommended"
 }
 
 @OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class)
@@ -950,6 +964,23 @@ fun ReminderApp(onPermissionsFlowSettled: () -> Unit = {}) {
                 composable(route = Routes.BACKUP_AND_RESTORE) { }
                 composable(route = Routes.DATE_CALCULATOR) { }
                 composable(route = Routes.RECYCLE_BIN) { }
+                composable(route = Routes.ZEJI) { }
+                composable(
+                    route = Routes.ALMANAC_DETAIL_PATTERN,
+                    arguments = listOf(
+                        navArgument("date") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        }
+                    )
+                ) { }
+                composable(
+                    route = Routes.ZEJI_DETAIL_PATTERN,
+                    arguments = listOf(
+                        navArgument("term") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("recommended") { type = NavType.BoolType; defaultValue = true }
+                    )
+                ) { }
                 composable(
                     route = Routes.PERMISSION_MANAGEMENT_PATTERN,
                     arguments = listOf(
@@ -1850,6 +1881,7 @@ fun ReminderListScreen(
                         onAddReminder = { date ->
                             navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
                         },
+                        onNavigateAlmanac = { date -> navController.navigate(Routes.almanacDetail(date)) },
                         // 主页 pager 会预组合日历页，"进入日历页"须以落页为准（授权弹窗/节假日同步门控）
                         isActive = pagerState.currentPage == 0
                     )
@@ -4130,6 +4162,35 @@ private fun ReminderNavContent(
             }
         )
         Routes.RECYCLE_BIN -> RecycleBinScreen(navController = navController)
+        Routes.ALMANAC_DETAIL_PATTERN -> {
+            val dateArg = entry.arguments?.getString("date").orEmpty()
+            val initialDate = remember(dateArg) {
+                runCatching { LocalDate.parse(dateArg) }.getOrDefault(LocalDate.now())
+            }
+            AlmanacDetailScreen(
+                initialDate = initialDate,
+                onNavigateBack = { navController.navigateUp() },
+                onNavigateZeji = { navController.navigate(Routes.ZEJI) },
+                onNavigateDetail = { id -> navController.navigate(Routes.detailReminder(id)) },
+                onAddReminder = { date ->
+                    navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
+                }
+            )
+        }
+        Routes.ZEJI -> ZejiScreen(
+            onNavigateBack = { navController.navigateUp() },
+            onOpenDetail = { term, recommended ->
+                navController.navigate(Routes.zejiDetail(term, recommended))
+            }
+        )
+        Routes.ZEJI_DETAIL_PATTERN -> ZejiDetailScreen(
+            term = entry.arguments?.getString("term").orEmpty(),
+            recommended = entry.arguments?.getBoolean("recommended") ?: true,
+            onNavigateBack = { navController.navigateUp() },
+            onAddReminder = { date ->
+                navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
+            }
+        )
         Routes.PERMISSION_MANAGEMENT_PATTERN -> PermissionManagementScreen(
             onNavigateBack = { navController.navigateUp() },
             focusTarget = entry.arguments?.getString("target")?.takeIf { it.isNotEmpty() }

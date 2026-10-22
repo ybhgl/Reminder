@@ -74,4 +74,31 @@ class AlmanacDataTest {
         assertEquals(1, currentHourIndex(2))
         assertEquals(11, currentHourIndex(22))
     }
+
+    @Test
+    fun `zeji dates all hit the term in the matching list`() {
+        val dates = zejiDates("\u796d\u7940", recommended = true, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 31))
+        assertTrue(dates.isNotEmpty())
+        dates.forEach { d ->
+            assertTrue(d.toString(), fullAlmanac(d).recommends.contains("\u796d\u7940"))
+        }
+        // 忌日扫描与宜日扫描互不干涉：同一术语在忌列表中命中的日期，其 avoids 必含该术语
+        val avoidDates = zejiDates("\u5b89\u846c", recommended = false, LocalDate.of(2026, 10, 1), LocalDate.of(2026, 12, 31))
+        avoidDates.forEach { d ->
+            assertTrue(fullAlmanac(d).avoids.contains("\u5b89\u846c"))
+        }
+    }
+
+    @Test
+    fun `zeji term lists are grouped and explained`() {
+        val recommended = zejiTerms(true)
+        val avoided = zejiTerms(false)
+        assertTrue(recommended.isNotEmpty() && avoided.isNotEmpty())
+        // 元规则项（诸事不宜/馀事勿取）不进网格
+        assertTrue((recommended + avoided).distinct().none { it.startsWith("\u8bf8") || it.startsWith("\u9986") })
+        // 两区术语都有分类与白话
+        (recommended + avoided).distinct().forEach {
+            assertTrue("no explanation: $it", tabooExplanation(it) != null)
+        }
+    }
 }

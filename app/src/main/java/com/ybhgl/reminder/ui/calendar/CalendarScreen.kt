@@ -103,6 +103,7 @@ fun CalendarScreen(
     items: List<ReminderItem>,
     onNavigateDetail: (Int) -> Unit,
     onAddReminder: (LocalDate) -> Unit,
+    onNavigateAlmanac: (LocalDate) -> Unit,
     isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -112,7 +113,6 @@ fun CalendarScreen(
     var selectedDate by rememberSaveable(stateSaver = LocalDateSaver) { mutableStateOf(today) }
     var displayMonth by rememberSaveable(stateSaver = YearMonthSaver) { mutableStateOf(YearMonth.from(selectedDate)) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
-    var showAlmanac by rememberSaveable { mutableStateOf(false) }
     val headerInteraction = remember { MutableInteractionSource() }
 
     // ===== 日历跟手收展（riji collapsePx 像素模型）=====
@@ -385,7 +385,7 @@ fun CalendarScreen(
                     date = selectedDate,
                     today = today,
                     holidays = holidayDays,
-                    onClick = { showAlmanac = true }
+                    onClick = { onNavigateAlmanac(selectedDate) }
                 )
             }
             items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
@@ -423,14 +423,6 @@ fun CalendarScreen(
                 displayMonth = YearMonth.from(date)
                 showDatePicker = false
             }
-        )
-    }
-
-    if (showAlmanac) {
-        AlmanacDialog(
-            date = selectedDate,
-            today = today,
-            onDismissRequest = { showAlmanac = false }
         )
     }
 
@@ -492,7 +484,7 @@ fun CalendarScreen(
  * 中央 filled add 图标；点击进入添加页并预填选中日期。
  */
 @Composable
-private fun AddEventCard(
+internal fun AddEventCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {

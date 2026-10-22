@@ -18,7 +18,7 @@ private val HUANGDAO_INDICES = setOf(0, 1, 4, 5, 7, 10)
 
 /** 十二值神名（固定序列，自青龙起顺行） */
 private val TWELVE_VALUE_GODS =
-    listOf("青龙", "明堂", "天刑", "朱雀", "金匮", "天宝", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈")
+    listOf("青龙", "明堂", "天刑", "朱雀", "金匮", "天德", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈")
 
 /**
  * 十二值时起例：按日支定青龙所居时辰支序（子午起子、丑未起卯、寅申起辰、卯酉起午、辰戌起申、巳亥起戌）。
@@ -325,9 +325,7 @@ fun fullAlmanac(date: LocalDate): FullAlmanac {
     // 下一节气：自次日向后找首个交节日（≤31 天必命中）
     var cursor = solar.next(1)
     var days = 1
-    while (true) {
-        val term = cursor.getTerm()
-        if (term != null && term.getSolarDay() == cursor) break
+    while (cursor.getTerm().getSolarDay() != cursor) {
         cursor = cursor.next(1)
         days++
     }
@@ -359,7 +357,7 @@ fun fullAlmanac(date: LocalDate): FullAlmanac {
         yinGui = GOD_DIRECTIONS[stemIndex % 10][4],
         hours = hours,
         daysToNextTerm = days,
-        nextTermName = cursor.getTerm()!!.getName()
+        nextTermName = cursor.getTerm().getName()
     )
 }
 
