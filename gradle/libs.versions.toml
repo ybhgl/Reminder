@@ -23,6 +23,7 @@ capturable = "3.0.1"
 composeM3Picker = "0.1.6"
 kotlinxCollectionsImmutable = "0.4.0"
 coreSplashscreen = "1.0.1"
+aboutLibraries = "15.3.0"
 
 [libraries]
 capturable = { module = "dev.shreyaspatil:capturable", version.ref = "capturable" }
@@ -64,3 +65,4 @@ kotlin-android = { id = "org.jetbrains.kotlin.android", version.ref = "kotlin" }
 kotlin-compose = { id = "org.jetbrains.kotlin.plugin.compose", version.ref = "kotlin" }
 ksp = { id = "com.google.devtools.ksp", version.ref = "ksp" }
 kotlin-serialization = { id = "org.jetbrains.kotlin.plugin.serialization", version.ref = "kotlin" }
+aboutLibraries = { id = "com.mikepenz.aboutlibraries.plugin", version.ref = "aboutLibraries" }
