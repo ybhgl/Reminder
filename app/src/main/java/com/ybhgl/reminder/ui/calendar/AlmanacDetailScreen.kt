@@ -1,17 +1,22 @@
 package com.ybhgl.reminder.ui.calendar
 
 import androidx.compose.foundation.BorderStroke
-import androidx.compose.animation.AnimatedContent
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.Job
+import androidx.compose.ui.input.pointer.positionChangeIgnoreConsumed
+import androidx.compose.ui.input.pointer.util.VelocityTracker
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.draw.clipToBounds
+import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.foundation.layout.offset
+import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.slideInHorizontally
-import androidx.compose.animation.slideOutHorizontally
-import androidx.compose.animation.togetherWith
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.ColumnScope
@@ -58,7 +63,6 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableFloatStateOf
-import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
@@ -84,6 +88,7 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
+import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.StatusBarScrim
@@ -94,6 +99,9 @@ import java.time.LocalDateTime
 import java.time.format.DateTimeFormatter
 import java.time.temporal.ChronoUnit
 import java.util.Locale
+import kotlin.math.abs
+import kotlin.math.hypot
+import kotlin.math.roundToInt
 
 // Android/ICU 下 pattern 里的 `/` 是"本地化日期分隔符"占位，zh-CN 会被换成 `-`，必须加引号转义
 private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy'/'MM'/'dd", Locale.CHINA)
@@ -110,11 +118,13 @@ private class BubblePositionProvider(
     private val gapPx: Int,
     private val marginPx: Int
 ) : PopupPositionProvider {
+    // 接口形参顺序是 (anchorBounds, windowSize, layoutDirection, popupContentSize)：
+    // 两个 IntSize 位置写反会编译通过但宽高互换，判定全部落到边界值，气泡堆到屏幕左上角
     override fun calculatePosition(
         anchorBounds: IntRect,
-        popupContentSize: IntSize,
+        windowSize: IntSize,
         layoutDirection: LayoutDirection,
-        windowSize: IntSize
+        popupContentSize: IntSize
     ): IntOffset {
         val belowY = anchorBounds.bottom + gapPx
         val fitsBelow = belowY + popupContentSize.height <= windowSize.height - marginPx
@@ -184,16 +194,31 @@ fun AlmanacDetailScreen(
 ) {
     val today = remember { LocalDate.now() }
     var date by rememberSaveable(stateSaver = AlmanacDateSaver) { mutableStateOf(initialDate) }
-    // 横滑跟手位移（px，松手归零）与本次切换方向（+1 下一天 / -1 前一天），供 AnimatedContent 取向
-    var dragPx by remember { mutableFloatStateOf(0f) }
-    var switchDirection by remember { mutableIntStateOf(1) }
-    val maxDragPx = with(LocalDensity.current) { 40.dp.toPx() }
-    val shiftThresholdPx = with(LocalDensity.current) { 64.dp.roundToPx() }
-    val slideDistancePx = with(LocalDensity.current) { 120.dp.roundToPx() }
+    var showDatePicker by rememberSaveable { mutableStateOf(false) }
+    // 滑轨跟手比例：-1 = 上一天预览居中，0 = 当前，+1 = 下一天预览居中（与月历页切周同一模型）
+    var dragFraction by remember { mutableFloatStateOf(0f) }
+    var railJob by remember { mutableStateOf<Job?>(null) }
+    val railScope = rememberCoroutineScope()
 
-    fun shiftDay(direction: Int) {
-        switchDirection = direction
-        date = date.plusDays(direction.toLong())
+    /**
+     * 提交切日：先把滑轨补满一整页（tween 150），新日卡片中心恰好落在预览终点位置，
+     * 换完日期同帧把滑轨归零 —— 全程无跳变；direction=0 则回弹到当前页。
+     */
+    fun settleShift(direction: Int) {
+        railJob?.cancel()
+        railJob = if (direction == 0) {
+            railScope.launch {
+                Animatable(dragFraction).animateTo(0f, tween(180)) { dragFraction = value }
+            }
+        } else {
+            railScope.launch {
+                Animatable(dragFraction).animateTo(direction.toFloat(), tween(150)) {
+                    dragFraction = value
+                }
+                date = date.plusDays(direction.toLong())
+                dragFraction = 0f
+            }
+        }
     }
     // 页内切日实时上报：返回日历页时由日历页同步选中同一天（不等返回按钮，系统返回手势同样生效）
     LaunchedEffect(date) { onDateChanged(date) }
@@ -237,44 +262,21 @@ fun AlmanacDetailScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp)
             ) {
                 item(key = "date_card") {
-                    // 一次手势最多切一天（旧实现按屏宽 1/6 反复扣减，横穿屏幕会连切数天）；
-                    // 切日走 AnimatedContent 方向性滑入滑出，箭头与横滑共用同一套动画
-                    Box(
-                        modifier = Modifier
-                            .fillMaxWidth()
-                            .graphicsLayer { translationX = dragPx.coerceIn(-maxDragPx, maxDragPx) }
-                            .swipeToShiftDay(
-                                thresholdPx = shiftThresholdPx,
-                                onDragPx = { dragPx = it },
-                                onShift = { direction ->
-                                    dragPx = 0f
-                                    shiftDay(direction)
-                                },
-                                onDragEnd = { dragPx = 0f }
-                            )
-                    ) {
-                        AnimatedContent(
-                            targetState = date,
-                            transitionSpec = {
-                                // 固定滑距（1/4 屏宽）：AnimatedContentScope.size 在本版本被 Modifier.size 遮蔽
-                                val slide = slideDistancePx * switchDirection
-                                (slideInHorizontally(tween(240)) { slide } + fadeIn(tween(240)))
-                                    .togetherWith(
-                                        slideOutHorizontally(tween(240)) { -slide } + fadeOut(tween(160))
-                                    )
-                            },
-                            label = "almanacDateCard"
-                        ) { pageDate ->
-                            AlmanacDateCard(
-                                date = pageDate,
-                                today = today,
-                                almanac = if (pageDate == date) almanac else remember(pageDate) { fullAlmanac(pageDate) },
-                                dayInfo = if (pageDate == date) dayInfo
-                                else remember(pageDate, today) { dayAlmanac(pageDate, today) },
-                                onShiftDay = ::shiftDay
-                            )
-                        }
-                    }
+                    // 卡片内部横向滑轨：相邻两天摆在 ±1 页宽处，拖拽整层跟手横移，
+                    // 松手补满一页再换日期（与月历页切周同一手感），一次手势最多切一天
+                    AlmanacDateCardRail(
+                        date = date,
+                        today = today,
+                        almanac = almanac,
+                        dayInfo = dayInfo,
+                        dragFraction = dragFraction,
+                        onDrag = { fraction ->
+                            railJob?.cancel()
+                            dragFraction = fraction
+                        },
+                        onSettle = { direction -> settleShift(direction) },
+                        onShiftDay = { direction -> settleShift(direction) }
+                    )
                 }
                 item(key = "taboo_card") {
                     AlmanacTabooCard(
@@ -335,7 +337,17 @@ fun AlmanacDetailScreen(
                     .then(topAppBarModifier)
             ) {
                 TopAppBar(
-                    title = { Text(topBarDateText(date), fontWeight = FontWeight.Bold) },
+                    // 标题即日期：点击弹日期选择器直接跳看任意一天
+                    title = {
+                        Text(
+                            text = topBarDateText(date),
+                            fontWeight = FontWeight.Bold,
+                            modifier = Modifier
+                                .clip(RoundedCornerShape(8.dp))
+                                .clickable { showDatePicker = true }
+                                .padding(horizontal = 8.dp, vertical = 4.dp)
+                        )
+                    },
                     windowInsets = TopAppBarDefaults.windowInsets,
                     colors = topAppBarColors,
                     navigationIcon = {
@@ -348,7 +360,14 @@ fun AlmanacDetailScreen(
                     },
                     actions = {
                         if (date != today) {
-                            TextButton(onClick = { shiftDay(if (today.isAfter(date)) 1 else -1) }) {
+                            TextButton(
+                                onClick = {
+                                    // 跨多日直接跳，不做滑轨（滑轨语义是"相邻一天"）
+                                    railJob?.cancel()
+                                    dragFraction = 0f
+                                    date = today
+                                }
+                            ) {
                                 Text("今天")
                             }
                         }
@@ -356,6 +375,23 @@ fun AlmanacDetailScreen(
                 )
             }
         }
+    }
+
+    if (showDatePicker) {
+        UnifiedDatePickerDialog(
+            initialDate = date,
+            initialIsLunar = false,
+            onDismissRequest = { showDatePicker = false },
+            onConfirm = { picked, _ ->
+                if (picked != date) {
+                    // 选择器跳日可能跨多天，直接落位不套滑轨动画
+                    railJob?.cancel()
+                    dragFraction = 0f
+                    date = picked
+                }
+                showDatePicker = false
+            }
+        )
     }
 }
 
@@ -367,30 +403,128 @@ private val AlmanacDateSaver: androidx.compose.runtime.saveable.Saver<LocalDate,
     )
 
 /**
- * 横滑切日手势：累计位移过 [thresholdPx] 触发一次切换，且**本次手势内不再触发**，
- * 避免一次长距离横滑连切多天；[onDragPx] 实时回传累计位移供卡片跟手微移。
+ * 滑轨跟手手势（与月历页切周同一套判定）：横向位移过 slop 才锁横向并消费事件，
+ * 纵向立即放手交给页面列表滚动；抬手时位移超 [SWIPE_COMMIT_FRACTION] 页宽
+ * 或轻甩速度达标即提交方向，否则回弹。
  */
-private fun Modifier.swipeToShiftDay(
-    thresholdPx: Int,
-    onDragPx: (Float) -> Unit,
-    onShift: (Int) -> Unit,
-    onDragEnd: () -> Unit
+private fun Modifier.railSwipe(
+    onDrag: (Float) -> Unit,
+    onSettle: (Int) -> Unit
 ): Modifier = pointerInput(Unit) {
-    var accumulated = 0f
-    var switched = false
-    detectHorizontalDragGestures(
-        onDragEnd = { accumulated = 0f; switched = false; onDragEnd() },
-        onDragCancel = { accumulated = 0f; switched = false; onDragEnd() },
-        onHorizontalDrag = { _, dragAmount ->
-            if (switched) return@detectHorizontalDragGestures
-            accumulated += dragAmount
-            onDragPx(accumulated)
-            when {
-                accumulated <= -thresholdPx -> { switched = true; accumulated = 0f; onDragPx(0f); onShift(1) }
-                accumulated >= thresholdPx -> { switched = true; accumulated = 0f; onDragPx(0f); onShift(-1) }
+    awaitEachGesture {
+        val down = awaitFirstDown(requireUnconsumed = false)
+        val widthPx = size.width.toFloat().coerceAtLeast(1f)
+        val tracker = VelocityTracker()
+        var totalX = 0f
+        var totalY = 0f
+        var horizontal: Boolean? = null
+        while (true) {
+            val event = awaitPointerEvent(PointerEventPass.Main)
+            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+            val delta = change.positionChangeIgnoreConsumed()
+            totalX += delta.x
+            totalY += delta.y
+            tracker.addPosition(change.uptimeMillis, change.position)
+            if (horizontal == null) {
+                if (hypot(totalX, totalY) < viewConfiguration.touchSlop) {
+                    if (!change.pressed) break
+                    continue
+                }
+                horizontal = abs(totalX) > abs(totalY)
+            }
+            if (horizontal == false) break
+            change.consume()
+            onDrag((-totalX / widthPx).coerceIn(-1f, 1f))
+            if (!change.pressed) {
+                val velocityX = tracker.calculateVelocity().x
+                val flingPx = with(density) { SWIPE_COMMIT_VELOCITY_DP_PER_SEC.dp.toPx() }
+                val positional = abs(totalX) > widthPx * SWIPE_COMMIT_FRACTION
+                // 位移达标以位移为准，否则取甩动方向（与月历页轻甩切周一致）
+                val dir = if (positional) totalX else velocityX
+                onSettle(
+                    when {
+                        !positional && abs(velocityX) <= flingPx -> 0
+                        dir < 0f -> 1
+                        else -> -1
+                    }
+                )
+                break
             }
         }
-    )
+    }
+}
+
+/**
+ * 日历卡滑轨：卡片内部并排摆「上一天 / 当天 / 下一天」三面，相邻两面偏 ±1 页宽，
+ * 整层 translationX 由 [dragFraction] 驱动跟手横移；外层裁剪保证同屏只露一面。
+ */
+@Composable
+private fun AlmanacDateCardRail(
+    date: LocalDate,
+    today: LocalDate,
+    almanac: FullAlmanac,
+    dayInfo: DayAlmanac,
+    dragFraction: Float,
+    onDrag: (Float) -> Unit,
+    onSettle: (Int) -> Unit,
+    onShiftDay: (Int) -> Unit,
+    modifier: Modifier = Modifier
+) {
+    val density = LocalDensity.current
+    // 相邻日数据只随选中日重算；拖拽每帧仅读 fraction，不逐帧算黄历
+    val prev = remember(date) { fullAlmanac(date.minusDays(1)) to dayAlmanac(date.minusDays(1), today) }
+    val next = remember(date) { fullAlmanac(date.plusDays(1)) to dayAlmanac(date.plusDays(1), today) }
+    BoxWithConstraints(
+        modifier = modifier
+            .fillMaxWidth()
+            .clipToBounds()
+            .railSwipe(onDrag = onDrag, onSettle = onSettle)
+    ) {
+        val widthPx = with(density) { maxWidth.toPx() }
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .graphicsLayer { translationX = -dragFraction * widthPx }
+        ) {
+            RailPanel(offsetPx = -widthPx) {
+                AlmanacDateCard(
+                    date = date.minusDays(1),
+                    today = today,
+                    almanac = prev.first,
+                    dayInfo = prev.second,
+                    onShiftDay = {}
+                )
+            }
+            RailPanel(offsetPx = 0f) {
+                AlmanacDateCard(
+                    date = date,
+                    today = today,
+                    almanac = almanac,
+                    dayInfo = dayInfo,
+                    onShiftDay = onShiftDay
+                )
+            }
+            RailPanel(offsetPx = widthPx) {
+                AlmanacDateCard(
+                    date = date.plusDays(1),
+                    today = today,
+                    almanac = next.first,
+                    dayInfo = next.second,
+                    onShiftDay = {}
+                )
+            }
+        }
+    }
+}
+
+/** 滑轨上的一面卡片：按 [offsetPx] 横向偏移，0 为正前方 */
+@Composable
+private fun RailPanel(offsetPx: Float, content: @Composable () -> Unit) {
+    Box(
+        modifier = Modifier
+            .fillMaxWidth()
+            .offset { IntOffset(offsetPx.roundToInt(), 0) }
+    ) { content() }
 }
 
 /**
