@@ -1,0 +1,77 @@
+package com.ybhgl.reminder.ui.calendar
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertTrue
+import org.junit.Test
+import java.time.LocalDate
+
+class AlmanacDataTest {
+
+    @Test
+    fun `2026-10-22 full almanac matches independently computed values`() {
+        val a = fullAlmanac(LocalDate.of(2026, 10, 22))
+        // 当日=己巳日（六十甲子序5，日支巳=5）
+        assertEquals("\u5df1\u5df3", a.dayGanzhi)
+        // 巳亥相冲：冲猪；甲子旬首推得冲干=乙 → 乙亥
+        assertEquals("\u51b2\u732a", a.clashZodiac)
+        assertEquals("\u4e59\u4ea5", a.clashGanzhi)
+        // 己日：财神正北、福神正南（口诀）
+        assertEquals("\u6b63\u5317", a.caiShen)
+        assertEquals("\u6b63\u5357", a.fuShen)
+        // 纳音：戊辰己巳大林木
+        assertEquals("\u5927\u6797\u6728", a.sound)
+        // 十二值位：己巳日=危日；日值神按库口径=明堂（黄道）
+        assertEquals("\u5371", a.duty)
+        assertEquals("\u660e\u5802", a.dayGod)
+        assertEquals("\u9ec4\u9053", a.ecliptic)
+        // 彭祖百忌/胎神（库直给）
+        assertEquals("\u5df1\u4e0d\u7834\u5238\u4e8c\u6bd4\u5e76\u4ea1", a.pengZuStem)
+        assertEquals("\u5df3\u4e0d\u8fdc\u884c\u8d22\u7269\u4f0f\u85cf", a.pengZuBranch)
+        assertEquals("\u5360\u95e8\u5e8a \u5916\u6b63\u5357", a.fetus)        // 五鼠遁：甲己日起甲子时
+        assertEquals("\u7532\u5b50", a.hours[0].ganzhi)
+        assertEquals("\u4e19\u5bc5", a.hours[2].ganzhi)
+        // 十二值时：巳日青龙起戌
+        assertEquals("\u9752\u9f99", a.hours[10].god)
+        assertTrue(a.hours[10].lucky)
+        assertEquals("\u5929\u5211", a.hours[0].god)
+        assertFalse(a.hours[0].lucky)
+        // 下一节气霜降=10/23，距 1 天
+        assertEquals(1, a.daysToNextTerm)
+        assertEquals("\u971c\u964d", a.nextTermName)
+    }
+
+    @Test
+    fun `term explain table covers the whole taboo dataset`() {
+        // 3 年逐日扫描得到的术语全集，必须全部有白话解释（与白话表零漂移）
+        val union = sortedSetOf<String>()
+        var d = LocalDate.of(2024, 1, 1)
+        while (d.isBefore(LocalDate.of(2027, 1, 1))) {
+            val a = fullAlmanac(d)
+            union.addAll(a.recommends)
+            union.addAll(a.avoids)
+            d = d.plusDays(1)
+        }
+        val missing = union.filter { tabooExplanation(it) == null }
+        assertEquals("missing=${missing.joinToString(",") { hex(it) }}", 0, missing.size)
+        // 宜/忌两区列表（静态 API 全集）同样全部有解释
+        val zejiMissing = (zejiTerms(true) + zejiTerms(false)).distinct()
+            .filter { tabooExplanation(it) == null }
+        assertEquals("zejiMissing=${zejiMissing.joinToString(",") { hex(it) }}", 0, zejiMissing.size)
+        // 除元规则项外，所有术语都已归类
+        val uncategorized = (zejiTerms(true) + zejiTerms(false)).distinct()
+            .filter { tabooCategory(it) == TermCategory.OTHER }
+        assertEquals("uncategorized=${uncategorized.joinToString(",") { hex(it) }}", 0, uncategorized.size)
+    }
+
+    private fun hex(s: String): String = s.map { it.code.toString(16) }.joinToString("+")
+
+    @Test
+    fun `current hour index boundaries`() {
+        assertEquals(0, currentHourIndex(23))
+        assertEquals(0, currentHourIndex(0))
+        assertEquals(1, currentHourIndex(1))
+        assertEquals(1, currentHourIndex(2))
+        assertEquals(11, currentHourIndex(22))
+    }
+}
