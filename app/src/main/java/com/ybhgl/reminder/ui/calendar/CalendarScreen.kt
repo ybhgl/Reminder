@@ -291,49 +291,14 @@ fun CalendarScreen(
             }
             // 选中日非今天时显示回今天按钮（切月/切周后选中日会跟随，故只需比对今天）
             if (selectedDate != today) {
-                // "今"字圆形按钮：回到今天
-                Surface(
-                    onClick = {
-                        selectedDate = today
-                        displayMonth = YearMonth.from(today)
-                    },
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "今",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
+                TodayCircleButton(onClick = {
+                    selectedDate = today
+                    displayMonth = YearMonth.from(today)
+                })
                 Spacer(modifier = Modifier.width(8.dp))
             }
             // 添加提醒按钮（预填选中日期）
-            Surface(
-                onClick = { onAddReminder(selectedDate) },
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "添加提醒",
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
+            AddReminderCircleButton(onClick = { onAddReminder(selectedDate) })
         }
 
         // ===== 月历 =====
@@ -487,6 +452,61 @@ fun CalendarScreen(
                 )
             }
         )
+    }
+}
+
+/**
+ * "今"字圆形按钮：回到今天。日历页顶栏与黄历页顶栏共用同一视觉，
+ * 避免两处各写一份导致尺寸/配色漂移。
+ */
+@Composable
+internal fun TodayCircleButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.primary,
+        modifier = modifier.size(40.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "今",
+                style = MaterialTheme.typography.titleMedium,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+/** 添加提醒圆形按钮（primary + Add 图标）：点击预填传入的日期 */
+@Composable
+internal fun AddReminderCircleButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        modifier = modifier.size(40.dp)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "添加提醒",
+                modifier = Modifier.size(22.dp)
+            )
+        }
     }
 }
 

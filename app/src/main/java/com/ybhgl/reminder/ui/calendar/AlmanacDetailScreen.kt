@@ -55,7 +55,6 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
@@ -413,18 +412,20 @@ fun AlmanacDetailScreen(
                         }
                     },
                     actions = {
+                        // 与日历页同款按钮组：非今天时先给"今"回今天，再给"+"按当前日期加提醒
                         if (date != today) {
-                            TextButton(
+                            TodayCircleButton(
                                 onClick = {
                                     // 跨多日直接跳，不做滑轨（滑轨语义是"相邻一天"）
                                     railJob?.cancel()
                                     dragFraction = 0f
                                     date = today
                                 }
-                            ) {
-                                Text("今天")
-                            }
+                            )
+                            Spacer(modifier = Modifier.width(8.dp))
                         }
+                        AddReminderCircleButton(onClick = { onAddReminder(date) })
+                        Spacer(modifier = Modifier.width(4.dp))
                     }
                 )
             }
