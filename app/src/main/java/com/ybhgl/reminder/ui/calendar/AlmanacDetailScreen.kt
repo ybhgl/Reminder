@@ -1134,10 +1134,12 @@ private fun DirectionCell(
             }
         )
     ) {
-        Box {
+        Box(contentAlignment = Alignment.Center) {
             Column(
                 horizontalAlignment = Alignment.CenterHorizontally,
-                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = 12.dp, vertical = 10.dp)
             ) {
                 Text(
                     text = label,
