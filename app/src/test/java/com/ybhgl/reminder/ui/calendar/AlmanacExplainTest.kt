@@ -79,6 +79,31 @@ class AlmanacExplainTest {
         assertTrue(directionGodExplanation("\u672a\u6536\u5f55").contains("\u672a\u6536\u5f55"))
     }
 
+    /** 首批神煞释义覆盖 2024–2026 出现次数的 95% 以上，防止漏字导致词条不可点 */
+    @Test
+    fun `first batch god explanations cover most god occurrences`() {
+        assertEquals(103, GOD_EXPLAIN.size)
+        assertTrue(godExplanation("\u4e94\u865a")!!.contains("\u865a\u8017"))
+        assertTrue(godExplanation("\u4e0d\u5c06")!!.contains("\u5ac1\u5a36"))
+        assertTrue(godExplanation("\u9752\u9f99")!!.contains("\u9ec4\u9053\u5409\u795e"))
+
+        var total = 0
+        var explained = 0
+        var d = LocalDate.of(2024, 1, 1)
+        while (d.year < 2027) {
+            val a = fullAlmanac(d)
+            (a.auspiciousGods + a.inauspiciousGods).forEach { god ->
+                total++
+                if (godExplanation(god) != null) explained++
+            }
+            d = d.plusDays(1)
+        }
+        assertTrue(
+            "coverage=${explained * 100 / total}% (${explained}/${total})",
+            explained * 100 >= total * 95
+        )
+    }
+
     /** 星宿拆解字段与展示串必须同源 */
     @Test
     fun `star components match the displayed name`() {

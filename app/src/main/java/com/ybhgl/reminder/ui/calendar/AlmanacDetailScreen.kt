@@ -842,11 +842,31 @@ private fun TabooTermRow(
 /** 宜忌词条：点击在词条下方浮出白话解释气泡（数据集外的无解释词条不可点） */
 @Composable
 private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit, onDismiss: () -> Unit) {
-    val explanation = tabooExplanation(term)
+    ExplainChip(
+        text = term,
+        explanation = tabooExplanation(term),
+        expanded = expanded,
+        onClick = onClick,
+        onDismiss = onDismiss
+    )
+}
+
+/**
+ * 解释词条（宜忌与神煞共用）：有释义时可点，点击在词条上方浮出气泡；
+ * 无释义时保持普通底色且不可点。[containerColor] 供信息格内提高一档底色。
+ */
+@Composable
+private fun ExplainChip(
+    text: String,
+    explanation: String?,
+    expanded: Boolean,
+    onClick: () -> Unit,
+    onDismiss: () -> Unit,
+    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest
+) {
     Surface(
         shape = RoundedCornerShape(10.dp),
-        color = if (expanded) MaterialTheme.colorScheme.primaryContainer
-        else MaterialTheme.colorScheme.surfaceContainerHighest,
+        color = if (expanded) MaterialTheme.colorScheme.primaryContainer else containerColor,
         contentColor = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer
         else MaterialTheme.colorScheme.onSurface,
         modifier = Modifier.clickable(enabled = explanation != null, onClick = onClick)
@@ -859,12 +879,12 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit, onDis
                     .padding(horizontal = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = term, style = MaterialTheme.typography.bodySmall, maxLines = 1)
+                Text(text = text, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
             // 白话气泡：默认弹在词条上方，上方放不下才翻到下方
             // 点外部只负责关闭：复用 onClick 的"切换"语义会让退出中的第二次 dismiss 又把气泡打开
             AnchorBubble(expanded = expanded && explanation != null, onDismissRequest = onDismiss) {
-                if (explanation != null) ExplanationBubbleBody(term, explanation)
+                if (explanation != null) ExplanationBubbleBody(text, explanation)
             }
         }
     }
@@ -946,10 +966,22 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
                 )
             }
             Spacer(modifier = Modifier.height(10.dp))
-            EqualHeightRow {
-                InfoCell("吉神宜趋", almanac.auspiciousGods.joinToString(" "))
-                InfoCell("凶神宜忌", almanac.inauspiciousGods.joinToString(" "))
-            }
+            // 神煞按「每个神名一个词条」铺开：单气泡塞十来个释义会顶满整屏且无法滚动
+            GodInfoSection(
+                label = "吉神宜趋",
+                gods = almanac.auspiciousGods,
+                expandedKey = expandedKey,
+                onToggle = ::toggle,
+                onDismiss = { expandedKey = null }
+            )
+            Spacer(modifier = Modifier.height(10.dp))
+            GodInfoSection(
+                label = "凶神宜忌",
+                gods = almanac.inauspiciousGods,
+                expandedKey = expandedKey,
+                onToggle = ::toggle,
+                onDismiss = { expandedKey = null }
+            )
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow {
                 InfoCell(
@@ -1023,6 +1055,59 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
                 value = "${almanac.pengZuStem} · ${almanac.pengZuBranch}",
                 modifier = Modifier.fillMaxWidth()
             )
+        }
+    }
+}
+
+/**
+ * 吉神/凶神整行：标签 + 可换行词条，每个神名各自弹出解释气泡。
+ * 未收录释义的长尾神名由 [ExplainChip] 自动保持不可点。
+ */
+@Composable
+private fun GodInfoSection(
+    label: String,
+    gods: List<String>,
+    expandedKey: String?,
+    onToggle: (String) -> Unit,
+    onDismiss: () -> Unit
+) {
+    Surface(
+        shape = RoundedCornerShape(16.dp),
+        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+        modifier = Modifier.fillMaxWidth()
+    ) {
+        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+            Text(
+                text = label,
+                style = MaterialTheme.typography.labelSmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant
+            )
+            Spacer(modifier = Modifier.height(6.dp))
+            if (gods.isEmpty()) {
+                Text(
+                    text = "—",
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+            } else {
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(6.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp)
+                ) {
+                    gods.forEach { god ->
+                        val key = "god:$god"
+                        ExplainChip(
+                            text = god,
+                            explanation = godExplanation(god),
+                            expanded = expandedKey == key,
+                            onClick = { onToggle(key) },
+                            onDismiss = onDismiss,
+                            // 与信息格同底色时提高一档，避免 chip 融进整格背景
+                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                        )
+                    }
+                }
+            }
         }
     }
 }
