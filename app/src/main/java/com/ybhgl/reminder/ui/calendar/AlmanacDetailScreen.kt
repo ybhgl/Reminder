@@ -853,8 +853,9 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit, onDis
 }
 
 /**
- * 解释词条（宜忌与神煞共用）：有释义时可点，点击在词条上方浮出气泡；
- * 无释义时保持普通底色且不可点。[containerColor] 供信息格内提高一档底色。
+ * 解释词条（宜忌、神煞、彭祖共用）：有释义时可点，点击在词条上方浮出气泡。
+ * 未选中为描边胶囊（透明底 + 1dp 描边），选中为 primaryContainer 实底——与实心信息格区分，
+ * 同时让「点开的是哪一条」有常驻反馈。无释义时保持同样外观但不可点。
  */
 @Composable
 private fun ExplainChip(
@@ -862,15 +863,22 @@ private fun ExplainChip(
     explanation: String?,
     expanded: Boolean,
     onClick: () -> Unit,
-    onDismiss: () -> Unit,
-    containerColor: Color = MaterialTheme.colorScheme.surfaceContainerHighest
+    onDismiss: () -> Unit
 ) {
+    val shape = RoundedCornerShape(10.dp)
     Surface(
-        shape = RoundedCornerShape(10.dp),
-        color = if (expanded) MaterialTheme.colorScheme.primaryContainer else containerColor,
+        shape = shape,
+        color = if (expanded) MaterialTheme.colorScheme.primaryContainer else Color.Transparent,
         contentColor = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer
         else MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.clickable(enabled = explanation != null, onClick = onClick)
+        border = BorderStroke(
+            1.dp,
+            if (expanded) MaterialTheme.colorScheme.primary.copy(alpha = 0.45f)
+            else MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.55f)
+        ),
+        modifier = Modifier
+            .clip(shape)
+            .clickable(enabled = explanation != null, onClickLabel = "查看释义", onClick = onClick)
     ) {
         Box {
             // 定高 Box 居中：Text 实测高常小于容器高，直接给 Text 设 height 会顶在上沿
@@ -923,7 +931,7 @@ private fun AlmanacInfoCardContent(almanac: FullAlmanac) {
                 )
                 Spacer(modifier = Modifier.weight(1f))
                 Text(
-                    text = "轻点查看解释",
+                    text = "点击查看释义",
                     style = MaterialTheme.typography.labelSmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
@@ -1103,10 +1111,13 @@ private fun InfoChipSection(
             )
             Spacer(modifier = Modifier.height(6.dp))
             if (entries.isEmpty()) {
-                Text(
+                // 空值也放进同款词条，避免 0 个吉神的日子只剩一行孤零零的横线
+                ExplainChip(
                     text = "—",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface
+                    explanation = null,
+                    expanded = false,
+                    onClick = {},
+                    onDismiss = {}
                 )
             } else {
                 FlowRow(
@@ -1119,9 +1130,7 @@ private fun InfoChipSection(
                             explanation = explanation(text),
                             expanded = expandedKey == key,
                             onClick = { onToggle(key) },
-                            onDismiss = onDismiss,
-                            // 与信息格同底色时提高一档，避免 chip 融进整格背景
-                            containerColor = MaterialTheme.colorScheme.surfaceContainerHigh
+                            onDismiss = onDismiss
                         )
                     }
                 }
@@ -1179,13 +1188,22 @@ private fun InfoCell(
     val shape = RoundedCornerShape(16.dp)
     Surface(
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+        // 展开态与词条同一套配色：常驻高亮让「气泡属于哪一格」一眼可辨
+        color = if (expanded) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+        contentColor = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurface,
+        border = if (expanded) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
+        } else {
+            null
+        },
         modifier = modifier.then(
             // 无可解释内容时保持纯展示，避免出现点了没反应的格子
             if (explanation != null) {
                 Modifier
                     .clip(shape)
-                    .clickable(onClickLabel = "查看解释", onClick = onClick)
+                    .clickable(onClickLabel = "查看释义", onClick = onClick)
             } else {
                 Modifier
             }
@@ -1196,13 +1214,15 @@ private fun InfoCell(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Spacer(modifier = Modifier.height(4.dp))
                 Text(
                     text = value.ifBlank { "—" },
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface,
                     lineHeight = MaterialTheme.typography.bodySmall.lineHeight
                 )
             }
@@ -1229,12 +1249,20 @@ private fun DirectionCell(
     val shape = RoundedCornerShape(14.dp)
     Surface(
         shape = shape,
-        color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+        color = if (expanded) MaterialTheme.colorScheme.primaryContainer
+        else MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
+        contentColor = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer
+        else MaterialTheme.colorScheme.onSurface,
+        border = if (expanded) {
+            BorderStroke(1.dp, MaterialTheme.colorScheme.primary.copy(alpha = 0.45f))
+        } else {
+            null
+        },
         modifier = modifier.then(
             if (explanation != null) {
                 Modifier
                     .clip(shape)
-                    .clickable(onClickLabel = "查看解释", onClick = onClick)
+                    .clickable(onClickLabel = "查看释义", onClick = onClick)
             } else {
                 Modifier
             }
@@ -1248,12 +1276,14 @@ private fun DirectionCell(
                 Text(
                     text = label,
                     style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                    color = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer.copy(alpha = 0.72f)
+                    else MaterialTheme.colorScheme.onSurfaceVariant
                 )
                 Text(
                     text = direction,
                     style = MaterialTheme.typography.bodySmall,
-                    color = MaterialTheme.colorScheme.onSurface,
+                    color = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer
+                    else MaterialTheme.colorScheme.onSurface,
                     textAlign = TextAlign.Center
                 )
             }
