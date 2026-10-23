@@ -714,7 +714,8 @@ object Routes {
     const val REMINDER_LIST = "reminder_list"
     const val ADD_REMINDER_BASE = "add_reminder"
     const val ADD_REMINDER = ADD_REMINDER_BASE
-    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}&initialDate={initialDate}&initialEndDate={initialEndDate}"
+    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}&initialDate={initialDate}" +
+        "&initialEndDate={initialEndDate}&initialTitle={initialTitle}"
     private const val EDIT_REMINDER_BASE = "edit_reminder"
     const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}?readOnly={readOnly}"
     const val SETTINGS = "settings"
@@ -757,11 +758,18 @@ object Routes {
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
     fun shareReminder(reminderId: Int): String = "$SHARE_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
-    fun addReminder(initialType: String? = null, initialDate: String? = null, initialEndDate: String? = null): String {
+    fun addReminder(
+        initialType: String? = null,
+        initialDate: String? = null,
+        initialEndDate: String? = null,
+        initialTitle: String? = null
+    ): String {
         val parts = listOfNotNull(
             initialType?.let { "initialType=$it" },
             initialDate?.let { "initialDate=$it" },
-            initialEndDate?.let { "initialEndDate=$it" }
+            initialEndDate?.let { "initialEndDate=$it" },
+            // 标题含中文与「·」，必须转义；NavType.StringType 取值时会 Uri.decode
+            initialTitle?.let { "initialTitle=${android.net.Uri.encode(it)}" }
         )
         return if (parts.isEmpty()) ADD_REMINDER_BASE else "$ADD_REMINDER_BASE?" + parts.joinToString("&")
     }
@@ -902,6 +910,11 @@ fun ReminderApp(onPermissionsFlowSettled: () -> Unit = {}) {
                             defaultValue = null
                         },
                         navArgument("initialEndDate") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
+                        },
+                        navArgument("initialTitle") {
                             type = NavType.StringType
                             nullable = true
                             defaultValue = null
@@ -4207,14 +4220,25 @@ private fun ReminderNavContent(
                 navController.navigate(Routes.zejiDetail(term, recommended))
             }
         )
-        Routes.ZEJI_DETAIL_PATTERN -> ZejiDetailScreen(
-            term = entry.arguments?.getString("term").orEmpty(),
-            recommended = entry.arguments?.getBoolean("recommended") ?: true,
-            onNavigateBack = { navController.navigateUp() },
-            onAddReminder = { date ->
-                navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
-            }
-        )
+        Routes.ZEJI_DETAIL_PATTERN -> {
+            val zejiTerm = entry.arguments?.getString("term").orEmpty()
+            val zejiRecommended = entry.arguments?.getBoolean("recommended") ?: true
+            ZejiDetailScreen(
+                term = zejiTerm,
+                recommended = zejiRecommended,
+                onNavigateBack = { navController.navigateUp() },
+                onAddReminder = { date ->
+                    // 标题预填成事项名（如「宜·嫁娶」），日期沿用所选那天
+                    navController.navigate(
+                        Routes.addReminder(
+                            initialType = ReminderType.ANNUAL.name,
+                            initialDate = date.toString(),
+                            initialTitle = "${if (zejiRecommended) "宜" else "忌"}·$zejiTerm"
+                        )
+                    )
+                }
+            )
+        }
         Routes.PERMISSION_MANAGEMENT_PATTERN -> PermissionManagementScreen(
             onNavigateBack = { navController.navigateUp() },
             focusTarget = entry.arguments?.getString("target")?.takeIf { it.isNotEmpty() }

@@ -24,10 +24,12 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
+import androidx.compose.material3.FilterChip
+import androidx.compose.material3.FilterChipDefaults
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
-import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -99,6 +101,10 @@ fun ZejiDetailScreen(
                 DateRangeCard(
                     start = start,
                     end = end,
+                    weekendOnly = weekendOnly,
+                    onWeekendChange = { weekendOnly = it },
+                    resultCount = dates.size,
+                    recommended = recommended,
                     onStartClick = { pickingStart = true },
                     onEndClick = { pickingEnd = true }
                 )
@@ -125,53 +131,6 @@ fun ZejiDetailScreen(
                             )
                         }
                     }
-                }
-            }
-            item(key = "weekend_row") {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
-                    modifier = Modifier.fillMaxWidth()
-                ) {
-                    Row(
-                        modifier = Modifier.padding(horizontal = 16.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically
-                    ) {
-                        Column(modifier = Modifier.weight(1f)) {
-                            Text(
-                                text = "只看周末",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurface
-                            )
-                            Text(
-                                text = "仅保留周六、周日的结果",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
-                        Switch(checked = weekendOnly, onCheckedChange = { weekendOnly = it })
-                    }
-                }
-            }
-            item(key = "result_summary") {
-                Row(
-                    modifier = Modifier.fillMaxWidth(),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Text(
-                        text = "共 ${dates.size} 个" +
-                            (if (weekendOnly) "周末" else "") +
-                            (if (recommended) "吉日" else "忌日"),
-                        style = MaterialTheme.typography.titleSmall,
-                        fontWeight = FontWeight.SemiBold,
-                        color = MaterialTheme.colorScheme.onSurface
-                    )
-                    Spacer(modifier = Modifier.weight(1f))
-                    Text(
-                        text = "${formatNavDate(start)} – ${formatNavDate(end)}",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
                 }
             }
             if (dates.isEmpty()) {
@@ -223,15 +182,23 @@ fun ZejiDetailScreen(
     }
 }
 
+/**
+ * 日期范围卡：起止端点做成两块可点 tile；底部同一行融合「只看周末」chip 与结果数摘要
+ * ——原先周末开关独占一张卡、摘要独占一行，页头要堆三块才看到结果。
+ */
 @Composable
 private fun DateRangeCard(
     start: LocalDate,
     end: LocalDate,
+    weekendOnly: Boolean,
+    onWeekendChange: (Boolean) -> Unit,
+    resultCount: Int,
+    recommended: Boolean,
     onStartClick: () -> Unit,
     onEndClick: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(20.dp),
+        shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f),
         modifier = Modifier.fillMaxWidth()
     ) {
@@ -241,7 +208,7 @@ private fun DateRangeCard(
                 style = MaterialTheme.typography.labelMedium,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            Spacer(modifier = Modifier.height(8.dp))
+            Spacer(modifier = Modifier.height(10.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
                 RangeEndpoint(label = "开始", date = start, onClick = onStartClick, modifier = Modifier.weight(1f))
                 Text(
@@ -251,6 +218,37 @@ private fun DateRangeCard(
                     modifier = Modifier.padding(horizontal = 8.dp)
                 )
                 RangeEndpoint(label = "结束", date = end, onClick = onEndClick, modifier = Modifier.weight(1f))
+            }
+            Spacer(modifier = Modifier.height(12.dp))
+            HorizontalDivider(
+                color = MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f),
+                thickness = 1.dp
+            )
+            Spacer(modifier = Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                FilterChip(
+                    selected = weekendOnly,
+                    onClick = { onWeekendChange(!weekendOnly) },
+                    label = { Text("只看周末", style = MaterialTheme.typography.labelMedium) },
+                    shape = RoundedCornerShape(50),
+                    border = null,
+                    colors = FilterChipDefaults.filterChipColors(
+                        // 未选中用半透明表面：secondaryContainer 落在 surfaceVariant 卡上会糊成一块
+                        containerColor = MaterialTheme.colorScheme.surface.copy(alpha = 0.6f),
+                        selectedContainerColor = MaterialTheme.colorScheme.primaryContainer,
+                        labelColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        selectedLabelColor = MaterialTheme.colorScheme.onPrimaryContainer
+                    )
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "共 $resultCount 个" +
+                        (if (weekendOnly) "周末" else "") +
+                        (if (recommended) "吉日" else "忌日"),
+                    style = MaterialTheme.typography.titleSmall,
+                    fontWeight = FontWeight.SemiBold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
             }
         }
     }
@@ -266,8 +264,9 @@ private fun RangeEndpoint(
     Column(
         modifier = modifier
             .clip(RoundedCornerShape(14.dp))
+            .background(MaterialTheme.colorScheme.surface.copy(alpha = 0.55f))
             .clickable(onClick = onClick)
-            .padding(vertical = 6.dp)
+            .padding(horizontal = 12.dp, vertical = 10.dp)
     ) {
         Text(
             text = label,
@@ -305,18 +304,27 @@ private fun ZejiDateCard(
             modifier = Modifier.padding(14.dp),
             verticalAlignment = Alignment.CenterVertically
         ) {
-            Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(
-                    text = "${date.dayOfMonth}",
-                    style = MaterialTheme.typography.headlineMedium,
-                    fontWeight = FontWeight.Bold,
-                    color = MaterialTheme.colorScheme.onSurface
-                )
-                Text(
-                    text = "${date.monthValue}月",
-                    style = MaterialTheme.typography.labelSmall,
-                    color = MaterialTheme.colorScheme.onSurfaceVariant
-                )
+            // 固定 56dp 方块 + 淡底：日数字 1 位/2 位不再改变块宽，右侧文字起点才能竖向对齐
+            Box(
+                modifier = Modifier
+                    .size(56.dp)
+                    .clip(RoundedCornerShape(14.dp))
+                    .background(MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.6f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                    Text(
+                        text = "${date.dayOfMonth}",
+                        style = MaterialTheme.typography.titleLarge,
+                        fontWeight = FontWeight.Bold,
+                        color = MaterialTheme.colorScheme.onSurface
+                    )
+                    Text(
+                        text = "${date.monthValue}月",
+                        style = MaterialTheme.typography.labelSmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
             }
             Spacer(modifier = Modifier.width(14.dp))
             Column(modifier = Modifier.weight(1f)) {
