@@ -85,7 +85,7 @@ class AlmanacExplainTest {
     /** 三年并集内每个神名要么有释义、要么显式列入长尾白名单，防止静默漏字 */
     @Test
     fun `every god seen over three years is explained or explicitly deferred`() {
-        assertEquals(132, GOD_EXPLAIN.size)
+        assertEquals(144, GOD_EXPLAIN.size)
         assertTrue(godExplanation("\u4e94\u865a")!!.contains("\u865a\u8017"))
         assertTrue(godExplanation("\u4e0d\u5c06")!!.contains("\u5ac1\u5a36"))
         assertTrue(godExplanation("\u9752\u9f99")!!.contains("\u9ec4\u9053\u5409\u795e"))

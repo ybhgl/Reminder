@@ -123,6 +123,11 @@ class AlmanacDataTest {
             val a = fullAlmanac(d)
             union.addAll(a.recommends)
             union.addAll(a.avoids)
+            // 时辰级宜忌同理：时辰气泡内以纯文本展示，术语同样出自库数据集
+            a.hours.forEach { hour ->
+                union.addAll(hour.recommends)
+                union.addAll(hour.avoids)
+            }
             d = d.plusDays(1)
         }
         val missing = union.filter { tabooExplanation(it) == null }

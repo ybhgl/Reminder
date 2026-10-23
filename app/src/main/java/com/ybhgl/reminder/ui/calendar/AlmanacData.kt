@@ -73,7 +73,7 @@ enum class TermCategory(val label: String) {
 /** 元规则项（非具体行事），不进择日分类网格 */
 private val META_TERMS = setOf("诸事不宜", "馀事勿取")
 
-/** 术语白话解释（key 全集=日级宜忌数据集实际出现的 113 个术语） */private val TERM_EXPLAIN: Map<String, String> = mapOf(
+/** 术语白话解释（key 全集=日级+时辰级宜忌数据集实际出现的全部术语，共 115 个） */private val TERM_EXPLAIN: Map<String, String> = mapOf(
     "祭祀" to "祠祭神祀、向神明供献祭品的仪式。",
     "祈福" to "祈求神明、祖先降福，许愿酬神。",
     "求嗣" to "向神明请求保佑子嗣、祈愿怀孕得子。",
@@ -149,6 +149,7 @@ private val META_TERMS = setOf("诸事不宜", "馀事勿取")
     "开市" to "商铺开业、集市开市营业。",
     "挂匾" to "悬挂店招牌匾。",
     "纳财" to "进财收账、入库财物，获得收益。",
+    "求财" to "祈求财运、盈利得利，多指主动营求的求财之事。",
     "开仓" to "打开仓库出货、粜粮收粮。",
     "置产" to "购置产业、田宅房产。",
     "出货财" to "出货卖物、借贷财物给人。",
@@ -177,6 +178,7 @@ private val META_TERMS = setOf("诸事不宜", "馀事勿取")
     "畋猎" to "打猎围猎。",
     "教牛马" to "驯教牛马牲口使役。",
     "会亲友" to "拜访会见亲戚朋友。",
+    "见贵" to "谒见贵人、拜会权要，以求提携相助。",
     "赴任" to "前往就任新职。",
     "求医" to "寻医问诊、求治疾病。",
     "治病" to "接受治疗、服药针灸祛病。",
@@ -209,7 +211,7 @@ private val TERM_CATEGORY: Map<String, TermCategory> = buildMap {
     )
     putAll(
         TermCategory.BUSINESS,
-        "开市", "挂匾", "纳财", "开仓", "置产", "出货财", "安机械", "造车器", "经络",
+        "开市", "挂匾", "纳财", "求财", "开仓", "置产", "出货财", "安机械", "造车器", "经络",
         "造船", "割蜜", "栽种", "取渔", "结网", "牧养", "安碓磑", "造仓", "造畜稠",
         "交易", "立券", "纳畜", "赴任", "雇佣", "习艺", "入学", "教牛马", "捕捉", "畋猎"
     )
@@ -430,7 +432,11 @@ private fun tabooUnion(recommended: Boolean): Set<String> {
     return out
 }
 
-/** 择日页某区（宜/忌）的事件术语列表（元规则项不进网格，按分类排序） */
+/**
+ * 择日页某区（宜/忌）的事件术语列表（元规则项不进网格，按分类排序）。
+ * 计数关系：日级数据集宜 109 + 忌 85 = 194，两区各含 2 个元规则项（诸事不宜、馀事勿取），
+ * 扣除后 107 + 83 = 190 即界面显示数；时辰级术语（求财、见贵等）不在此列。
+ */
 fun zejiTerms(recommended: Boolean): List<String> {
     val union = if (recommended) RECOMMEND_UNION else AVOID_UNION
     return (union - META_TERMS).sortedBy { tabooCategory(it) }
