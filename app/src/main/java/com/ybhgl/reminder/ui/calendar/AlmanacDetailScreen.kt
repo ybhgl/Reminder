@@ -12,6 +12,12 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import kotlinx.coroutines.delay
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -104,15 +110,21 @@ import kotlin.math.hypot
 import kotlin.math.roundToInt
 
 // Android/ICU 下 pattern 里的 `/` 是"本地化日期分隔符"占位，zh-CN 会被换成 `-`，必须加引号转义
+
+// 宜忌 chip 高度：徽标容器与 chip 共用，保证首行与徽标同一水平线
+private val CHIP_HEIGHT = 26.dp
+
+// 滑轨相邻两页的间距（等于页面左右内边距，拖拽时露出的是页面底色）
+private val RAIL_GAP = 16.dp
 private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy'/'MM'/'dd", Locale.CHINA)
 
 /** 顶栏标题：当前查看的公历日期，如"2026/10/22" */
 private fun topBarDateText(date: LocalDate): String = TOP_BAR_DATE_FORMAT.format(date)
 
 /**
- * 黄历页气泡定位：默认贴在锚点下方 [gapPx] 处；下方放不下时翻到锚点上方同样留 [gapPx]
- * （DropdownMenu 的固定 offset 在翻转后会变成"顶进锚点"，故不能沿用），
- * 并把左右夹在屏幕边距内，避免贴边或被裁。
+ * 黄历页气泡定位：**默认弹在锚点上方** [gapPx] 处（宜忌词条多在页面中下部，向上更贴近阅读视线，
+ * 也不会被底部按钮/导航栏挤压）；上方放不下时才翻到锚点下方同样留 [gapPx]；
+ * 左右夹在屏幕边距内，避免贴边或被裁。
  */
 private class BubblePositionProvider(
     private val gapPx: Int,
@@ -126,17 +138,18 @@ private class BubblePositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize
     ): IntOffset {
-        val belowY = anchorBounds.bottom + gapPx
-        val fitsBelow = belowY + popupContentSize.height <= windowSize.height - marginPx
-        val y = if (fitsBelow) belowY
-        else (anchorBounds.top - gapPx - popupContentSize.height).coerceAtLeast(marginPx)
+        val aboveY = anchorBounds.top - gapPx - popupContentSize.height
+        val fitsAbove = aboveY >= marginPx
+        val belowMaxY = (windowSize.height - popupContentSize.height - marginPx)
+            .coerceAtLeast(marginPx)
+        val y = if (fitsAbove) aboveY else (anchorBounds.bottom + gapPx).coerceAtMost(belowMaxY)
         val maxX = (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
         return IntOffset(anchorBounds.left.coerceIn(marginPx, maxX), y)
     }
 }
 
 /**
- * 锚定气泡：宽度随内容（上限 [maxWidth]），上下左右与屏幕边缘保持间距。
+ * 锚定气泡：宽度随内容（上限 300dp），默认向上弹，进出各带淡入淡出 + 缩放动画。
  * 挂在锚点（词条/时辰列）的 Box 内，Popup 以该 Box 为定位锚。
  */
 @Composable
@@ -146,7 +159,9 @@ private fun AnchorBubble(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    if (!expanded) return
+    // Popup 随 expanded 直接销毁会吞掉退出动画，故用 mounted 多挂一段到动画结束
+    var mounted by remember { mutableStateOf(expanded) }
+    if (expanded) mounted = true
     val density = LocalDensity.current
     val provider = remember(density) {
         BubblePositionProvider(
@@ -154,24 +169,38 @@ private fun AnchorBubble(
             marginPx = with(density) { 16.dp.roundToPx() }
         )
     }
-    Popup(
-        popupPositionProvider = provider,
-        onDismissRequest = onDismissRequest,
-        properties = PopupProperties(focusable = true)
-    ) {
-        Surface(
-            shape = RoundedCornerShape(20.dp),
-            color = MaterialTheme.colorScheme.surfaceContainer,
-            contentColor = MaterialTheme.colorScheme.onSurface,
-            border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-            shadowElevation = 6.dp,
-            modifier = modifier.widthIn(max = 300.dp)
+    if (mounted) {
+        Popup(
+            popupPositionProvider = provider,
+            onDismissRequest = onDismissRequest,
+            properties = PopupProperties(focusable = true)
         ) {
-            Column(
-                modifier = Modifier.padding(16.dp),
-                verticalArrangement = Arrangement.spacedBy(6.dp),
-                content = content
-            )
+            AnimatedVisibility(
+                visible = expanded,
+                enter = fadeIn(tween(120)) + scaleIn(tween(180), initialScale = 0.9f),
+                exit = fadeOut(tween(110)) + scaleOut(tween(110), targetScale = 0.92f)
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    shadowElevation = 6.dp,
+                    modifier = modifier.widthIn(max = 300.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        content = content
+                    )
+                }
+            }
+        }
+        LaunchedEffect(expanded) {
+            if (!expanded) {
+                delay(220)
+                mounted = false
+            }
         }
     }
 }
@@ -408,12 +437,14 @@ private val AlmanacDateSaver: androidx.compose.runtime.saveable.Saver<LocalDate,
  * 或轻甩速度达标即提交方向，否则回弹。
  */
 private fun Modifier.railSwipe(
+    gapPx: Int,
     onDrag: (Float) -> Unit,
     onSettle: (Int) -> Unit
 ): Modifier = pointerInput(Unit) {
     awaitEachGesture {
         val down = awaitFirstDown(requireUnconsumed = false)
-        val widthPx = size.width.toFloat().coerceAtLeast(1f)
+        // 一步的位移 = 一页宽 + 页间距，保证手指与卡片 1:1 跟手
+        val stride = size.width.toFloat() + gapPx
         val tracker = VelocityTracker()
         var totalX = 0f
         var totalY = 0f
@@ -434,11 +465,11 @@ private fun Modifier.railSwipe(
             }
             if (horizontal == false) break
             change.consume()
-            onDrag((-totalX / widthPx).coerceIn(-1f, 1f))
+            onDrag((-totalX / stride).coerceIn(-1f, 1f))
             if (!change.pressed) {
                 val velocityX = tracker.calculateVelocity().x
                 val flingPx = with(density) { SWIPE_COMMIT_VELOCITY_DP_PER_SEC.dp.toPx() }
-                val positional = abs(totalX) > widthPx * SWIPE_COMMIT_FRACTION
+                val positional = abs(totalX) > stride * SWIPE_COMMIT_FRACTION
                 // 位移达标以位移为准，否则取甩动方向（与月历页轻甩切周一致）
                 val dir = if (positional) totalX else velocityX
                 onSettle(
@@ -455,8 +486,9 @@ private fun Modifier.railSwipe(
 }
 
 /**
- * 日历卡滑轨：卡片内部并排摆「上一天 / 当天 / 下一天」三面，相邻两面偏 ±1 页宽，
- * 整层 translationX 由 [dragFraction] 驱动跟手横移；外层裁剪保证同屏只露一面。
+ * 日历卡滑轨：卡片内部并排摆「上一天 / 当天 / 下一天」三面，相邻两面偏 ±(页宽 + [RAIL_GAP])，
+ * 整层 translationX 由 [dragFraction] 驱动跟手横移；留间距是为了拖拽时两卡边缘不贴死，
+ * 露出的缝隙是页面底色，读起来是"两张独立卡片在滑"，而不是"一张长图被切开"。
  */
 @Composable
 private fun AlmanacDateCardRail(
@@ -474,19 +506,20 @@ private fun AlmanacDateCardRail(
     // 相邻日数据只随选中日重算；拖拽每帧仅读 fraction，不逐帧算黄历
     val prev = remember(date) { fullAlmanac(date.minusDays(1)) to dayAlmanac(date.minusDays(1), today) }
     val next = remember(date) { fullAlmanac(date.plusDays(1)) to dayAlmanac(date.plusDays(1), today) }
+    val gapPx = with(density) { RAIL_GAP.roundToPx() }
     BoxWithConstraints(
         modifier = modifier
             .fillMaxWidth()
             .clipToBounds()
-            .railSwipe(onDrag = onDrag, onSettle = onSettle)
+            .railSwipe(gapPx = gapPx, onDrag = onDrag, onSettle = onSettle)
     ) {
-        val widthPx = with(density) { maxWidth.toPx() }
+        val stridePx = with(density) { maxWidth.toPx() } + gapPx
         Box(
             modifier = Modifier
                 .fillMaxWidth()
-                .graphicsLayer { translationX = -dragFraction * widthPx }
+                .graphicsLayer { translationX = -dragFraction * stridePx }
         ) {
-            RailPanel(offsetPx = -widthPx) {
+            RailPanel(offsetPx = -stridePx) {
                 AlmanacDateCard(
                     date = date.minusDays(1),
                     today = today,
@@ -504,7 +537,7 @@ private fun AlmanacDateCardRail(
                     onShiftDay = onShiftDay
                 )
             }
-            RailPanel(offsetPx = widthPx) {
+            RailPanel(offsetPx = stridePx) {
                 AlmanacDateCard(
                     date = date.plusDays(1),
                     today = today,
@@ -659,7 +692,7 @@ private fun AlmanacTabooCard(
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
-        Column(modifier = Modifier.padding(16.dp)) {
+        Column(modifier = Modifier.padding(horizontal = 14.dp, vertical = 12.dp)) {
             TabooTermRow(
                 label = "宜",
                 accent = MaterialTheme.colorScheme.error,
@@ -667,7 +700,7 @@ private fun AlmanacTabooCard(
                 expandedTerm = expandedTerm,
                 onTermClick = { term -> expandedTerm = if (expandedTerm == term) null else term }
             )
-            Spacer(modifier = Modifier.height(12.dp))
+            Spacer(modifier = Modifier.height(8.dp))
             TabooTermRow(
                 label = "忌",
                 accent = MaterialTheme.colorScheme.onSurface,
@@ -675,10 +708,11 @@ private fun AlmanacTabooCard(
                 expandedTerm = expandedTerm,
                 onTermClick = { term -> expandedTerm = if (expandedTerm == term) null else term }
             )
-            Spacer(modifier = Modifier.height(16.dp))
+            Spacer(modifier = Modifier.height(12.dp))
             FilledTonalButton(
                 onClick = onZejiClick,
                 modifier = Modifier.fillMaxWidth(),
+                contentPadding = PaddingValues(horizontal = 16.dp, vertical = 2.dp),
                 shape = RoundedCornerShape(50)
             ) {
                 Text("择日")
@@ -697,30 +731,30 @@ private fun TabooTermRow(
 ) {
     if (terms.isEmpty()) return
     Row(verticalAlignment = Alignment.Top) {
-        // 外层容器与首行 chip 等高（32dp），圆徽在其中居中，避免徽标浮在 chip 之上
+        // 外层容器与首行 chip 等高（26dp），圆徽在其中居中，避免徽标浮在 chip 之上
         Box(
-            modifier = Modifier.size(32.dp),
+            modifier = Modifier.size(CHIP_HEIGHT),
             contentAlignment = Alignment.Center
         ) {
             Box(
                 modifier = Modifier
-                    .size(28.dp)
+                    .size(22.dp)
                     .background(accent, CircleShape),
                 contentAlignment = Alignment.Center
             ) {
                 Text(
                     text = label,
-                    style = MaterialTheme.typography.labelLarge,
+                    style = MaterialTheme.typography.labelSmall,
                     fontWeight = FontWeight.Bold,
                     color = MaterialTheme.colorScheme.surface
                 )
             }
         }
-        Spacer(modifier = Modifier.width(12.dp))
+        Spacer(modifier = Modifier.width(10.dp))
         FlowRow(
             modifier = Modifier.weight(1f),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-            verticalArrangement = Arrangement.spacedBy(8.dp)
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
+            verticalArrangement = Arrangement.spacedBy(6.dp)
         ) {
             terms.forEach { term ->
                 TermChip(
@@ -738,7 +772,7 @@ private fun TabooTermRow(
 private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
     val explanation = tabooExplanation(term)
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = RoundedCornerShape(10.dp),
         color = if (expanded) MaterialTheme.colorScheme.primaryContainer
         else MaterialTheme.colorScheme.surfaceContainerHighest,
         contentColor = if (expanded) MaterialTheme.colorScheme.onPrimaryContainer
@@ -746,16 +780,16 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
         modifier = Modifier.clickable(enabled = explanation != null, onClick = onClick)
     ) {
         Box {
-            // 定高 Box 居中：Text 实测高常小于 32dp，直接给 Text 设 height 会顶在上沿
+            // 定高 Box 居中：Text 实测高常小于容器高，直接给 Text 设 height 会顶在上沿
             Box(
                 modifier = Modifier
-                    .height(32.dp)
-                    .padding(horizontal = 12.dp),
+                    .height(CHIP_HEIGHT)
+                    .padding(horizontal = 10.dp),
                 contentAlignment = Alignment.Center
             ) {
-                Text(text = term, style = MaterialTheme.typography.bodyMedium, maxLines = 1)
+                Text(text = term, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
-            // 白话气泡：锚在词条下方，空间不足自动翻到上方
+            // 白话气泡：默认弹在词条上方，上方放不下才翻到下方
             AnchorBubble(expanded = expanded && explanation != null, onDismissRequest = onClick) {
                 if (explanation != null) {
                     Text(
@@ -796,7 +830,7 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow {
                 InfoCell("五行", "${almanac.sound} · ${almanac.duty}执位")
-                InfoCell("值神 · 十二宫", "${almanac.dayGod}（${almanac.ecliptic}）")
+                InfoCell("值神 · 十二宫", "${almanac.dayGod}(${almanac.ecliptic})")
             }
             Spacer(modifier = Modifier.height(10.dp))
             InfoCell(
@@ -807,7 +841,7 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow {
                 InfoCell("胎神", almanac.fetus)
-                InfoCell("冲煞", "${almanac.clashZodiac}（${almanac.clashGanzhi}） ${almanac.shaDirection}")
+                InfoCell("冲煞", "${almanac.clashZodiac}(${almanac.clashGanzhi}) ${almanac.shaDirection}")
             }
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow(gap = 8.dp) {
