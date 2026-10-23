@@ -12,12 +12,6 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.awaitEachGesture
-import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.fadeIn
-import androidx.compose.animation.fadeOut
-import androidx.compose.animation.scaleIn
-import androidx.compose.animation.scaleOut
-import kotlinx.coroutines.delay
 import androidx.compose.animation.core.Animatable
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -114,9 +108,6 @@ import kotlin.math.roundToInt
 // 宜忌 chip 高度：徽标容器与 chip 共用，保证首行与徽标同一水平线
 private val CHIP_HEIGHT = 26.dp
 
-// 气泡退出动画时长（含缓冲），退出动画放完前 Popup 仍需挂在窗口上
-private const val BUBBLE_EXIT_MS = 220L
-
 // 滑轨相邻两页的间距（等于页面左右内边距，拖拽时露出的是页面底色）
 private val RAIL_GAP = 16.dp
 private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy'/'MM'/'dd", Locale.CHINA)
@@ -152,7 +143,7 @@ private class BubblePositionProvider(
 }
 
 /**
- * 锚定气泡：宽度随内容（上限 300dp），默认向上弹，进出各带淡入淡出 + 缩放动画。
+ * 锚定气泡：宽度随内容（上限 300dp），默认向上弹，进出各带淡入 + 轻微上浮缩放。
  * 挂在锚点（词条/时辰列）的 Box 内，Popup 以该 Box 为定位锚。
  * [onDismissRequest] 必须是"只关不开"的语义（见 TermChip/HourColumn 的 onDismiss）。
  */
@@ -163,59 +154,60 @@ private fun AnchorBubble(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    // 两段状态：mounted 让 Popup 多挂到退出动画放完（否则动画被销毁吞掉）；
-    // animShown 比 expanded 晚一帧才置真，AnimatedVisibility 才有 false→true 的变化可动画，
-    // 若直接吃 expanded，挂载那一帧目标值已是 true，进场只会"闪现"。
+    // mounted 让 Popup 多挂到退出动画放完；expanded 一到 true 就挂载，动画由 progress 自己驱动
     var mounted by remember { mutableStateOf(expanded) }
-    var animShown by remember { mutableStateOf(false) }
     if (expanded) mounted = true
-    LaunchedEffect(expanded) {
-        if (expanded) {
-            animShown = true
-        } else {
-            animShown = false
-            delay(BUBBLE_EXIT_MS)
-            mounted = false
-        }
-    }
     val density = LocalDensity.current
+    val risePx = with(density) { 10.dp.toPx() }
     val provider = remember(density) {
         BubblePositionProvider(
             gapPx = with(density) { 10.dp.roundToPx() },
             marginPx = with(density) { 16.dp.roundToPx() }
         )
     }
+    // 0=隐藏 1=显示。用 graphicsLayer 而不是 AnimatedVisibility 做进出场：
+    // AnimatedVisibility 会先以"无内容"状态挂载，Popup 定位拿到的是 0×0，
+    // 下一帧才用真实尺寸重算 —— 起跳位置随这两帧的时序漂移，表现为忽而从右下、忽而从正下方进来。
+    // 图层变换不参与布局，尺寸从第一帧就是真值，落点稳定。
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(expanded, mounted) {
+        if (!mounted) return@LaunchedEffect
+        if (expanded) {
+            progress.animateTo(1f, tween(170))
+        } else {
+            progress.animateTo(0f, tween(130))
+            mounted = false
+        }
+    }
     if (mounted) {
         Popup(
             popupPositionProvider = provider,
             onDismissRequest = onDismissRequest,
-            properties = PopupProperties(focusable = true)
+            // 退出期间窗口不再抢焦点/拦截外部点击：否则淡出未结束时点击会打在隐形窗口上被吞掉
+            properties = PopupProperties(focusable = expanded, dismissOnClickOutside = expanded)
         ) {
-            AnimatedVisibility(
-                visible = animShown,
-                enter = fadeIn(tween(120)) + scaleIn(tween(180), initialScale = 0.9f),
-                exit = fadeOut(tween(110)) + scaleOut(tween(110), targetScale = 0.92f)
+            val shown = progress.value
+            Surface(
+                shape = RoundedCornerShape(20.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                shadowElevation = 6.dp,
+                modifier = modifier
+                    .widthIn(max = 300.dp)
+                    .graphicsLayer {
+                        alpha = shown
+                        val scale = 0.94f + 0.06f * shown
+                        scaleX = scale
+                        scaleY = scale
+                        translationY = (1f - shown) * risePx
+                    }
             ) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                    shadowElevation = 6.dp,
-                    modifier = modifier.widthIn(max = 300.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        content = content
-                    )
-                }
-            }
-        }
-        LaunchedEffect(expanded) {
-            if (!expanded) {
-                delay(220)
-                mounted = false
+                Column(
+                    modifier = Modifier.padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(6.dp),
+                    content = content
+                )
             }
         }
     }
