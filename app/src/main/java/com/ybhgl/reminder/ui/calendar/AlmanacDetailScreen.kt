@@ -110,6 +110,9 @@ private val CHIP_HEIGHT = 26.dp
 
 // 滑轨相邻两页的间距（等于页面左右内边距，拖拽时露出的是页面底色）
 private val RAIL_GAP = 16.dp
+
+// 气泡四周透明留白：alpha 动画会强制开离屏图层，留白加在图层内部才能把 elevation 阴影包进 bounds
+private val BUBBLE_SHADOW_PAD = 16.dp
 private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy'/'MM'/'dd", Locale.CHINA)
 
 /** 顶栏标题：当前查看的公历日期，如"2026/10/22" */
@@ -119,10 +122,14 @@ private fun topBarDateText(date: LocalDate): String = TOP_BAR_DATE_FORMAT.format
  * 黄历页气泡定位：**默认弹在锚点上方** [gapPx] 处（宜忌词条多在页面中下部，向上更贴近阅读视线，
  * 也不会被底部按钮/导航栏挤压）；上方放不下时才翻到锚点下方同样留 [gapPx]；
  * 左右夹在屏幕边距内，避免贴边或被裁。
+ *
+ * [insetPx] 是气泡四周的透明留白（为 elevation 阴影撑出离屏图层 bounds，见 [AnchorBubble]），
+ * 定位一律按"可见矩形"计算，最后再减回留白，否则留白会把气泡整体顶偏一个 padding 的距离。
  */
 private class BubblePositionProvider(
     private val gapPx: Int,
-    private val marginPx: Int
+    private val marginPx: Int,
+    private val insetPx: Int
 ) : PopupPositionProvider {
     // 接口形参顺序是 (anchorBounds, windowSize, layoutDirection, popupContentSize)：
     // 两个 IntSize 位置写反会编译通过但宽高互换，判定全部落到边界值，气泡堆到屏幕左上角
@@ -132,13 +139,15 @@ private class BubblePositionProvider(
         layoutDirection: LayoutDirection,
         popupContentSize: IntSize
     ): IntOffset {
-        val aboveY = anchorBounds.top - gapPx - popupContentSize.height
-        val fitsAbove = aboveY >= marginPx
-        val belowMaxY = (windowSize.height - popupContentSize.height - marginPx)
-            .coerceAtLeast(marginPx)
-        val y = if (fitsAbove) aboveY else (anchorBounds.bottom + gapPx).coerceAtMost(belowMaxY)
-        val maxX = (windowSize.width - popupContentSize.width - marginPx).coerceAtLeast(marginPx)
-        return IntOffset(anchorBounds.left.coerceIn(marginPx, maxX), y)
+        val visibleW = (popupContentSize.width - insetPx * 2).coerceAtLeast(0)
+        val visibleH = (popupContentSize.height - insetPx * 2).coerceAtLeast(0)
+        val aboveY = anchorBounds.top - gapPx - visibleH
+        val belowY = anchorBounds.bottom + gapPx
+        val maxVisibleY = (windowSize.height - marginPx - visibleH).coerceAtLeast(marginPx)
+        val y = if (aboveY >= marginPx) aboveY else belowY.coerceAtMost(maxVisibleY)
+        val maxVisibleX = (windowSize.width - marginPx - visibleW).coerceAtLeast(marginPx)
+        val x = anchorBounds.left.coerceIn(marginPx, maxVisibleX)
+        return IntOffset(x - insetPx, y - insetPx)
     }
 }
 
@@ -159,10 +168,12 @@ private fun AnchorBubble(
     if (expanded) mounted = true
     val density = LocalDensity.current
     val risePx = with(density) { 10.dp.toPx() }
-    val provider = remember(density) {
+    val shadowPadPx = with(density) { BUBBLE_SHADOW_PAD.roundToPx() }
+    val provider = remember(density, shadowPadPx) {
         BubblePositionProvider(
             gapPx = with(density) { 10.dp.roundToPx() },
-            marginPx = with(density) { 16.dp.roundToPx() }
+            marginPx = with(density) { 16.dp.roundToPx() },
+            insetPx = shadowPadPx
         )
     }
     // 0=隐藏 1=显示。用 graphicsLayer 而不是 AnimatedVisibility 做进出场：
@@ -187,27 +198,33 @@ private fun AnchorBubble(
             properties = PopupProperties(focusable = expanded, dismissOnClickOutside = expanded)
         ) {
             val shown = progress.value
-            Surface(
-                shape = RoundedCornerShape(20.dp),
-                color = MaterialTheme.colorScheme.surfaceContainer,
-                contentColor = MaterialTheme.colorScheme.onSurface,
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                shadowElevation = 6.dp,
-                modifier = modifier
-                    .widthIn(max = 300.dp)
-                    .graphicsLayer {
-                        alpha = shown
-                        val scale = 0.94f + 0.06f * shown
-                        scaleX = scale
-                        scaleY = scale
-                        translationY = (1f - shown) * risePx
-                    }
+            // 透明留白必须加在带 alpha 图层的**内部**：alpha 会强制开离屏图层，其 bounds = 该节点
+            // 布局尺寸，elevation 阴影画在 bounds 外就被裁掉（留白加在图层外面撑不开 bounds，同 FAB 定案）
+            Box(
+                modifier = modifier.graphicsLayer {
+                    alpha = shown
+                    val scale = 0.94f + 0.06f * shown
+                    scaleX = scale
+                    scaleY = scale
+                    translationY = (1f - shown) * risePx
+                }
             ) {
-                Column(
-                    modifier = Modifier.padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(6.dp),
-                    content = content
-                )
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .padding(BUBBLE_SHADOW_PAD)
+                        .widthIn(max = 300.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        content = content
+                    )
+                }
             }
         }
     }
