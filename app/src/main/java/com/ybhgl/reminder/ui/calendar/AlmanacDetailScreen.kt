@@ -114,6 +114,9 @@ import kotlin.math.roundToInt
 // 宜忌 chip 高度：徽标容器与 chip 共用，保证首行与徽标同一水平线
 private val CHIP_HEIGHT = 26.dp
 
+// 气泡退出动画时长（含缓冲），退出动画放完前 Popup 仍需挂在窗口上
+private const val BUBBLE_EXIT_MS = 220L
+
 // 滑轨相邻两页的间距（等于页面左右内边距，拖拽时露出的是页面底色）
 private val RAIL_GAP = 16.dp
 private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy'/'MM'/'dd", Locale.CHINA)
@@ -151,6 +154,7 @@ private class BubblePositionProvider(
 /**
  * 锚定气泡：宽度随内容（上限 300dp），默认向上弹，进出各带淡入淡出 + 缩放动画。
  * 挂在锚点（词条/时辰列）的 Box 内，Popup 以该 Box 为定位锚。
+ * [onDismissRequest] 必须是"只关不开"的语义（见 TermChip/HourColumn 的 onDismiss）。
  */
 @Composable
 private fun AnchorBubble(
@@ -159,9 +163,21 @@ private fun AnchorBubble(
     modifier: Modifier = Modifier,
     content: @Composable ColumnScope.() -> Unit
 ) {
-    // Popup 随 expanded 直接销毁会吞掉退出动画，故用 mounted 多挂一段到动画结束
+    // 两段状态：mounted 让 Popup 多挂到退出动画放完（否则动画被销毁吞掉）；
+    // animShown 比 expanded 晚一帧才置真，AnimatedVisibility 才有 false→true 的变化可动画，
+    // 若直接吃 expanded，挂载那一帧目标值已是 true，进场只会"闪现"。
     var mounted by remember { mutableStateOf(expanded) }
+    var animShown by remember { mutableStateOf(false) }
     if (expanded) mounted = true
+    LaunchedEffect(expanded) {
+        if (expanded) {
+            animShown = true
+        } else {
+            animShown = false
+            delay(BUBBLE_EXIT_MS)
+            mounted = false
+        }
+    }
     val density = LocalDensity.current
     val provider = remember(density) {
         BubblePositionProvider(
@@ -176,7 +192,7 @@ private fun AnchorBubble(
             properties = PopupProperties(focusable = true)
         ) {
             AnimatedVisibility(
-                visible = expanded,
+                visible = animShown,
                 enter = fadeIn(tween(120)) + scaleIn(tween(180), initialScale = 0.9f),
                 exit = fadeOut(tween(110)) + scaleOut(tween(110), targetScale = 0.92f)
             ) {
@@ -698,7 +714,8 @@ private fun AlmanacTabooCard(
                 accent = MaterialTheme.colorScheme.error,
                 terms = recommends,
                 expandedTerm = expandedTerm,
-                onTermClick = { term -> expandedTerm = if (expandedTerm == term) null else term }
+                onTermClick = { term -> expandedTerm = if (expandedTerm == term) null else term },
+                onTermDismiss = { expandedTerm = null }
             )
             Spacer(modifier = Modifier.height(8.dp))
             TabooTermRow(
@@ -706,7 +723,8 @@ private fun AlmanacTabooCard(
                 accent = MaterialTheme.colorScheme.onSurface,
                 terms = avoids,
                 expandedTerm = expandedTerm,
-                onTermClick = { term -> expandedTerm = if (expandedTerm == term) null else term }
+                onTermClick = { term -> expandedTerm = if (expandedTerm == term) null else term },
+                onTermDismiss = { expandedTerm = null }
             )
             Spacer(modifier = Modifier.height(12.dp))
             FilledTonalButton(
@@ -727,7 +745,8 @@ private fun TabooTermRow(
     accent: Color,
     terms: List<String>,
     expandedTerm: String?,
-    onTermClick: (String) -> Unit
+    onTermClick: (String) -> Unit,
+    onTermDismiss: () -> Unit
 ) {
     if (terms.isEmpty()) return
     Row(verticalAlignment = Alignment.Top) {
@@ -760,7 +779,8 @@ private fun TabooTermRow(
                 TermChip(
                     term = term,
                     expanded = expandedTerm == term,
-                    onClick = { onTermClick(term) }
+                    onClick = { onTermClick(term) },
+                    onDismiss = onTermDismiss
                 )
             }
         }
@@ -769,7 +789,7 @@ private fun TabooTermRow(
 
 /** 宜忌词条：点击在词条下方浮出白话解释气泡（数据集外的无解释词条不可点） */
 @Composable
-private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
+private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit, onDismiss: () -> Unit) {
     val explanation = tabooExplanation(term)
     Surface(
         shape = RoundedCornerShape(10.dp),
@@ -790,7 +810,8 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit) {
                 Text(text = term, style = MaterialTheme.typography.bodySmall, maxLines = 1)
             }
             // 白话气泡：默认弹在词条上方，上方放不下才翻到下方
-            AnchorBubble(expanded = expanded && explanation != null, onDismissRequest = onClick) {
+            // 点外部只负责关闭：复用 onClick 的"切换"语义会让退出中的第二次 dismiss 又把气泡打开
+            AnchorBubble(expanded = expanded && explanation != null, onDismissRequest = onDismiss) {
                 if (explanation != null) {
                     Text(
                         text = term,
@@ -977,6 +998,7 @@ private fun HourLuckCard(
                         highlighted = index == highlightIndex,
                         expanded = expandedIndex == index,
                         onClick = { expandedIndex = if (expandedIndex == index) -1 else index },
+                        onDismiss = { expandedIndex = -1 },
                         modifier = Modifier.weight(1f)
                     )
                 }
@@ -1005,6 +1027,7 @@ private fun HourColumn(
     highlighted: Boolean,
     expanded: Boolean,
     onClick: () -> Unit,
+    onDismiss: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val luckColor = if (hour.lucky) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.outline
@@ -1045,7 +1068,7 @@ private fun HourColumn(
                 )
             }
         }
-        AnchorBubble(expanded = expanded, onDismissRequest = onClick) {
+        AnchorBubble(expanded = expanded, onDismissRequest = onDismiss) {
             Text(
                 text = hour.ganzhi,
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
