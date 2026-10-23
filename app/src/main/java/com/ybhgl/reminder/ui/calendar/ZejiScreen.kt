@@ -52,6 +52,7 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateMapOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
@@ -63,8 +64,11 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.layout.Layout
+import androidx.compose.ui.layout.layout
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.buildAnnotatedString
@@ -159,6 +163,12 @@ fun ZejiScreen(
     val listState = rememberLazyListState()
     val searchListState = rememberLazyListState()
     val topBarState = rememberCollapsingTopBarState(listState)
+    // 全部行的真实高度：滚动条据此算内容总高与分类落点。
+    // 只靠"可见条目高度取均值"估算会让总高偏低（拇指过长）、分类位置错位（吸附与落点飘）。
+    val measuredHeights = remember { mutableStateMapOf<Int, Int>() }
+    val hintText = remember(recommendedTerms.size, avoidedTerms.size) {
+        "共 ${recommendedTerms.size + avoidedTerms.size} 项宜忌事件，点按事件查看可选日子，长按查看释义"
+    }
 
     LaunchedEffect(normalizedQuery) {
         if (searchListState.firstVisibleItemIndex > 0) searchListState.scrollToItem(0)
@@ -201,38 +211,41 @@ fun ZejiScreen(
             )
         ) {
             itemsIndexed(rows, key = { _, row -> row.key }) { _, row ->
-                when (row) {
-                    is ZejiRow.Hint -> Text(
-                        text = "共 ${recommendedTerms.size + avoidedTerms.size} 项宜忌事件，点按事件查看可选日子，长按查看释义",
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant,
-                        modifier = Modifier.padding(vertical = 6.dp)
-                    )
-
-                    is ZejiRow.Section -> SectionHeader(
-                        label = if (row.recommended) "宜" else "忌",
-                        accent = if (row.recommended) MaterialTheme.colorScheme.error
-                        else MaterialTheme.colorScheme.onSurface,
-                        summary = if (row.recommended) "适合操办的事情" else "不宜操办的事情",
-                        modifier = if (row.recommended) Modifier else Modifier.padding(top = 16.dp)
-                    )
-
-                    is ZejiRow.Group -> CategoryGroup(
-                        row = row,
-                        chipGap = chipGap,
-                        heldChip = heldChip,
-                        onHeldChipChange = { heldChip = it },
-                        onOpenDetail = onOpenDetail
-                    )
-                }
+                ZejiRowContent(
+                    row = row,
+                    chipGap = chipGap,
+                    hintText = hintText,
+                    heldChip = heldChip,
+                    onHeldChipChange = { heldChip = it },
+                    onOpenDetail = onOpenDetail
+                )
+            }
+        }
+        // 隐藏探针：把全部行按**列表条目的真实宽度**量一遍高度（LazyColumn 只测入视口的条目，量不到未滚到的行）。
+        // 量完即撤 —— 探针若常驻，顶栏收放引发的每帧重布局会把它 18 行 × 上百 chip 重测一遍。
+        // 宽度必须是"屏宽 - 左右 contentPadding"：宽一档，chip 换行就少一档，每组高度被系统性低估、
+        // 内容总高随之偏小 → 拇指偏长、锚点整体前挤（表现为点不到某些分类、落点飘）。
+        if (measuredHeights.size < rows.size) {
+            val itemWidthPx = with(LocalDensity.current) {
+                (maxWidth - horizontalPadding * 2 - 8.dp).coerceAtLeast(1.dp).roundToPx()
+            }
+            ZejiRowHeightProber(
+                rows = rows,
+                chipGap = chipGap,
+                hintText = hintText,
+                widthPx = itemWidthPx
+            ) { index, height ->
+                if (measuredHeights[index] != height) measuredHeights[index] = height
             }
         }
         CategoryScrollBar(
             listState = listState,
             anchors = anchors,
-            liveContentTopPaddingPx = with(LocalDensity.current) { topPadding.roundToPx() },
-            restingContentTopPaddingPx = with(LocalDensity.current) { (topBarHeightDp + 8.dp).roundToPx() },
-            contentBottomPaddingPx = with(LocalDensity.current) { (navBottom + 24.dp).roundToPx() },
+            // 定位落点：分类标题停在展开态顶栏下方一点，不随顶栏收放漂移
+            jumpLandingPx = with(LocalDensity.current) { (topBarHeightDp + 12.dp).roundToPx() },
+            liveTopPaddingPx = with(LocalDensity.current) { topPadding.roundToPx() },
+            expandedTopPaddingPx = with(LocalDensity.current) { (topBarHeightDp + 8.dp).roundToPx() },
+            measuredHeights = measuredHeights,
             modifier = Modifier
                 .align(Alignment.CenterEnd)
                 .fillMaxSize()
@@ -516,6 +529,83 @@ private fun CategoryGroup(
                 )
             }
         }
+    }
+}
+
+/**
+ * 行渲染唯一出口：列表 item 与隐藏探针共用。
+ * 探针原先自己复刻了一份 Hint 文案，实测比列表真实行矮 52px（占位文案只一行，真文案两行）——
+ * 两份排版只要有一点不同，滚动条的总高与锚点位置就会错位，所以合成一处。
+ */
+@Composable
+private fun ZejiRowContent(
+    row: ZejiRow,
+    chipGap: Dp,
+    hintText: String,
+    heldChip: String?,
+    onHeldChipChange: (String?) -> Unit,
+    onOpenDetail: (String, Boolean) -> Unit
+) {
+    when (row) {
+        is ZejiRow.Hint -> Text(
+            text = hintText,
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            modifier = Modifier.padding(vertical = 6.dp)
+        )
+
+        is ZejiRow.Section -> SectionHeader(
+            label = if (row.recommended) "宜" else "忌",
+            accent = if (row.recommended) MaterialTheme.colorScheme.error
+            else MaterialTheme.colorScheme.onSurface,
+            summary = if (row.recommended) "适合操办的事情" else "不宜操办的事情",
+            modifier = if (row.recommended) Modifier else Modifier.padding(top = 16.dp)
+        )
+
+        is ZejiRow.Group -> CategoryGroup(
+            row = row,
+            chipGap = chipGap,
+            heldChip = heldChip,
+            onHeldChipChange = onHeldChipChange,
+            onOpenDetail = onOpenDetail
+        )
+    }
+}
+
+/**
+ * 行高探针：一次把**全部行**按列表条目的真实宽度量一遍高度回填给滚动条。
+ * 容器尺寸恒为 0 且不摆放子项，所以看不见也点不到；
+ * 放进 LazyColumn 的逐条探针不行——列表只测量入视口的条目，未滚到的行根本不会执行。
+ */
+@Composable
+private fun ZejiRowHeightProber(
+    rows: List<ZejiRow>,
+    chipGap: Dp,
+    hintText: String,
+    widthPx: Int,
+    onMeasured: (index: Int, height: Int) -> Unit
+) {
+    Layout(
+        content = {
+            rows.forEach { row ->
+                ZejiRowContent(
+                    row = row,
+                    chipGap = chipGap,
+                    hintText = hintText,
+                    heldChip = null,
+                    onHeldChipChange = { },
+                    onOpenDetail = { _, _ -> }
+                )
+            }
+        },
+        modifier = Modifier.size(0.dp)
+    ) { measurables, _ ->
+        measurables.forEachIndexed { index, measurable ->
+            // 只限宽、不限高：FlowRow 按宽度自然换行，量出真实行数组高度
+            val height = measurable.measure(Constraints(maxWidth = widthPx)).height
+            if (height > 0) onMeasured(index, height)
+        }
+        layout(0, 0) {}
     }
 }
 

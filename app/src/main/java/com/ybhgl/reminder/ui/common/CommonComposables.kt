@@ -10,6 +10,7 @@ import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
 import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
@@ -92,12 +93,14 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
@@ -117,7 +120,6 @@ import androidx.compose.ui.window.Popup
 import androidx.compose.ui.window.PopupPositionProvider
 import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.launch
 import kotlin.math.abs
 import kotlin.math.max
@@ -1155,74 +1157,86 @@ fun ExplanationBubbleBody(title: String, explanation: String) {
 /** 分类滚动条定位锚点：分类首条在列表中的条目下标 + 气泡文案（如「宜·婚嫁喜事」） */
 data class CategoryScrollAnchor(val label: String, val itemIndex: Int)
 
-// 拇指最短可视高度；轨道上下留白与可点宽度；定位点的线段宽与点按容差
+// 拇指最短可视高度与**长度上限**：静止态位置按真实进度，但长度不再按"一屏占三成"如实画——
+// 拇指太长会挤掉轨道上的可分辨空间，找分类时手感变差。要恢复严格成比例就把这个上限调到 1f。
 private val MIN_THUMB_HEIGHT = 24.dp
+private const val MAX_THUMB_RATIO = 0.12f
 private val TRACK_TOP_PAD = 20.dp
 private val SCRUBBER_WIDTH = 24.dp
-private val TICK_WIDTH = 9.dp
-private val TICK_HIT_SLOP = 14.dp
 
-/** 一轮测量的产物：真实滚动进度、拇指占轨道比例、各定位点位置与量程 */
+/** 一轮测量的产物：真实进度、拇指占轨道比例、各分类在轨道上的位置、量程 */
 private class ScrollTrackMetrics(
     val progress: Float,
     val thumbRatio: Float,
     val anchorFractions: FloatArray,
-    val maxScrollPx: Float
+    val rangePx: Float
 )
 
 /**
- * 右侧分类滚动条：拇指位置与高度**完全按页面真实滚动进度**（视口 / 内容高度），
- * 轨道上再画分类**定位点**；按在定位点上 = 跳到该分类并把它的顶边放到内容顶部（顶栏下方），
- * 按在轨道空白处按下拖动 = 按比例擦洗页面；气泡只在按住/拖拽滚动条期间显示。
+ * 右侧分类滚动条（定稿口径）：
+ * - **静止态**：拇指**位置**按页面真实滚动进度；页首贴轨道顶端、触底贴轨道末端。
+ *   已滚像素 = 首条前累计高度 + (`expandedTopPaddingPx` - `liveTopPaddingPx`) - 首条相对内容线的位移。
+ *   必须补那一项让位差：`LazyList` 的滚动量以"内容线（视口顶 + 实时让位）"为原点，顶栏收起 Δ
+ *   就会让滚动量凭空掉 Δ（真机实测：内容不动、只收顶栏，5350 → 5002），拇指会跟着顶栏跑，
+ *   并把触底学到的量程永久带偏一个顶栏高（此后怎么滚都到底不了）。量程仍在**静止且触底**时实测标定一次。
+ * - **交互态**：轨道按**分类序号**等分吸附（不按内容位置映射——末尾约一屏内容物理上滚不到视口顶，
+ *   按内容位置会把末尾几个分类全压到轨道末端重叠）。每跨一个分类震一下并弹出「宜·婚嫁喜事」气泡；
+ *   目标分类顶边落到 [jumpLandingPx]（顶栏下方一点）。
+ * - 轨道上**不画定位点**；拇指长度按视口占比但封顶 `MAX_THUMB_RATIO`，非活跃态用中性色低透明度。
  *
- * 进度口径：条目只有可见时才测得到高度，未测条目按已测均值估算；一旦触底就记下真实量程并沿用，
- * 之后进度完全准确。已滚像素用**实时**顶部让位折算
- * （`已滚 = 实时顶部让位 + 首条之前高度 - 首条当前视口位置`）——顶栏收放时让位与条目 offset 同步变化，
- * 折算结果不受收放影响；量程与定位点用**完全展开**时的顶部让位作基线，避免收放过程中整组标记漂移。
+ * @param measuredHeights 条目下标 → 真实高度（列表只测得到入镜条目，调用方用隐藏探针一次性量全后传入；
+ *   估算偏小会让拇指偏长、锚点错位）。优先级：列表真实排版 > 本参数 > 均值兜底。
  */
 @Composable
 fun CategoryScrollBar(
     listState: LazyListState,
     anchors: List<CategoryScrollAnchor>,
-    liveContentTopPaddingPx: Int,
-    restingContentTopPaddingPx: Int,
-    contentBottomPaddingPx: Int,
+    jumpLandingPx: Int,
+    liveTopPaddingPx: Int,
+    expandedTopPaddingPx: Int,
+    measuredHeights: Map<Int, Int> = emptyMap(),
     modifier: Modifier = Modifier
 ) {
     if (anchors.size < 2) return
 
     val density = LocalDensity.current
     val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
     var trackHeightPx by remember { mutableIntStateOf(0) }
     var overlayHeightPx by remember { mutableIntStateOf(0) }
     var bubbleHeightPx by remember { mutableIntStateOf(with(density) { 36.dp.roundToPx() }) }
     var dragging by remember { mutableStateOf(false) }
     var dragProgress by remember { mutableFloatStateOf(0f) }
-    var scrollJob by remember { mutableStateOf<Job?>(null) }
+    var dragLabel by remember { mutableStateOf<String?>(null) }
 
+    // 未入镜条目的兜底估算（调用方给了实测高度就不走这里了）
     val heightCache = remember { HashMap<Int, Int>() }
+    // 触底静止时学到的真实量程（唯一需要标定的量：内容高度里含底部 contentPadding）
     val learnedMaxPx = remember { FloatArray(1) }
 
     val scrolling by remember { derivedStateOf { listState.isScrollInProgress } }
+    val lastMetrics = remember { arrayOfNulls<ScrollTrackMetrics>(1) }
     val trackState = remember(
         anchors,
-        liveContentTopPaddingPx,
-        restingContentTopPaddingPx,
-        contentBottomPaddingPx
+        measuredHeights,
+        liveTopPaddingPx,
+        expandedTopPaddingPx
     ) {
         derivedStateOf {
             val info = listState.layoutInfo
             val total = info.totalItemsCount
             val viewport = (info.viewportEndOffset - info.viewportStartOffset).toFloat()
-            if (total == 0 || viewport <= 0f) {
-                ScrollTrackMetrics(0f, 1f, FloatArray(anchors.size), 1f)
+            val first = listState.firstVisibleItemIndex.coerceIn(0, (total - 1).coerceAtLeast(0))
+            val firstItem = info.visibleItemsInfo.firstOrNull { it.index == first }
+            if (total == 0 || viewport <= 0f || firstItem == null) {
+                // 取不到首条（滚动中/回弹的某一帧）就沿用上一次结果：按 offset=0 折算会让拇指瞬间抽一下
+                lastMetrics[0] ?: ScrollTrackMetrics(
+                    0f, 0.08f, FloatArray(anchors.size), 1f
+                )
             } else {
                 info.visibleItemsInfo.forEach { heightCache[it.index] = it.size }
                 val avgHeight = if (heightCache.isEmpty()) 0f
                 else heightCache.values.sum().toFloat() / heightCache.size
-                val first = listState.firstVisibleItemIndex.coerceIn(0, total - 1)
-                val firstOffset = info.visibleItemsInfo
-                    .firstOrNull { it.index == first }?.offset ?: liveContentTopPaddingPx
 
                 var acc = 0f
                 var firstStartPx = 0f
@@ -1234,25 +1248,29 @@ fun CategoryScrollBar(
                         nextAnchor++
                     }
                     if (index == first) firstStartPx = acc
-                    acc += heightCache[index]?.toFloat() ?: avgHeight
+                    // 优先级：列表真实排版高度 > 隐藏探针预估 > 均值兜底
+                    acc += (heightCache[index] ?: measuredHeights[index])?.toFloat() ?: avgHeight
                 }
-                val contentHeight = acc
-                val scrolledPx = (liveContentTopPaddingPx + firstStartPx - firstOffset).coerceAtLeast(0f)
-                if (!listState.canScrollForward) {
+                val firstOffset = firstItem.offset.toFloat()
+                // 进度换算必须补回顶栏让位差：列表的滚动量是相对"内容线（视口顶 + 实时让位）"计的，
+                // 顶栏收起 Δ 就让位小 Δ，滚动量会凭空掉 Δ（真机实测：内容不动、只收顶栏，5350 → 5002）。
+                // 用文档坐标就 invariant：已滚 = 首条前累计 + (展开态让位 - 实时让位) - 首条相对内容线位移。
+                val scrolledPx = (firstStartPx + expandedTopPaddingPx - liveTopPaddingPx - firstOffset)
+                    .coerceAtLeast(0f)
+                val atRest = !listState.isScrollInProgress
+                if (atRest && !listState.canScrollForward) {
                     learnedMaxPx[0] = max(learnedMaxPx[0], scrolledPx)
                 }
-                val fullHeight = (restingContentTopPaddingPx + contentHeight + contentBottomPaddingPx)
-                    .coerceAtLeast(1f)
                 val rangePx = if (learnedMaxPx[0] > 0f) learnedMaxPx[0]
-                else (fullHeight - viewport).coerceAtLeast(1f)
+                else (acc + expandedTopPaddingPx - viewport).coerceAtLeast(1f)
                 ScrollTrackMetrics(
                     progress = (scrolledPx / rangePx).coerceIn(0f, 1f),
-                    thumbRatio = (viewport / fullHeight).coerceIn(0.08f, 1f),
+                    thumbRatio = (viewport / (viewport + rangePx)).coerceIn(0.08f, MAX_THUMB_RATIO),
                     anchorFractions = FloatArray(anchors.size) { k ->
                         (anchorStartPx[k] / rangePx).coerceIn(0f, 1f)
                     },
-                    maxScrollPx = rangePx
-                )
+                    rangePx = rangePx
+                ).also { lastMetrics[0] = it }
             }
         }
     }
@@ -1261,7 +1279,8 @@ fun CategoryScrollBar(
     val shownProgress = if (dragging) dragProgress else track.progress
     val activeIndex = track.anchorFractions.indices
         .minByOrNull { abs(track.anchorFractions[it] - shownProgress) } ?: 0
-    val activeLabel = anchors[activeIndex].label
+    // 拖拽中标签用吸附到的分类（轨道按序号等分，与"最近真实位置"不再一一对应）
+    val activeLabel = if (dragging) dragLabel ?: anchors[activeIndex].label else anchors[activeIndex].label
 
     val trackTopPadPx = with(density) { TRACK_TOP_PAD.toPx() }
     val minThumbPx = with(density) { MIN_THUMB_HEIGHT.toPx() }
@@ -1280,25 +1299,38 @@ fun CategoryScrollBar(
         animationSpec = tween(180),
         label = "scrollbarThumbWidth"
     )
+    // 非活跃态不抢眼：中性 outlineVariant + 低透明度；一旦滚动/拖拽才转成 primary 并提亮
+    val active = dragging || scrolling
+    val thumbColor by animateColorAsState(
+        targetValue = if (active) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.outlineVariant,
+        animationSpec = tween(260),
+        label = "scrollbarThumbColor"
+    )
     val thumbAlpha by animateFloatAsState(
-        targetValue = if (dragging || scrolling) 1f else 0.55f,
+        targetValue = if (active) 1f else 0.5f,
         animationSpec = tween(220),
         label = "scrollbarThumbAlpha"
     )
     val trackAlpha by animateFloatAsState(
-        targetValue = if (dragging) 0.38f else 0.22f,
+        targetValue = if (dragging) 0.38f else if (scrolling) 0.28f else 0.14f,
         animationSpec = tween(220),
         label = "scrollbarTrackAlpha"
     )
     val trackColor = MaterialTheme.colorScheme.outlineVariant
-    val thumbColor = MaterialTheme.colorScheme.primary
 
+    // 不取消上一次跳转！`scrollToItem` 是挂起点，快速跨类时 cancel 会让后面那步"落点修正"丢失，
+    // 条目就停在屏幕顶（用户报的"部分定位点飘得很远"）。多次跳转在同一主线程作用域里依次跑完，
+    // 视觉上以最后一次为准。
     fun jumpToAnchor(index: Int) {
-        scrollJob?.cancel()
-        scrollJob = scope.launch {
-            listState.scrollToItem(anchors[index].itemIndex)
-            // 落点定在内容顶部（顶栏下方），而不是屏幕顶：条目对齐视口顶后整体再下移一个让位距离
-            listState.dispatchRawDelta(-liveContentTopPaddingPx.toFloat())
+        scope.launch {
+            val itemIndex = anchors[index].itemIndex
+            listState.scrollToItem(itemIndex)
+            val item = listState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.index == itemIndex }
+            if (item != null) {
+                listState.dispatchRawDelta(item.offset.toFloat() - jumpLandingPx)
+            }
         }
     }
 
@@ -1310,60 +1342,44 @@ fun CategoryScrollBar(
                 .padding(vertical = TRACK_TOP_PAD)
                 .width(SCRUBBER_WIDTH)
                 .onSizeChanged { trackHeightPx = it.height }
-                .pointerInput(anchors, trackHeightPx, liveContentTopPaddingPx) {
+                .pointerInput(anchors, trackHeightPx) {
                     awaitEachGesture {
                         val down = awaitFirstDown(requireUnconsumed = false)
                         down.consume()
+                        dragging = true
+                        var lastAnchor = -1
 
-                        fun progressAt(y: Float): Float {
+                        // 轨道按**分类序号**等分吸附。不能按"内容位置/量程"映射：
+                        // 末尾约一屏内容物理上滚不到视口顶，它们的真实进度全被压到 1.0（真机日志实测），
+                        // 于是最后几个分类在轨道上挤成一坨——表现为"分类缺少"和"定位不准"。
+                        fun snapTo(y: Float) {
                             val height = size.height.toFloat().coerceAtLeast(1f)
-                            val thumb = (height * trackState.value.thumbRatio)
+                            val metrics = trackState.value
+                            val thumb = (height * metrics.thumbRatio)
                                 .coerceAtLeast(minThumbPx)
                                 .coerceAtMost(height)
                             val travel = (height - thumb).coerceAtLeast(1f)
-                            return ((y - thumb / 2f) / travel).coerceIn(0f, 1f)
+                            val rawFraction = ((y - thumb / 2f) / travel).coerceIn(0f, 1f)
+                            val target = (rawFraction * (anchors.size - 1))
+                                .roundToInt()
+                                .coerceIn(0, anchors.lastIndex)
+                            if (target == lastAnchor) return
+                            lastAnchor = target
+                            // 定位点不画在轨道上，靠这一震 + 气泡告知已卡到分类
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            dragLabel = anchors[target].label
+                            // 拇指跟手指走（序号轨道），松手后回落到真实进度位置
+                            dragProgress = rawFraction
+                            jumpToAnchor(target)
                         }
 
-                        val slop = TICK_HIT_SLOP.toPx()
-                        val trackH = size.height.toFloat().coerceAtLeast(1f)
-                        val nearTick = trackState.value.anchorFractions.indices.minByOrNull { k ->
-                            abs(trackState.value.anchorFractions[k] * trackH - down.position.y)
-                        }
-                        val nearTickOffset = nearTick?.let {
-                            abs(trackState.value.anchorFractions[it] * trackH - down.position.y)
-                        } ?: Float.MAX_VALUE
-                        // 按在定位点上 → 类别跳转；按在轨道空白处 → 比例擦洗
-                        var scrubbing = nearTick == null || nearTickOffset > slop
-                        var appliedPx = trackState.value.maxScrollPx * trackState.value.progress
-                        if (scrubbing) {
-                            dragProgress = progressAt(down.position.y)
-                        } else if (nearTick != null) {
-                            jumpToAnchor(nearTick)
-                            dragProgress = trackState.value.anchorFractions[nearTick]
-                            appliedPx = trackState.value.maxScrollPx * dragProgress
-                        }
-                        dragging = true
-                        var movedPx = 0f
+                        snapTo(down.position.y)
                         while (true) {
                             val event = awaitPointerEvent()
                             val change = event.changes.firstOrNull { it.id == down.id } ?: break
                             if (!change.pressed) break
                             change.consume()
-                            movedPx = max(movedPx, (change.position - down.position).getDistance())
-                            if (!scrubbing && movedPx > slop) {
-                                // 从定位点起手后继续拖 → 转成擦洗。基线沿用定位点的目标量程（跳转就落在这一点），
-                                // 不能用回读的实时进度：协程里的跳转可能还没生效，会叠加出一次多跳
-                                scrubbing = true
-                            }
-                            if (scrubbing) {
-                                dragProgress = progressAt(change.position.y)
-                                val desiredPx = dragProgress * trackState.value.maxScrollPx
-                                val delta = desiredPx - appliedPx
-                                if (abs(delta) >= 0.5f) {
-                                    listState.dispatchRawDelta(delta)
-                                    appliedPx = desiredPx
-                                }
-                            }
+                            snapTo(change.position.y)
                         }
                         dragging = false
                     }
@@ -1377,19 +1393,6 @@ fun CategoryScrollBar(
                     size = Size(trackWidth, size.height),
                     cornerRadius = CornerRadius(trackWidth / 2f)
                 )
-                val tickWidth = TICK_WIDTH.toPx()
-                val tickHeight = 2.dp.toPx()
-                track.anchorFractions.forEach { fraction ->
-                    drawRoundRect(
-                        color = trackColor.copy(alpha = if (dragging) 0.75f else 0.45f),
-                        topLeft = Offset(
-                            (size.width - tickWidth) / 2f,
-                            fraction * size.height - tickHeight / 2f
-                        ),
-                        size = Size(tickWidth, tickHeight),
-                        cornerRadius = CornerRadius(tickHeight / 2f)
-                    )
-                }
                 val thumbHeight = (size.height * track.thumbRatio)
                     .coerceAtLeast(24.dp.toPx())
                     .coerceAtMost(size.height)
