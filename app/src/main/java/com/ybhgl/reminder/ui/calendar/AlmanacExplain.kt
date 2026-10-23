@@ -233,13 +233,17 @@ private val XIU_ZONE_SYMBOL: Map<String, String> = mapOf(
     "北" to "北方玄武"
 )
 
-/** 值神：未收录时退回「十二值神 + 黄黑道」的保守说明 */
-fun dayGodExplanation(dayGod: String, ecliptic: String): String =
-    DAY_GOD_EXPLAIN[dayGod] ?: "十二值神之一，今日为${ecliptic}日。"
+/** 值神：正文前带今日值神名（气泡标题只是「值神」，正文需自报名称） */
+fun dayGodExplanation(dayGod: String, ecliptic: String): String {
+    val body = DAY_GOD_EXPLAIN[dayGod] ?: "十二值神之一，今日为${ecliptic}日。"
+    return "「$dayGod」，$body"
+}
 
-/** 建除：未收录时退回建除十二神总述 */
-fun dutyExplanation(duty: String): String =
-    DUTY_EXPLAIN[duty] ?: "建除十二神之一，古以当日值神论宜忌取舍。"
+/** 建除：正文前带今日值位，未收录时退回建除十二神总述 */
+fun dutyExplanation(duty: String): String {
+    val body = DUTY_EXPLAIN[duty] ?: "建除十二神之一，古以当日值神论宜忌取舍。"
+    return "「$duty」，$body"
+}
 
 /** 方位神：未收录时退回「按日干推算方位」的总述 */
 fun directionGodExplanation(label: String): String =
@@ -248,7 +252,7 @@ fun directionGodExplanation(label: String): String =
 /** 吉神/凶神：未收录（长尾）返回 null，词条保持不可点，避免编造释义 */
 fun godExplanation(name: String): String? = GOD_EXPLAIN[name]
 
-/** 星宿：宿名/七曜/禽名/四象方/吉凶由数据层拆好，直接拼句 */
+/** 星宿：宿名/七曜/禽名/四象方/吉凶由数据层拆好，正文前带今日禽名 */
 fun xiuExplanation(
     name: String,
     sevenStar: String,
@@ -257,8 +261,9 @@ fun xiuExplanation(
     luck: String
 ): String {
     val zoneName = XIU_ZONE_SYMBOL[zone] ?: "${zone}方"
-    return "二十八宿中的${name}宿，属${zoneName}七宿，七曜为${sevenStar}，禽名为${animal}。" +
+    val body = "二十八宿中的${name}宿，属${zoneName}七宿，七曜为${sevenStar}，禽名为${animal}。" +
         "二十八宿是古人沿黄道划分的星区，黄历按当日值宿论吉凶，今日为${luck}宿。"
+    return "「$name$sevenStar$animal」，$body"
 }
 
 /** 纳音：末字即五行，解释「纳音」这一概念而不逐条背三十个名称 */

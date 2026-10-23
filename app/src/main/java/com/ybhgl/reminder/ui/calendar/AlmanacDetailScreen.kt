@@ -61,6 +61,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -893,8 +894,16 @@ private fun ExplainChip(
 /** 黄历信息卡：单值格整格可点，吉神/凶神逐词条点击，均弹白话解释 */
 @Composable
 private fun AlmanacInfoCard(almanac: FullAlmanac) {
-    // 换日后收起气泡：本卡在 LazyColumn 中 key 固定，不按日期重建状态会残留到新一天
-    var expandedKey by remember(almanac.date) { mutableStateOf<String?>(null) }
+    // 换日整棵子树重建：气泡状态、点击回调与 Popup 窗口一起销毁。
+    // 只用 remember(almanac.date) 换状态对象不够——旧闭包可能仍写旧状态，表现为切日后点击无反应。
+    key(almanac.date) {
+        AlmanacInfoCardContent(almanac)
+    }
+}
+
+@Composable
+private fun AlmanacInfoCardContent(almanac: FullAlmanac) {
+    var expandedKey by remember { mutableStateOf<String?>(null) }
     fun toggle(key: String) {
         expandedKey = if (expandedKey == key) null else key
     }

@@ -27,8 +27,10 @@ class AlmanacExplainTest {
 
     @Test
     fun `day god and duty text carries the conventional meaning`() {
+        assertTrue(dayGodExplanation("\u9752\u9f99", "\u9ec4\u9053").startsWith("\u300c\u9752\u9f99\u300d"))
         assertTrue(dayGodExplanation("\u9752\u9f99", "\u9ec4\u9053").contains("\u9ec4\u9053\u5409\u795e"))
         assertTrue(dayGodExplanation("\u767d\u864e", "\u9ed1\u9053").contains("\u9ed1\u9053\u51f6\u795e"))
+        assertTrue(dutyExplanation("\u7834").startsWith("\u300c\u7834\u300d"))
         assertTrue(dutyExplanation("\u7834").contains("\u7834\u8d25"))
         assertTrue(dutyExplanation("\u6210").contains("\u6210\u5c31"))
         assertTrue(directionGodExplanation("\u9633\u8d35").contains("\u663c\u8d35"))
@@ -38,6 +40,7 @@ class AlmanacExplainTest {
     @Test
     fun `star explanation combines zone seven star animal and luck`() {
         val text = xiuExplanation("\u6597", "\u6728", "\u736c", "\u5317", "\u5409")
+        assertTrue(hex(text), text.startsWith("\u300c\u6597\u6728\u736c\u300d"))
         assertTrue(hex(text), text.contains("\u6597\u5bbf"))
         assertTrue(hex(text), text.contains("\u5317\u65b9\u7384\u6b66"))
         assertTrue(hex(text), text.contains("\u4e03\u66dc\u4e3a\u6728"))
@@ -128,6 +131,57 @@ class AlmanacExplainTest {
             d = d.plusDays(1)
         }
         assertEquals(hex(seen.joinToString()), PENG_ZU_EXPLAIN.keys, seen)
+    }
+
+    /**
+     * 信息卡每个模块、每个取值都必须有解释：一年内值神 12 / 星宿 28 / 建除 12 / 纳音 30 /
+     * 胎神 60 全部出现；冲煞、五方位、彭祖逐日生成。任何缺失都说明词表或模板漏项。
+     */
+    @Test
+    fun `every info module value shown in a year is explained`() {
+        val valueGods = sortedSetOf<String>()
+        val stars = sortedSetOf<String>()
+        val duties = sortedSetOf<String>()
+        val sounds = sortedSetOf<String>()
+        val fetusNames = sortedSetOf<String>()
+        var d = LocalDate.of(2026, 1, 1)
+        while (d.year < 2027) {
+            val a = fullAlmanac(d)
+            valueGods.add(a.dayGod)
+            stars.add(a.xiuStar)
+            duties.add(a.duty)
+            sounds.add(a.sound)
+            fetusNames.add(a.fetus)
+
+            // 值神/星宿/建除/五行：正文必须带今日名称
+            assertTrue(hex(a.dayGod), dayGodExplanation(a.dayGod, a.ecliptic).startsWith("\u300c${a.dayGod}\u300d"))
+            val xiuText = xiuExplanation(a.xiuName, a.xiuSevenStar, a.xiuAnimal, a.xiuZone, a.xiuLuck)
+            assertTrue(hex(a.xiuStar), xiuText.startsWith("\u300c${a.xiuStar}\u300d"))
+            assertTrue(hex(a.duty), dutyExplanation(a.duty).startsWith("\u300c${a.duty}\u300d"))
+            assertTrue(hex(a.sound), soundExplanation(a.sound, a.dayGanzhi).contains("\u300c${a.sound}\u300d"))
+            // 冲煞/胎神：模板必须带入当日值，胎神方位不能被兜底
+            assertTrue(
+                hex(a.clashGanzhi),
+                clashExplanation(a.dayGanzhi, a.clashZodiac, a.clashGanzhi, a.shaDirection).contains(a.clashGanzhi)
+            )
+            val fetusText = fetusExplanation(a.fetus)
+            assertTrue(hex(a.fetus), fetusText.contains("\u80ce\u795e"))
+            assertTrue(hex(a.fetus), !fetusText.contains("\u5728\u5f53\u65e5\u65b9\u4f4d"))
+            // 彭祖两句每日都必须可解释
+            assertTrue(hex(a.pengZuStem), pengZuExplanation(a.pengZuStem) != null)
+            assertTrue(hex(a.pengZuBranch), pengZuExplanation(a.pengZuBranch) != null)
+            d = d.plusDays(1)
+        }
+        assertEquals(12, valueGods.size)
+        assertEquals(28, stars.size)
+        assertEquals(12, duties.size)
+        assertEquals(30, sounds.size)
+        assertEquals(60, fetusNames.size)
+        // 五方位神全表
+        assertEquals(5, DIRECTION_GOD_EXPLAIN.size)
+        DIRECTION_GOD_EXPLAIN.keys.forEach {
+            assertTrue(hex(it), directionGodExplanation(it).isNotBlank())
+        }
     }
 
     /** 星宿拆解字段与展示串必须同源 */
