@@ -268,9 +268,15 @@ data class FullAlmanac(
     val sound: String,
     /** 十二值位（建除十二神），如"成" */
     val duty: String,
-    /** 二十八宿禽名，如"牛金牛" */
-    val xiuStar: String,
-    /** 星宿吉凶，如"凶" */
+    /** 二十八宿：宿名，如"斗" */
+    val xiuName: String,
+    /** 二十八宿：七曜，如"木" */
+    val xiuSevenStar: String,
+    /** 二十八宿：禽名，如"獬" */
+    val xiuAnimal: String,
+    /** 二十八宿：四象方，如"北" */
+    val xiuZone: String,
+    /** 星宿吉凶，如"吉" */
     val xiuLuck: String,
     /** 日值神，如"白虎" */
     val dayGod: String,
@@ -299,7 +305,10 @@ data class FullAlmanac(
     val daysToNextTerm: Int,
     /** 下一个节气名 */
     val nextTermName: String
-)
+) {
+    /** 二十八宿禽名展示（宿+七曜+禽），如"斗木獬" */
+    val xiuStar: String get() = xiuName + xiuSevenStar + xiuAnimal
+}
 
 /** 干支序+地支序 → 六十甲子索引（同奇偶才相配，配对唯一） */
 private fun sixtyIndex(stemIndex: Int, branchIndex: Int): Int {
@@ -364,7 +373,10 @@ fun fullAlmanac(date: LocalDate): FullAlmanac {
         inauspiciousGods = gods.filter { !it.second }.map { it.first },
         sound = daySixty.getSound().getName(),
         duty = scd.getDuty().getName(),
-        xiuStar = xiu.getName() + xiu.getSevenStar().getName() + xiu.getAnimal().getName(),
+        xiuName = xiu.getName(),
+        xiuSevenStar = xiu.getSevenStar().getName(),
+        xiuAnimal = xiu.getAnimal().getName(),
+        xiuZone = xiu.getZone().getName(),
         xiuLuck = xiu.getLuck().getName(),
         dayGod = scd.getTwelveStar().getName(),
         ecliptic = scd.getTwelveStar().getEcliptic().getName(),

@@ -229,6 +229,20 @@ private fun AnchorBubble(
     }
 }
 
+/** 气泡正文：标题 + 白话解释（宜忌词条与信息格共用） */
+@Composable
+private fun ExplanationBubbleBody(title: String, explanation: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+    )
+    Text(
+        text = explanation,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
 /**
  * 黄历详情页：日历卡（可左右横滑/点箭头切日）+ 宜忌卡（词条点击出白话气泡、可进择日）+
  * 黄历信息卡（值神/星宿/建除/五行 → 吉神宜趋·凶神宜忌 → 冲煞/胎神 → 财神五方位 → 彭祖百忌）
@@ -630,7 +644,7 @@ private fun AlmanacDateCard(
     Surface(
         modifier = modifier.fillMaxWidth(),
         shape = RoundedCornerShape(28.dp),
-        color = MaterialTheme.colorScheme.surfaceContainerHigh
+        color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
         Column(modifier = Modifier.padding(horizontal = 16.dp, vertical = 18.dp)) {
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -850,48 +864,86 @@ private fun TermChip(term: String, expanded: Boolean, onClick: () -> Unit, onDis
             // 白话气泡：默认弹在词条上方，上方放不下才翻到下方
             // 点外部只负责关闭：复用 onClick 的"切换"语义会让退出中的第二次 dismiss 又把气泡打开
             AnchorBubble(expanded = expanded && explanation != null, onDismissRequest = onDismiss) {
-                if (explanation != null) {
-                    Text(
-                        text = term,
-                        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-                    )
-                    Text(
-                        text = explanation,
-                        style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                }
+                if (explanation != null) ExplanationBubbleBody(term, explanation)
             }
         }
     }
 }
 
-/** 黄历信息卡 */
+/** 黄历信息卡：单值格整格可点查看白话解释（吉神/凶神在下一阶段改为逐词条） */
 @Composable
 private fun AlmanacInfoCard(almanac: FullAlmanac) {
+    // 换日后收起气泡：本卡在 LazyColumn 中 key 固定，不按日期重建状态会残留到新一天
+    var expandedKey by remember(almanac.date) { mutableStateOf<String?>(null) }
+    fun toggle(key: String) {
+        expandedKey = if (expandedKey == key) null else key
+    }
+
     Surface(
         modifier = Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(24.dp),
         color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
     ) {
         Column(modifier = Modifier.padding(16.dp)) {
-            Text(
-                text = "黄历信息",
-                style = MaterialTheme.typography.titleMedium,
-                fontWeight = FontWeight.Bold,
-                color = MaterialTheme.colorScheme.onSurface
-            )
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Text(
+                    text = "黄历信息",
+                    style = MaterialTheme.typography.titleMedium,
+                    fontWeight = FontWeight.Bold,
+                    color = MaterialTheme.colorScheme.onSurface
+                )
+                Spacer(modifier = Modifier.weight(1f))
+                Text(
+                    text = "轻点查看解释",
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+            }
             Spacer(modifier = Modifier.height(12.dp))
             // 读序按「定日性 → 列神煞 → 避凶 → 取吉方 → 补充」：值神/星宿/建除/五行四格先行，
             // 最长的宜趋宜忌两格其次，彭祖百忌（两句）留在末尾独占整行
             EqualHeightRow {
-                InfoCell("值神", "${almanac.dayGod}(${almanac.ecliptic})")
-                InfoCell("星宿", "${almanac.xiuStar}(${almanac.xiuLuck})")
+                InfoCell(
+                    label = "值神",
+                    value = "${almanac.dayGod}(${almanac.ecliptic})",
+                    explanation = dayGodExplanation(almanac.dayGod, almanac.ecliptic),
+                    expanded = expandedKey == "day_god",
+                    onClick = { toggle("day_god") },
+                    onDismiss = { expandedKey = null }
+                )
+                InfoCell(
+                    label = "星宿",
+                    value = "${almanac.xiuStar}(${almanac.xiuLuck})",
+                    explanation = xiuExplanation(
+                        name = almanac.xiuName,
+                        sevenStar = almanac.xiuSevenStar,
+                        animal = almanac.xiuAnimal,
+                        zone = almanac.xiuZone,
+                        luck = almanac.xiuLuck
+                    ),
+                    expanded = expandedKey == "xiu",
+                    onClick = { toggle("xiu") },
+                    onDismiss = { expandedKey = null }
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow {
-                InfoCell("建除", "${almanac.duty}执位")
-                InfoCell("五行", almanac.sound)
+                InfoCell(
+                    label = "建除",
+                    value = "${almanac.duty}执位",
+                    explanation = dutyExplanation(almanac.duty),
+                    expanded = expandedKey == "duty",
+                    onClick = { toggle("duty") },
+                    onDismiss = { expandedKey = null }
+                )
+                InfoCell(
+                    label = "五行",
+                    value = almanac.sound,
+                    explanation = soundExplanation(almanac.sound, almanac.dayGanzhi),
+                    expanded = expandedKey == "sound",
+                    onClick = { toggle("sound") },
+                    onDismiss = { expandedKey = null }
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow {
@@ -900,16 +952,70 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
             }
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow {
-                InfoCell("冲煞", "${almanac.clashZodiac}(${almanac.clashGanzhi}) ${almanac.shaDirection}")
-                InfoCell("胎神", almanac.fetus)
+                InfoCell(
+                    label = "冲煞",
+                    value = "${almanac.clashZodiac}(${almanac.clashGanzhi}) ${almanac.shaDirection}",
+                    explanation = clashExplanation(
+                        dayGanzhi = almanac.dayGanzhi,
+                        clashZodiac = almanac.clashZodiac,
+                        clashGanzhi = almanac.clashGanzhi,
+                        shaDirection = almanac.shaDirection
+                    ),
+                    expanded = expandedKey == "clash",
+                    onClick = { toggle("clash") },
+                    onDismiss = { expandedKey = null }
+                )
+                InfoCell(
+                    label = "胎神",
+                    value = almanac.fetus,
+                    explanation = fetusExplanation(almanac.fetus),
+                    expanded = expandedKey == "fetus",
+                    onClick = { toggle("fetus") },
+                    onDismiss = { expandedKey = null }
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow(gap = 8.dp) {
-                DirectionCell("财神", almanac.caiShen)
-                DirectionCell("喜神", almanac.xiShen)
-                DirectionCell("福神", almanac.fuShen)
-                DirectionCell("阳贵", almanac.yangGui)
-                DirectionCell("阴贵", almanac.yinGui)
+                DirectionCell(
+                    label = "财神",
+                    direction = almanac.caiShen,
+                    explanation = directionGodExplanation("财神"),
+                    expanded = expandedKey == "cai",
+                    onClick = { toggle("cai") },
+                    onDismiss = { expandedKey = null }
+                )
+                DirectionCell(
+                    label = "喜神",
+                    direction = almanac.xiShen,
+                    explanation = directionGodExplanation("喜神"),
+                    expanded = expandedKey == "xi",
+                    onClick = { toggle("xi") },
+                    onDismiss = { expandedKey = null }
+                )
+                DirectionCell(
+                    label = "福神",
+                    direction = almanac.fuShen,
+                    explanation = directionGodExplanation("福神"),
+                    expanded = expandedKey == "fu",
+                    onClick = { toggle("fu") },
+                    onDismiss = { expandedKey = null }
+                )
+                DirectionCell(
+                    label = "阳贵",
+                    direction = almanac.yangGui,
+                    explanation = directionGodExplanation("阳贵"),
+                    expanded = expandedKey == "yang_gui",
+                    onClick = { toggle("yang_gui") },
+                    onDismiss = { expandedKey = null }
+                )
+                DirectionCell(
+                    label = "阴贵",
+                    direction = almanac.yinGui,
+                    explanation = directionGodExplanation("阴贵"),
+                    expanded = expandedKey == "yin_gui",
+                    onClick = { toggle("yin_gui") },
+                    onDismiss = { expandedKey = null }
+                )
             }
             Spacer(modifier = Modifier.height(10.dp))
             InfoCell(
@@ -958,51 +1064,102 @@ private fun EqualHeightRow(
 }
 
 @Composable
-private fun InfoCell(label: String, value: String, modifier: Modifier = Modifier) {
+private fun InfoCell(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+    explanation: String? = null,
+    expanded: Boolean = false,
+    onClick: () -> Unit = {},
+    onDismiss: () -> Unit = {}
+) {
+    val shape = RoundedCornerShape(16.dp)
     Surface(
-        shape = RoundedCornerShape(16.dp),
+        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
-        modifier = modifier
+        modifier = modifier.then(
+            // 无可解释内容时保持纯展示，避免出现点了没反应的格子
+            if (explanation != null) {
+                Modifier
+                    .clip(shape)
+                    .clickable(onClickLabel = "查看解释", onClick = onClick)
+            } else {
+                Modifier
+            }
+        )
     ) {
-        Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Spacer(modifier = Modifier.height(4.dp))
-            Text(
-                text = value.ifBlank { "—" },
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                lineHeight = MaterialTheme.typography.bodySmall.lineHeight
-            )
+        Box {
+            Column(modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Spacer(modifier = Modifier.height(4.dp))
+                Text(
+                    text = value.ifBlank { "—" },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    lineHeight = MaterialTheme.typography.bodySmall.lineHeight
+                )
+            }
+            AnchorBubble(
+                expanded = expanded && explanation != null,
+                onDismissRequest = onDismiss
+            ) {
+                if (explanation != null) ExplanationBubbleBody(label, explanation)
+            }
         }
     }
 }
 
 @Composable
-private fun DirectionCell(label: String, direction: String, modifier: Modifier = Modifier) {
+private fun DirectionCell(
+    label: String,
+    direction: String,
+    modifier: Modifier = Modifier,
+    explanation: String? = null,
+    expanded: Boolean = false,
+    onClick: () -> Unit = {},
+    onDismiss: () -> Unit = {}
+) {
+    val shape = RoundedCornerShape(14.dp)
     Surface(
-        shape = RoundedCornerShape(14.dp),
+        shape = shape,
         color = MaterialTheme.colorScheme.surfaceContainerHighest.copy(alpha = 0.6f),
-        modifier = modifier
+        modifier = modifier.then(
+            if (explanation != null) {
+                Modifier
+                    .clip(shape)
+                    .clickable(onClickLabel = "查看解释", onClick = onClick)
+            } else {
+                Modifier
+            }
+        )
     ) {
-        Column(
-            horizontalAlignment = Alignment.CenterHorizontally,
-            modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
-        ) {
-            Text(
-                text = label,
-                style = MaterialTheme.typography.labelSmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant
-            )
-            Text(
-                text = direction,
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurface,
-                textAlign = TextAlign.Center
-            )
+        Box {
+            Column(
+                horizontalAlignment = Alignment.CenterHorizontally,
+                modifier = Modifier.padding(horizontal = 12.dp, vertical = 10.dp)
+            ) {
+                Text(
+                    text = label,
+                    style = MaterialTheme.typography.labelSmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant
+                )
+                Text(
+                    text = direction,
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurface,
+                    textAlign = TextAlign.Center
+                )
+            }
+            AnchorBubble(
+                expanded = expanded && explanation != null,
+                onDismissRequest = onDismiss
+            ) {
+                if (explanation != null) ExplanationBubbleBody(label, explanation)
+            }
         }
     }
 }
