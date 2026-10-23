@@ -967,17 +967,19 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
             }
             Spacer(modifier = Modifier.height(10.dp))
             // 神煞按「每个神名一个词条」铺开：单气泡塞十来个释义会顶满整屏且无法滚动
-            GodInfoSection(
+            InfoChipSection(
                 label = "吉神宜趋",
-                gods = almanac.auspiciousGods,
+                entries = almanac.auspiciousGods.map { "god:$it" to it },
+                explanation = ::godExplanation,
                 expandedKey = expandedKey,
                 onToggle = ::toggle,
                 onDismiss = { expandedKey = null }
             )
             Spacer(modifier = Modifier.height(10.dp))
-            GodInfoSection(
+            InfoChipSection(
                 label = "凶神宜忌",
-                gods = almanac.inauspiciousGods,
+                entries = almanac.inauspiciousGods.map { "god:$it" to it },
+                explanation = ::godExplanation,
                 expandedKey = expandedKey,
                 onToggle = ::toggle,
                 onDismiss = { expandedKey = null }
@@ -1050,23 +1052,31 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
                 )
             }
             Spacer(modifier = Modifier.height(10.dp))
-            InfoCell(
+            // 彭祖百忌拆成干、支两句独立词条：两句禁忌各有所指，合在一个气泡里会混淆
+            InfoChipSection(
                 label = "彭祖百忌",
-                value = "${almanac.pengZuStem} · ${almanac.pengZuBranch}",
-                modifier = Modifier.fillMaxWidth()
+                entries = listOf(
+                    "pengzu_stem" to almanac.pengZuStem,
+                    "pengzu_branch" to almanac.pengZuBranch
+                ),
+                explanation = ::pengZuExplanation,
+                expandedKey = expandedKey,
+                onToggle = ::toggle,
+                onDismiss = { expandedKey = null }
             )
         }
     }
 }
 
 /**
- * 吉神/凶神整行：标签 + 可换行词条，每个神名各自弹出解释气泡。
- * 未收录释义的长尾神名由 [ExplainChip] 自动保持不可点。
+ * 信息卡内的「标签 + 可换行词条」整行：词条各自弹出解释气泡。
+ * [entries] 为「触发键 to 显示文本」；无释义的词条由 [ExplainChip] 保持不可点，空列表显示 —。
  */
 @Composable
-private fun GodInfoSection(
+private fun InfoChipSection(
     label: String,
-    gods: List<String>,
+    entries: List<Pair<String, String>>,
+    explanation: (String) -> String?,
     expandedKey: String?,
     onToggle: (String) -> Unit,
     onDismiss: () -> Unit
@@ -1083,7 +1093,7 @@ private fun GodInfoSection(
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
             Spacer(modifier = Modifier.height(6.dp))
-            if (gods.isEmpty()) {
+            if (entries.isEmpty()) {
                 Text(
                     text = "—",
                     style = MaterialTheme.typography.bodySmall,
@@ -1094,11 +1104,10 @@ private fun GodInfoSection(
                     horizontalArrangement = Arrangement.spacedBy(6.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    gods.forEach { god ->
-                        val key = "god:$god"
+                    entries.forEach { (key, text) ->
                         ExplainChip(
-                            text = god,
-                            explanation = godExplanation(god),
+                            text = text,
+                            explanation = explanation(text),
                             expanded = expandedKey == key,
                             onClick = { onToggle(key) },
                             onDismiss = onDismiss,

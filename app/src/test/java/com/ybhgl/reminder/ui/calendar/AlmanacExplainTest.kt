@@ -112,6 +112,24 @@ class AlmanacExplainTest {
         )
     }
 
+    /** 彭祖百忌：表必须正好覆盖一年内出现的 22 句，且改药民俗条目标注非医疗建议 */
+    @Test
+    fun `pengzu explanations cover all stem and branch sentences`() {
+        assertEquals(22, PENG_ZU_EXPLAIN.size)
+        assertTrue(pengZuExplanation("\u5df1\u4e0d\u7834\u5238\u4e8c\u6bd4\u5e76\u4ea1")!!.contains("\u5951\u5238"))
+        assertTrue(pengZuExplanation("\u672a\u4e0d\u670d\u836f\u6bd2\u6c14\u5165\u80a0")!!.contains("\u533b\u7597\u5efa\u8bae"))
+
+        val seen = sortedSetOf<String>()
+        var d = LocalDate.of(2026, 1, 1)
+        while (d.year < 2027) {
+            val a = fullAlmanac(d)
+            seen.add(a.pengZuStem)
+            seen.add(a.pengZuBranch)
+            d = d.plusDays(1)
+        }
+        assertEquals(hex(seen.joinToString()), PENG_ZU_EXPLAIN.keys, seen)
+    }
+
     /** 星宿拆解字段与展示串必须同源 */
     @Test
     fun `star components match the displayed name`() {
