@@ -8,7 +8,7 @@ import com.ybhgl.reminder.util.CalendarUtil
 import java.time.LocalDate
 
 /**
- * 黄历详情页数据层：tyme4kt 能直接给出的字段（宜忌/吉神/五行/值神/彭祖/胎神/冲煞）在此聚合，
+ * 黄历详情页数据层：tyme4kt 能直接给出的字段（宜忌/吉神/五行/建除/值神/二十八宿/彭祖/胎神/冲煞）在此聚合，
  * 库缺失的三块（财神五方位、十二值时时辰吉凶、术语白话与择日分类）以标准口诀/常量表补齐。
  * 术语全集与 tyme4kt dayTaboo 数据集实际出现的 113 项逐一对齐（探查单测核定）。
  */
@@ -21,9 +21,12 @@ private val TWELVE_VALUE_GODS =
     listOf("青龙", "明堂", "天刑", "朱雀", "金匮", "天德", "白虎", "玉堂", "天牢", "玄武", "司命", "勾陈")
 
 /**
- * 十二值时起例：按日支定青龙所居时辰支序（子午起子、丑未起卯、寅申起辰、卯酉起午、辰戌起申、巳亥起戌）。
+ * 十二值时起例：按日支序（0=子…11=亥）定青龙所居的时辰支序。
+ * 口诀「子午青龙起在申，卯酉之日又在寅，寅申须从子上起，巳亥在午不须论，
+ * 唯有辰戌归辰位，丑未原从戌上寻」，即子午起申(8)、丑未起戌(10)、寅申起子(0)、
+ * 卯酉起寅(2)、辰戌起辰(4)、巳亥起午(6)。
  */
-private val HOUR_LUCK_START = intArrayOf(0, 3, 4, 6, 8, 10, 0, 3, 4, 6, 8, 10)
+private val HOUR_LUCK_START = intArrayOf(8, 10, 0, 2, 4, 6, 8, 10, 0, 2, 4, 6)
 
 /** 时辰钟点区间（自夜半子时起排）：子=23:00-00:59、丑=01:00-02:59… */
 private val HOUR_TIME_RANGES = (0 until 12).map { i ->
@@ -33,21 +36,26 @@ private val HOUR_TIME_RANGES = (0 until 12).map { i ->
 }
 
 /**
- * 财神/喜神/福神/阳贵/阴贵方位（按日干查，协纪辨方书口诀）：
- * 甲戊庚牛羊、乙丙鼠猴、六辛逢马虎、丁己鸡位乡、壬兔癸蛇。
+ * 财神/喜神/福神/阳贵/阴贵方位（按日干序 0=甲…9=癸查）。五列各用各自口诀，不可互推：
+ * 财神（《玉匣记》）：甲乙东北是财神，丙丁向在西南寻；戊己正北坐方位，庚辛正东去安身；壬癸原来正南坐。
+ * 喜神：甲己在艮乙庚乾，丙辛坤位喜神安；丁壬只在离中坐，戊癸原在巽中间。
+ * 福神：甲己正北是福神，丙辛西北乾宫存；乙庚坤位戊癸艮，丁壬巽上妙追寻。
+ * 阳贵（昼贵）：甲未乙申丙酉丁亥，戊丑己子庚丑辛寅，壬卯癸巳；
+ * 阴贵（夜贵）：甲丑乙子丙亥丁酉，戊未己申庚未辛午，壬巳癸卯（《协纪辨方书》曹震圭；
+ * 未/申同为西南、丑/寅同为东北，故只有甲的阴阳贵与戊庚相反、癸的阴贵在正东易写错）。
  */
 private val GOD_DIRECTIONS = arrayOf(
     //        财神    喜神    福神    阳贵    阴贵
-    arrayOf("东北", "西北", "西南", "东北", "西南"), // 甲
-    arrayOf("东北", "西南", "正北", "西南", "正北"), // 乙
-    arrayOf("正西", "正南", "正西", "正西", "东北"), // 丙
-    arrayOf("正西", "正南", "正东", "西北", "正西"), // 丁
-    arrayOf("正北", "东南", "正北", "东北", "西南"), // 戊
-    arrayOf("正北", "东北", "正南", "正北", "西南"), // 己
-    arrayOf("东北", "西北", "西南", "东北", "西南"), // 庚
-    arrayOf("正南", "正南", "正东", "正东", "正南"), // 辛
-    arrayOf("东南", "东南", "正北", "正东", "东南"), // 壬
-    arrayOf("东南", "东北", "正南", "东南", "正北")  // 癸
+    arrayOf("东北", "东北", "正北", "西南", "东北"), // 甲
+    arrayOf("东北", "西北", "西南", "西南", "正北"), // 乙
+    arrayOf("西南", "西南", "西北", "正西", "西北"), // 丙
+    arrayOf("西南", "正南", "东南", "西北", "正西"), // 丁
+    arrayOf("正北", "东南", "东北", "东北", "西南"), // 戊
+    arrayOf("正北", "东北", "正北", "正北", "西南"), // 己
+    arrayOf("正东", "西北", "西南", "东北", "西南"), // 庚
+    arrayOf("正东", "西南", "西北", "东北", "正南"), // 辛
+    arrayOf("正南", "正南", "东南", "正东", "东南"), // 壬
+    arrayOf("正南", "东南", "东北", "东南", "正东")  // 癸
 )
 
 /** 术语分类 */
@@ -258,8 +266,12 @@ data class FullAlmanac(
     val inauspiciousGods: List<String>,
     /** 纳音五行，如"天河水" */
     val sound: String,
-    /** 十二值位，如"满执位" */
+    /** 十二值位（建除十二神），如"成" */
     val duty: String,
+    /** 二十八宿禽名，如"牛金牛" */
+    val xiuStar: String,
+    /** 星宿吉凶，如"凶" */
+    val xiuLuck: String,
     /** 日值神，如"白虎" */
     val dayGod: String,
     /** 黄道/黑道 */
@@ -308,6 +320,8 @@ fun fullAlmanac(date: LocalDate): FullAlmanac {
 
     val gods = scd.getGods().map { Pair(it.getName(), it.getLuck().getName() == "吉") }
     val lunar = solar.getLunarDay()
+    // 二十八宿：库直给 宿名+七曜+禽星（如 牛+金+牛=牛金牛）与吉凶
+    val xiu = scd.getTwentyEightStar()
 
     // 冲干支：支取对冲（+6），干随六十循环同位数（+6 后 %10）
     val clashBranch = (branchIndex + 6) % 12
@@ -350,6 +364,8 @@ fun fullAlmanac(date: LocalDate): FullAlmanac {
         inauspiciousGods = gods.filter { !it.second }.map { it.first },
         sound = daySixty.getSound().getName(),
         duty = scd.getDuty().getName(),
+        xiuStar = xiu.getName() + xiu.getSevenStar().getName() + xiu.getAnimal().getName(),
+        xiuLuck = xiu.getLuck().getName(),
         dayGod = scd.getTwelveStar().getName(),
         ecliptic = scd.getTwelveStar().getEcliptic().getName(),
         pengZuStem = daySixty.getPengZu().getPengZuHeavenStem().getName(),

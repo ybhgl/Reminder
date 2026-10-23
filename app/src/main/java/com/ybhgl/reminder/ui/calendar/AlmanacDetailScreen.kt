@@ -231,7 +231,8 @@ private fun AnchorBubble(
 
 /**
  * 黄历详情页：日历卡（可左右横滑/点箭头切日）+ 宜忌卡（词条点击出白话气泡、可进择日）+
- * 黄历信息卡（吉神凶煞/五行/值神/彭祖/胎神/冲煞/财神五方位）+ 时辰吉凶卡 + 当日事件与添加卡。
+ * 黄历信息卡（值神/星宿/建除/五行 → 吉神宜趋·凶神宜忌 → 冲煞/胎神 → 财神五方位 → 彭祖百忌）
+ * + 时辰吉凶卡 + 当日事件与添加卡。
  * 数据由 [fullAlmanac] 聚合（tyme4kt + 本地口诀表），全程离线。
  */
 @OptIn(ExperimentalMaterial3Api::class)
@@ -881,25 +882,26 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
                 color = MaterialTheme.colorScheme.onSurface
             )
             Spacer(modifier = Modifier.height(12.dp))
+            // 读序按「定日性 → 列神煞 → 避凶 → 取吉方 → 补充」：值神/星宿/建除/五行四格先行，
+            // 最长的宜趋宜忌两格其次，彭祖百忌（两句）留在末尾独占整行
+            EqualHeightRow {
+                InfoCell("值神", "${almanac.dayGod}(${almanac.ecliptic})")
+                InfoCell("星宿", "${almanac.xiuStar}(${almanac.xiuLuck})")
+            }
+            Spacer(modifier = Modifier.height(10.dp))
+            EqualHeightRow {
+                InfoCell("建除", "${almanac.duty}执位")
+                InfoCell("五行", almanac.sound)
+            }
+            Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow {
                 InfoCell("吉神宜趋", almanac.auspiciousGods.joinToString(" "))
                 InfoCell("凶神宜忌", almanac.inauspiciousGods.joinToString(" "))
             }
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow {
-                InfoCell("五行", "${almanac.sound} · ${almanac.duty}执位")
-                InfoCell("值神 · 十二宫", "${almanac.dayGod}(${almanac.ecliptic})")
-            }
-            Spacer(modifier = Modifier.height(10.dp))
-            InfoCell(
-                label = "彭祖百忌",
-                value = "${almanac.pengZuStem} · ${almanac.pengZuBranch}",
-                modifier = Modifier.fillMaxWidth()
-            )
-            Spacer(modifier = Modifier.height(10.dp))
-            EqualHeightRow {
-                InfoCell("胎神", almanac.fetus)
                 InfoCell("冲煞", "${almanac.clashZodiac}(${almanac.clashGanzhi}) ${almanac.shaDirection}")
+                InfoCell("胎神", almanac.fetus)
             }
             Spacer(modifier = Modifier.height(10.dp))
             EqualHeightRow(gap = 8.dp) {
@@ -909,6 +911,12 @@ private fun AlmanacInfoCard(almanac: FullAlmanac) {
                 DirectionCell("阳贵", almanac.yangGui)
                 DirectionCell("阴贵", almanac.yinGui)
             }
+            Spacer(modifier = Modifier.height(10.dp))
+            InfoCell(
+                label = "彭祖百忌",
+                value = "${almanac.pengZuStem} · ${almanac.pengZuBranch}",
+                modifier = Modifier.fillMaxWidth()
+            )
         }
     }
 }
