@@ -1413,21 +1413,29 @@ private fun HourColumn(
                 style = MaterialTheme.typography.bodySmall,
                 color = MaterialTheme.colorScheme.onSurfaceVariant
             )
-            HourTermLine(label = "宜", terms = hour.recommends)
-            HourTermLine(label = "忌", terms = hour.avoids)
+            HourTermLine(
+                label = "宜",
+                terms = hour.recommends,
+                accent = MaterialTheme.colorScheme.error
+            )
+            HourTermLine(
+                label = "忌",
+                terms = hour.avoids,
+                accent = MaterialTheme.colorScheme.onSurface
+            )
         }
     }
 }
 
-/** 时辰气泡内的一行宜/忌：无条目时整行不显示 */
+/** 时辰气泡内的一行宜/忌：无条目时整行不显示；标签用 accent 区分宜忌 */
 @Composable
-private fun HourTermLine(label: String, terms: List<String>) {
+private fun HourTermLine(label: String, terms: List<String>, accent: Color) {
     if (terms.isEmpty()) return
     Row(verticalAlignment = Alignment.Top) {
         Text(
             text = label,
             style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
-            color = MaterialTheme.colorScheme.primary
+            color = accent
         )
         Spacer(modifier = Modifier.width(8.dp))
         Text(
