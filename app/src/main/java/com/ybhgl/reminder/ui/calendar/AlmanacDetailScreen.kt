@@ -19,7 +19,6 @@ import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
@@ -34,7 +33,6 @@ import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.rememberLazyListState
@@ -45,9 +43,6 @@ import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronLeft
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.ExperimentalMaterial3Api
-import androidx.compose.ui.window.Popup
-import androidx.compose.ui.window.PopupPositionProvider
-import androidx.compose.ui.window.PopupProperties
 import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,14 +78,13 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.IntOffset
-import androidx.compose.ui.unit.IntRect
-import androidx.compose.ui.unit.IntSize
-import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.viewmodel.compose.viewModel
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
 import com.ybhgl.reminder.util.BirthdayCalculator
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
+import com.ybhgl.reminder.ui.common.AnchorBubble
+import com.ybhgl.reminder.ui.common.ExplanationBubbleBody
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
@@ -111,138 +105,10 @@ private val CHIP_HEIGHT = 26.dp
 // 滑轨相邻两页的间距（等于页面左右内边距，拖拽时露出的是页面底色）
 private val RAIL_GAP = 16.dp
 
-// 气泡四周透明留白：alpha 动画会强制开离屏图层，留白加在图层内部才能把 elevation 阴影包进 bounds
-private val BUBBLE_SHADOW_PAD = 16.dp
 private val TOP_BAR_DATE_FORMAT = DateTimeFormatter.ofPattern("yyyy'/'MM'/'dd", Locale.CHINA)
 
 /** 顶栏标题：当前查看的公历日期，如"2026/10/22" */
 private fun topBarDateText(date: LocalDate): String = TOP_BAR_DATE_FORMAT.format(date)
-
-/**
- * 黄历页气泡定位：**默认弹在锚点上方** [gapPx] 处（宜忌词条多在页面中下部，向上更贴近阅读视线，
- * 也不会被底部按钮/导航栏挤压）；上方放不下时才翻到锚点下方同样留 [gapPx]；
- * 左右夹在屏幕边距内，避免贴边或被裁。
- *
- * [insetPx] 是气泡四周的透明留白（为 elevation 阴影撑出离屏图层 bounds，见 [AnchorBubble]），
- * 定位一律按"可见矩形"计算，最后再减回留白，否则留白会把气泡整体顶偏一个 padding 的距离。
- */
-private class BubblePositionProvider(
-    private val gapPx: Int,
-    private val marginPx: Int,
-    private val insetPx: Int
-) : PopupPositionProvider {
-    // 接口形参顺序是 (anchorBounds, windowSize, layoutDirection, popupContentSize)：
-    // 两个 IntSize 位置写反会编译通过但宽高互换，判定全部落到边界值，气泡堆到屏幕左上角
-    override fun calculatePosition(
-        anchorBounds: IntRect,
-        windowSize: IntSize,
-        layoutDirection: LayoutDirection,
-        popupContentSize: IntSize
-    ): IntOffset {
-        val visibleW = (popupContentSize.width - insetPx * 2).coerceAtLeast(0)
-        val visibleH = (popupContentSize.height - insetPx * 2).coerceAtLeast(0)
-        val aboveY = anchorBounds.top - gapPx - visibleH
-        val belowY = anchorBounds.bottom + gapPx
-        val maxVisibleY = (windowSize.height - marginPx - visibleH).coerceAtLeast(marginPx)
-        val y = if (aboveY >= marginPx) aboveY else belowY.coerceAtMost(maxVisibleY)
-        val maxVisibleX = (windowSize.width - marginPx - visibleW).coerceAtLeast(marginPx)
-        val x = anchorBounds.left.coerceIn(marginPx, maxVisibleX)
-        return IntOffset(x - insetPx, y - insetPx)
-    }
-}
-
-/**
- * 锚定气泡：宽度随内容（上限 300dp），默认向上弹，进出各带淡入 + 轻微上浮缩放。
- * 挂在锚点（词条/时辰列）的 Box 内，Popup 以该 Box 为定位锚。
- * [onDismissRequest] 必须是"只关不开"的语义（见 TermChip/HourColumn 的 onDismiss）。
- */
-@Composable
-private fun AnchorBubble(
-    expanded: Boolean,
-    onDismissRequest: () -> Unit,
-    modifier: Modifier = Modifier,
-    content: @Composable ColumnScope.() -> Unit
-) {
-    // mounted 让 Popup 多挂到退出动画放完；expanded 一到 true 就挂载，动画由 progress 自己驱动
-    var mounted by remember { mutableStateOf(expanded) }
-    if (expanded) mounted = true
-    val density = LocalDensity.current
-    val risePx = with(density) { 10.dp.toPx() }
-    val shadowPadPx = with(density) { BUBBLE_SHADOW_PAD.roundToPx() }
-    val provider = remember(density, shadowPadPx) {
-        BubblePositionProvider(
-            gapPx = with(density) { 10.dp.roundToPx() },
-            marginPx = with(density) { 16.dp.roundToPx() },
-            insetPx = shadowPadPx
-        )
-    }
-    // 0=隐藏 1=显示。用 graphicsLayer 而不是 AnimatedVisibility 做进出场：
-    // AnimatedVisibility 会先以"无内容"状态挂载，Popup 定位拿到的是 0×0，
-    // 下一帧才用真实尺寸重算 —— 起跳位置随这两帧的时序漂移，表现为忽而从右下、忽而从正下方进来。
-    // 图层变换不参与布局，尺寸从第一帧就是真值，落点稳定。
-    val progress = remember { Animatable(0f) }
-    LaunchedEffect(expanded, mounted) {
-        if (!mounted) return@LaunchedEffect
-        if (expanded) {
-            progress.animateTo(1f, tween(170))
-        } else {
-            progress.animateTo(0f, tween(130))
-            mounted = false
-        }
-    }
-    if (mounted) {
-        Popup(
-            popupPositionProvider = provider,
-            onDismissRequest = onDismissRequest,
-            // 退出期间窗口不再抢焦点/拦截外部点击：否则淡出未结束时点击会打在隐形窗口上被吞掉
-            properties = PopupProperties(focusable = expanded, dismissOnClickOutside = expanded)
-        ) {
-            val shown = progress.value
-            // 透明留白必须加在带 alpha 图层的**内部**：alpha 会强制开离屏图层，其 bounds = 该节点
-            // 布局尺寸，elevation 阴影画在 bounds 外就被裁掉（留白加在图层外面撑不开 bounds，同 FAB 定案）
-            Box(
-                modifier = modifier.graphicsLayer {
-                    alpha = shown
-                    val scale = 0.94f + 0.06f * shown
-                    scaleX = scale
-                    scaleY = scale
-                    translationY = (1f - shown) * risePx
-                }
-            ) {
-                Surface(
-                    shape = RoundedCornerShape(20.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainer,
-                    contentColor = MaterialTheme.colorScheme.onSurface,
-                    border = BorderStroke(1.dp, MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)),
-                    shadowElevation = 6.dp,
-                    modifier = Modifier
-                        .padding(BUBBLE_SHADOW_PAD)
-                        .widthIn(max = 300.dp)
-                ) {
-                    Column(
-                        modifier = Modifier.padding(16.dp),
-                        verticalArrangement = Arrangement.spacedBy(6.dp),
-                        content = content
-                    )
-                }
-            }
-        }
-    }
-}
-
-/** 气泡正文：标题 + 白话解释（宜忌词条与信息格共用） */
-@Composable
-private fun ExplanationBubbleBody(title: String, explanation: String) {
-    Text(
-        text = title,
-        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
-    )
-    Text(
-        text = explanation,
-        style = MaterialTheme.typography.bodySmall,
-        color = MaterialTheme.colorScheme.onSurfaceVariant
-    )
-}
 
 /**
  * 黄历详情页：日历卡（可左右横滑/点箭头切日）+ 宜忌卡（词条点击出白话气泡、可进择日）+

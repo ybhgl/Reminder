@@ -16,11 +16,10 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
-import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.width
-import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
@@ -40,9 +39,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import com.ybhgl.reminder.ui.add.UnifiedDatePickerDialog
+import com.ybhgl.reminder.ui.common.ImmersiveTopBar
+import com.ybhgl.reminder.ui.common.contentTopPadding
+import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.util.CalendarUtil
 import java.time.LocalDate
 import java.time.temporal.ChronoUnit
@@ -72,19 +75,22 @@ fun ZejiDetailScreen(
     }
     val explanation = tabooExplanation(term)
 
-    Column(
+    val listState = rememberLazyListState()
+    val topBarState = rememberCollapsingTopBarState(listState)
+
+    Box(
         modifier = modifier
             .fillMaxSize()
             .background(MaterialTheme.colorScheme.background)
-            .windowInsetsPadding(WindowInsets.statusBars)
+            .nestedScroll(topBarState.nestedScrollConnection)
     ) {
-        ZejiTopBar(title = (if (recommended) "宜 · " else "忌 · ") + term, onNavigateBack = onNavigateBack)
         LazyColumn(
+            state = listState,
             modifier = Modifier.fillMaxSize(),
             contentPadding = PaddingValues(
                 start = 20.dp,
                 end = 20.dp,
-                top = 8.dp,
+                top = topBarState.contentTopPadding(extra = 8.dp),
                 bottom = WindowInsets.navigationBars.asPaddingValues().calculateBottomPadding() + 24.dp
             ),
             verticalArrangement = Arrangement.spacedBy(12.dp)
@@ -183,6 +189,12 @@ fun ZejiDetailScreen(
                 }
             }
         }
+
+        ImmersiveTopBar(
+            state = topBarState,
+            onNavigateBack = onNavigateBack,
+            title = { Text((if (recommended) "宜 · " else "忌 · ") + term) }
+        )
     }
 
     if (pickingStart) {
