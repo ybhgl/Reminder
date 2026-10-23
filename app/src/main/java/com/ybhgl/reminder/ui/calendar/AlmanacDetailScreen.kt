@@ -250,6 +250,8 @@ fun AlmanacDetailScreen(
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
     // 滑轨跟手比例：-1 = 上一天预览居中，0 = 当前，+1 = 下一天预览居中（与月历页切周同一模型）
     var dragFraction by remember { mutableFloatStateOf(0f) }
+    // 跨多日跳看（顶栏"今"/日期选择器）的目标日：非空时滑轨的目标方向那面预渲染目标日
+    var railJumpTarget by remember { mutableStateOf<LocalDate?>(null) }
     var railJob by remember { mutableStateOf<Job?>(null) }
     val railScope = rememberCoroutineScope()
 
@@ -259,6 +261,7 @@ fun AlmanacDetailScreen(
      */
     fun settleShift(direction: Int) {
         railJob?.cancel()
+        railJumpTarget = null
         railJob = if (direction == 0) {
             railScope.launch {
                 Animatable(dragFraction).animateTo(0f, tween(180)) { dragFraction = value }
@@ -271,6 +274,26 @@ fun AlmanacDetailScreen(
                 date = date.plusDays(direction.toLong())
                 dragFraction = 0f
             }
+        }
+    }
+
+    /**
+     * 跨多日跳看：走与切日同一条滑轨，但滑入的那一面已经是目标日（见 [AlmanacDateCardRail]
+     * 的 jumpTarget），所以不论隔 1 天还是 100 天，画面都是"目标日卡片滑进来"，落位无跳变。
+     */
+    fun jumpTo(target: LocalDate) {
+        if (target == date) return
+        railJob?.cancel()
+        val direction = if (target.isAfter(date)) 1 else -1
+        railJumpTarget = target
+        railJob = railScope.launch {
+            Animatable(dragFraction).animateTo(direction.toFloat(), tween(220)) {
+                dragFraction = value
+            }
+            // 三个写回同属一次快照应用：换日期、撤跳看顶替、滑轨归零同帧生效
+            date = target
+            railJumpTarget = null
+            dragFraction = 0f
         }
     }
     // 页内切日实时上报：返回日历页时由日历页同步选中同一天（不等返回按钮，系统返回手势同样生效）
@@ -323,6 +346,7 @@ fun AlmanacDetailScreen(
                         almanac = almanac,
                         dayInfo = dayInfo,
                         dragFraction = dragFraction,
+                        jumpTarget = railJumpTarget,
                         onDrag = { fraction ->
                             railJob?.cancel()
                             dragFraction = fraction
@@ -412,19 +436,21 @@ fun AlmanacDetailScreen(
                         }
                     },
                     actions = {
-                        // 与日历页同款按钮组：非今天时先给"今"回今天，再给"+"按当前日期加提醒
+                        // 与日历页同款按钮组：非今天时先给"今"回今天，再给"+"按当前日期加提醒。
+                        // 本页标题是 titleLarge（日历页头部是 headlineMedium），故圆径等比缩到 32/20
                         if (date != today) {
                             TodayCircleButton(
-                                onClick = {
-                                    // 跨多日直接跳，不做滑轨（滑轨语义是"相邻一天"）
-                                    railJob?.cancel()
-                                    dragFraction = 0f
-                                    date = today
-                                }
+                                onClick = { jumpTo(today) },
+                                containerSize = 32.dp,
+                                glyphStyle = MaterialTheme.typography.titleSmall
                             )
                             Spacer(modifier = Modifier.width(8.dp))
                         }
-                        AddReminderCircleButton(onClick = { onAddReminder(date) })
+                        AddReminderCircleButton(
+                            onClick = { onAddReminder(date) },
+                            containerSize = 32.dp,
+                            iconSize = 20.dp
+                        )
                         Spacer(modifier = Modifier.width(4.dp))
                     }
                 )
@@ -438,12 +464,8 @@ fun AlmanacDetailScreen(
             initialIsLunar = false,
             onDismissRequest = { showDatePicker = false },
             onConfirm = { picked, _ ->
-                if (picked != date) {
-                    // 选择器跳日可能跨多天，直接落位不套滑轨动画
-                    railJob?.cancel()
-                    dragFraction = 0f
-                    date = picked
-                }
+                // 选择器跳日可能跨多天，交给同一条滑轨：目标日顶替相邻日滑入
+                jumpTo(picked)
                 showDatePicker = false
             }
         )
@@ -515,6 +537,8 @@ private fun Modifier.railSwipe(
  * 日历卡滑轨：卡片内部并排摆「上一天 / 当天 / 下一天」三面，相邻两面偏 ±(页宽 + [RAIL_GAP])，
  * 整层 translationX 由 [dragFraction] 驱动跟手横移；留间距是为了拖拽时两卡边缘不贴死，
  * 露出的缝隙是页面底色，读起来是"两张独立卡片在滑"，而不是"一张长图被切开"。
+ * [jumpTarget] 非空时（点"今"/日期选择器跨多日跳看），目标日那一面直接顶替相邻日参与滑动，
+ * 滑入的就是最终内容，落位时无内容替换跳变。
  */
 @Composable
 private fun AlmanacDateCardRail(
@@ -523,15 +547,18 @@ private fun AlmanacDateCardRail(
     almanac: FullAlmanac,
     dayInfo: DayAlmanac,
     dragFraction: Float,
+    jumpTarget: LocalDate?,
     onDrag: (Float) -> Unit,
     onSettle: (Int) -> Unit,
     onShiftDay: (Int) -> Unit,
     modifier: Modifier = Modifier
 ) {
     val density = LocalDensity.current
-    // 相邻日数据只随选中日重算；拖拽每帧仅读 fraction，不逐帧算黄历
-    val prev = remember(date) { fullAlmanac(date.minusDays(1)) to dayAlmanac(date.minusDays(1), today) }
-    val next = remember(date) { fullAlmanac(date.plusDays(1)) to dayAlmanac(date.plusDays(1), today) }
+    val leftDate = jumpTarget?.takeIf { it.isBefore(date) } ?: date.minusDays(1)
+    val rightDate = jumpTarget?.takeIf { it.isAfter(date) } ?: date.plusDays(1)
+    // 两侧面只随各自日期重算；拖拽每帧仅读 fraction，不逐帧算黄历
+    val left = remember(leftDate, today) { fullAlmanac(leftDate) to dayAlmanac(leftDate, today) }
+    val right = remember(rightDate, today) { fullAlmanac(rightDate) to dayAlmanac(rightDate, today) }
     val gapPx = with(density) { RAIL_GAP.roundToPx() }
     BoxWithConstraints(
         modifier = modifier
@@ -547,10 +574,10 @@ private fun AlmanacDateCardRail(
         ) {
             RailPanel(offsetPx = -stridePx) {
                 AlmanacDateCard(
-                    date = date.minusDays(1),
+                    date = leftDate,
                     today = today,
-                    almanac = prev.first,
-                    dayInfo = prev.second,
+                    almanac = left.first,
+                    dayInfo = left.second,
                     onShiftDay = {}
                 )
             }
@@ -565,10 +592,10 @@ private fun AlmanacDateCardRail(
             }
             RailPanel(offsetPx = stridePx) {
                 AlmanacDateCard(
-                    date = date.plusDays(1),
+                    date = rightDate,
                     today = today,
-                    almanac = next.first,
-                    dayInfo = next.second,
+                    almanac = right.first,
+                    dayInfo = right.second,
                     onShiftDay = {}
                 )
             }

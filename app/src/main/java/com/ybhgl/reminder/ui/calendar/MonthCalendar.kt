@@ -290,14 +290,15 @@ fun MonthCalendar(
     var programmaticScroll by remember { mutableStateOf(false) }
     val collapsedNow = collapsePx > maxCollapsePx / 2f
 
-    // 外部切月：滑到目标页；收缩态用瞬移（横滑动画与滑轨预览冲突）；
-    // 展开态距离过远先瞬移到相邻页再滑，避免一路连续滑过多个月
+    // 外部切月：滑到目标页；展开态距离过远先瞬移到相邻页再滑，避免一路连续滑过多个月。
+    // 收缩态只在滑轨预览正在位移时用瞬移（横滑动画会与滑轨位移叠加），
+    // 点"今"/日期同步这类静止切月同样走滑动动画。
     LaunchedEffect(displayMonth) {
         val target = pageOf(displayMonth)
         if (pager.settledPage != target && !pager.isScrollInProgress) {
             programmaticScroll = true
             try {
-                if (collapsedNow) {
+                if (collapsedNow && weekDragFraction != 0f) {
                     pager.scrollToPage(target)
                 } else {
                     if (abs(target - pager.currentPage) > 2) {

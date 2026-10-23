@@ -59,8 +59,10 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import android.content.Intent
@@ -458,18 +460,22 @@ fun CalendarScreen(
 /**
  * "今"字圆形按钮：回到今天。日历页顶栏与黄历页顶栏共用同一视觉，
  * 避免两处各写一份导致尺寸/配色漂移。
+ * 两页顶栏标题字号不同（日历页 headlineMedium / 黄历页 titleLarge），
+ * 故圆径与字形做成参数，黄历页按小一号标题等比缩小。
  */
 @Composable
 internal fun TodayCircleButton(
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    containerSize: Dp = 40.dp,
+    glyphStyle: TextStyle = MaterialTheme.typography.titleMedium
 ) {
     Surface(
         onClick = onClick,
         shape = CircleShape,
         color = MaterialTheme.colorScheme.secondaryContainer,
         contentColor = MaterialTheme.colorScheme.primary,
-        modifier = modifier.size(40.dp)
+        modifier = modifier.size(containerSize)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -477,7 +483,7 @@ internal fun TodayCircleButton(
         ) {
             Text(
                 text = "今",
-                style = MaterialTheme.typography.titleMedium,
+                style = glyphStyle,
                 fontWeight = FontWeight.SemiBold
             )
         }
@@ -488,14 +494,16 @@ internal fun TodayCircleButton(
 @Composable
 internal fun AddReminderCircleButton(
     onClick: () -> Unit,
-    modifier: Modifier = Modifier
+    modifier: Modifier = Modifier,
+    containerSize: Dp = 40.dp,
+    iconSize: Dp = 22.dp
 ) {
     Surface(
         onClick = onClick,
         shape = CircleShape,
         color = MaterialTheme.colorScheme.primary,
         contentColor = MaterialTheme.colorScheme.onPrimary,
-        modifier = modifier.size(40.dp)
+        modifier = modifier.size(containerSize)
     ) {
         Column(
             horizontalAlignment = Alignment.CenterHorizontally,
@@ -504,7 +512,7 @@ internal fun AddReminderCircleButton(
             Icon(
                 imageVector = Icons.Default.Add,
                 contentDescription = "添加提醒",
-                modifier = Modifier.size(22.dp)
+                modifier = Modifier.size(iconSize)
             )
         }
     }
