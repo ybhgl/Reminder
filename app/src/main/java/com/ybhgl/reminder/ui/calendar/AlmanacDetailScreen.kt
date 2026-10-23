@@ -890,7 +890,7 @@ private fun ExplainChip(
     }
 }
 
-/** 黄历信息卡：单值格整格可点查看白话解释（吉神/凶神在下一阶段改为逐词条） */
+/** 黄历信息卡：单值格整格可点，吉神/凶神逐词条点击，均弹白话解释 */
 @Composable
 private fun AlmanacInfoCard(almanac: FullAlmanac) {
     // 换日后收起气泡：本卡在 LazyColumn 中 key 固定，不按日期重建状态会残留到新一天

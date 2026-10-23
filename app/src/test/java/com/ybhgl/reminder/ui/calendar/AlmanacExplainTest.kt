@@ -79,28 +79,36 @@ class AlmanacExplainTest {
         assertTrue(directionGodExplanation("\u672a\u6536\u5f55").contains("\u672a\u6536\u5f55"))
     }
 
-    /** 首批神煞释义覆盖 2024–2026 出现次数的 95% 以上，防止漏字导致词条不可点 */
+    /** 三年并集内每个神名要么有释义、要么显式列入长尾白名单，防止静默漏字 */
     @Test
-    fun `first batch god explanations cover most god occurrences`() {
-        assertEquals(103, GOD_EXPLAIN.size)
+    fun `every god seen over three years is explained or explicitly deferred`() {
+        assertEquals(132, GOD_EXPLAIN.size)
         assertTrue(godExplanation("\u4e94\u865a")!!.contains("\u865a\u8017"))
         assertTrue(godExplanation("\u4e0d\u5c06")!!.contains("\u5ac1\u5a36"))
         assertTrue(godExplanation("\u9752\u9f99")!!.contains("\u9ec4\u9053\u5409\u795e"))
+        assertTrue(godExplanation("\u5929\u8d66")!!.contains("\u8d66\u7f6a"))
+        // 白名单只收真正未收录的名称
+        assertTrue(UNEXPLAINED_GODS.none { godExplanation(it) != null })
 
+        val seen = sortedSetOf<String>()
         var total = 0
         var explained = 0
         var d = LocalDate.of(2024, 1, 1)
         while (d.year < 2027) {
             val a = fullAlmanac(d)
             (a.auspiciousGods + a.inauspiciousGods).forEach { god ->
+                seen.add(god)
                 total++
                 if (godExplanation(god) != null) explained++
             }
             d = d.plusDays(1)
         }
+        val deferred = seen.filter { godExplanation(it) == null }.sorted()
+        assertEquals(hex(UNEXPLAINED_GODS.joinToString()), UNEXPLAINED_GODS.sorted(), deferred)
+        // 未收录只剩极少数长尾，按出现次数仍需覆盖 99% 以上
         assertTrue(
             "coverage=${explained * 100 / total}% (${explained}/${total})",
-            explained * 100 >= total * 95
+            explained * 100 >= total * 99
         )
     }
 
