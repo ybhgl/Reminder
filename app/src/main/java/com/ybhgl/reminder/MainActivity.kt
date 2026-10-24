@@ -2379,14 +2379,16 @@ fun ReminderListScreen(
                         // animationSpec 显式指定 tween：expand/shrinkHorizontally 默认也是 spring，
                         // 会复现"渐近收敛、内容突除"老坑（见 FAB AnimatedVisibility 阴影定案教训），
                         // 定长 250ms 与 fade 同拍收工，槽位宽度平滑收拢、不会中途突除
+                        // 收拢只用水平伸缩+淡出、不做垂直滑移：叠加 slideVertically 会与水平收拢
+                        // 合成弧线轨迹，且 FAB 离开槽位中心后裁剪边清晰可见
                         AnimatedVisibility(
                             visible = !isSelectionMode,
-                            enter = slideInVertically(initialOffsetY = { it }) + fadeIn() +
+                            enter = fadeIn() +
                                 expandHorizontally(
                                     expandFrom = Alignment.CenterHorizontally,
                                     animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
                                 ),
-                            exit = slideOutVertically(targetOffsetY = { it }) + fadeOut() +
+                            exit = fadeOut() +
                                 shrinkHorizontally(
                                     shrinkTowards = Alignment.CenterHorizontally,
                                     animationSpec = tween(durationMillis = 250, easing = FastOutSlowInEasing)
