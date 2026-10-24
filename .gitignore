@@ -15,7 +15,7 @@
 local.properties
 app/release
 keystore.properties
-project_memory.md
+/*.md
 out.txt
 size.txt
 build/
@@ -28,3 +28,4 @@ build/
 /.vscode/
 /.zcode/
 /.idea/studiobot.xml
+/.workbuddy/
