@@ -226,6 +226,7 @@ import com.ybhgl.reminder.ui.common.AutoResizeText
 import com.ybhgl.reminder.ui.common.AutoSizeMiddleEllipsisText
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
+import com.ybhgl.reminder.ui.common.SearchEmptyState
 import com.ybhgl.reminder.ui.list.ReminderListViewModel
 import com.ybhgl.reminder.ui.navigation.MiuixNavHost
 import com.ybhgl.reminder.ui.settings.ReminderManageScreen
@@ -3974,53 +3975,17 @@ private fun SearchPanelContent(
         }
 
         if (searchQuery.isEmpty() && selectedDateFilter == null && selectedTypes.isEmpty() && selectedTags.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 56.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Search,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
-                    Text(
-                        text = "输入标题或选择筛选条件进行搜索",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                }
-            }
+            SearchEmptyState(
+                icon = Icons.Default.Search,
+                text = "输入标题或选择筛选条件进行搜索",
+                modifier = Modifier.padding(bottom = 56.dp)
+            )
         } else if (searchedItems.isEmpty()) {
-            Box(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(bottom = 56.dp),
-                contentAlignment = Alignment.Center
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.spacedBy(12.dp)
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Info,
-                        contentDescription = null,
-                        modifier = Modifier.size(64.dp),
-                        tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f)
-                    )
-                    Text(
-                        text = "没有找到符合条件的提醒",
-                        style = MaterialTheme.typography.bodyLarge,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
-                    )
-                }
-            }
+            SearchEmptyState(
+                icon = Icons.Default.Info,
+                text = "没有找到符合条件的提醒",
+                modifier = Modifier.padding(bottom = 56.dp)
+            )
         } else {
             val sections = remember(searchedItems, tagsList) {
                 buildReminderSections(searchedItems, tagsList)

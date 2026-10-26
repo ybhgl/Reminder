@@ -113,6 +113,7 @@ import com.ybhgl.reminder.data.TagItem
 import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.SettingsLinkedVisibility
+import com.ybhgl.reminder.ui.common.SearchEmptyState
 import com.ybhgl.reminder.ui.common.StatusBarScrim
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 
@@ -191,29 +192,11 @@ fun TagManagementScreen(
         Box(modifier = Modifier.fillMaxSize()) {
             if (uiState.tags.isEmpty() && !uiState.isLoading) {
                 // 空状态
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(top = topBarHeightDp + 16.dp),
-                    contentAlignment = Alignment.Center
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(12.dp)
-                    ) {
-                        Icon(
-                            imageVector = Icons.AutoMirrored.Filled.Label,
-                            contentDescription = null,
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.4f),
-                            modifier = Modifier.size(64.dp)
-                        )
-                        Text(
-                            text = "暂无标签，点击下方按钮添加",
-                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
-                            style = MaterialTheme.typography.bodyLarge
-                        )
-                    }
-                }
+                SearchEmptyState(
+                    icon = Icons.AutoMirrored.Filled.Label,
+                    text = "暂无标签，点击下方按钮添加",
+                    modifier = Modifier.padding(top = topBarHeightDp + 16.dp)
+                )
             } else {
                 LazyColumn(
                     state = contentListState,

@@ -41,6 +41,7 @@ import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -83,6 +84,7 @@ import com.ybhgl.reminder.ui.common.CategoryScrollAnchor
 import com.ybhgl.reminder.ui.common.CategoryScrollBar
 import com.ybhgl.reminder.ui.common.ExplanationBubbleBody
 import com.ybhgl.reminder.ui.common.ImmersiveTopBar
+import com.ybhgl.reminder.ui.common.SearchEmptyState
 import com.ybhgl.reminder.ui.common.contentTopPadding
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import com.ybhgl.reminder.ui.common.smoothImePadding
@@ -376,23 +378,17 @@ fun ZejiScreen(
                     }
 
                     if (results.isEmpty()) {
-                        Box(
+                        SearchEmptyState(
+                            icon = if (normalizedQuery.isEmpty()) Icons.Default.Search else Icons.Default.Info,
+                            text = if (normalizedQuery.isEmpty()) {
+                                "输入关键词，搜索事项名称或白话解释"
+                            } else {
+                                "未找到匹配「$normalizedQuery」的事项"
+                            },
                             modifier = Modifier
-                                .fillMaxSize()
                                 .smoothImePadding()
-                                .padding(bottom = 24.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (normalizedQuery.isEmpty()) {
-                                    "输入关键词，搜索事项名称或白话解释"
-                                } else {
-                                    "未找到匹配「$normalizedQuery」的事项"
-                                },
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                                .padding(bottom = 24.dp)
+                        )
                     } else {
                         LazyColumn(
                             state = searchListState,

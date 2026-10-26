@@ -46,6 +46,7 @@ import androidx.compose.material.icons.filled.AutoDelete
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.DeleteForever
 import androidx.compose.material.icons.filled.DeleteSweep
+import androidx.compose.material.icons.filled.Info
 import androidx.compose.material.icons.filled.Restore
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material3.Button
@@ -100,6 +101,7 @@ import com.ybhgl.reminder.ui.common.AppAlertDialog
 import com.ybhgl.reminder.ui.common.AppViewModelProvider
 import com.ybhgl.reminder.ui.common.CustomToast
 import com.ybhgl.reminder.ui.common.StatusBarScrim
+import com.ybhgl.reminder.ui.common.SearchEmptyState
 import com.ybhgl.reminder.ui.common.rememberCollapsingTopBarState
 import kotlin.math.roundToInt
 
@@ -617,18 +619,11 @@ fun RecycleBinScreen(
                     }
 
                     if (searchedItems.isEmpty()) {
-                        Box(
-                            modifier = Modifier
-                                .fillMaxSize()
-                                .padding(bottom = fabBottomPadding + 88.dp),
-                            contentAlignment = Alignment.Center
-                        ) {
-                            Text(
-                                text = if (searchQuery.isBlank()) "回收站内暂无提醒" else "未找到匹配「$searchQuery」的提醒",
-                                style = MaterialTheme.typography.bodyLarge,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
-                            )
-                        }
+                        SearchEmptyState(
+                            icon = if (searchQuery.isBlank()) Icons.Default.Search else Icons.Default.Info,
+                            text = if (searchQuery.isBlank()) "回收站内暂无提醒" else "未找到匹配「$searchQuery」的提醒",
+                            modifier = Modifier.padding(bottom = fabBottomPadding + 88.dp)
+                        )
                     } else {
                         RecycleItemGrid(
                             items = searchedItems,
