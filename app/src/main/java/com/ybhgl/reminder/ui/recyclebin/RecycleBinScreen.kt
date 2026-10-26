@@ -618,10 +618,17 @@ fun RecycleBinScreen(
                         )
                     }
 
-                    if (searchedItems.isEmpty()) {
+                    if (searchQuery.isBlank()) {
+                        // 缺省态与主页一致：只显示提示，不列全部事件
                         SearchEmptyState(
-                            icon = if (searchQuery.isBlank()) Icons.Default.Search else Icons.Default.Info,
-                            text = if (searchQuery.isBlank()) "回收站内暂无提醒" else "未找到匹配「$searchQuery」的提醒",
+                            icon = Icons.Default.Search,
+                            text = "输入提醒标题进行搜索",
+                            modifier = Modifier.padding(bottom = fabBottomPadding + 88.dp)
+                        )
+                    } else if (searchedItems.isEmpty()) {
+                        SearchEmptyState(
+                            icon = Icons.Default.Info,
+                            text = "未找到匹配「$searchQuery」的提醒",
                             modifier = Modifier.padding(bottom = fabBottomPadding + 88.dp)
                         )
                     } else {

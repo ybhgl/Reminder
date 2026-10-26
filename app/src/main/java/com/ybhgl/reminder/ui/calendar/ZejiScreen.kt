@@ -175,6 +175,11 @@ fun ZejiScreen(
     LaunchedEffect(normalizedQuery) {
         if (searchListState.firstVisibleItemIndex > 0) searchListState.scrollToItem(0)
     }
+    // 搜索面板在本 nestedScroll 容器内，其列表滚动会冒泡被顶栏连接消费掉一部分（列表拿到不足手指量，
+    // 表现为不跟手）。与主页 isSearchActive 门禁同理：搜索态让顶栏连接跳过收起消费。
+    LaunchedEffect(isSearchActive) {
+        topBarState.forceExpanded = isSearchActive
+    }
     BackHandler(enabled = isSearchActive) {
         isSearchActive = false
         searchQuery = ""
