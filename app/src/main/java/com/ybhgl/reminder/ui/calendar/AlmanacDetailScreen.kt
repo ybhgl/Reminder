@@ -263,6 +263,9 @@ fun AlmanacDetailScreen(
                 item(key = "add_event_card") {
                     AddEventCard(onClick = { onAddReminder(date) })
                 }
+                item(key = "source_footer") {
+                    AlmanacSourceFooter()
+                }
             }
 
             StatusBarScrim(modifier = Modifier.align(Alignment.TopCenter))
@@ -946,6 +949,33 @@ private fun AlmanacInfoCardContent(almanac: FullAlmanac) {
                 expandedKey = expandedKey,
                 onToggle = ::toggle,
                 onDismiss = { expandedKey = null }
+            )
+        }
+    }
+}
+
+/** 页尾数据来源署名行：不占卡片位，轻点向上弹出口径说明气泡 */
+@Composable
+private fun AlmanacSourceFooter() {
+    var expanded by remember { mutableStateOf(false) }
+    Box(Modifier.fillMaxWidth()) {
+        Text(
+            text = "黄历数据来源：tyme4kt 库及传统择日典籍口诀表",
+            style = MaterialTheme.typography.bodySmall,
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            textAlign = TextAlign.Center,
+            modifier = Modifier
+                .fillMaxWidth()
+                .clip(RoundedCornerShape(8.dp))
+                .clickable { expanded = !expanded }
+                .padding(vertical = 6.dp)
+        )
+        AnchorBubble(expanded = expanded, onDismissRequest = { expanded = false }) {
+            ExplanationBubbleBody(
+                title = "黄历数据来源",
+                explanation = "宜忌、神煞、值神、星宿、干支生肖等取自开源历法库 tyme4kt；" +
+                    "五方位神、时辰吉凶按《玉匣记》《协纪辨方书》口诀计算；" +
+                    "白话释义参校《钦定协纪辨方书》等典籍，查无权威出处暂不提供释义。"
             )
         }
     }
