@@ -91,6 +91,12 @@ class AddReminderViewModel(
                 reminderUiState = reminderUiState.copy(endDate = parsedEndDate)
             }
             initialUiState = reminderUiState
+            // 择日详情页「添加提醒」入口：预填事项标题（如「宜·嫁娶」）。
+            // 必须写在 `initialUiState` 之后：保存按钮要 `hasUnsavedChanges()` 为真，
+            // 若把预填标题当成基线，用户带着填好的标题进来会点不动保存。
+            savedStateHandle.get<String>("initialTitle")?.takeIf { it.isNotBlank() }?.let {
+                reminderUiState = reminderUiState.copy(title = it)
+            }
         }
     }
 

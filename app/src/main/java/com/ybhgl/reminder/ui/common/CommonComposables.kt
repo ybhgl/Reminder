@@ -9,18 +9,32 @@ import androidx.compose.animation.fadeOut
 import androidx.compose.animation.shrinkVertically
 import androidx.compose.animation.core.Spring
 import androidx.compose.animation.core.animate
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.animation.core.animateDpAsState
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.spring
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.gestures.ScrollableState
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -28,19 +42,27 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.asPaddingValues
 import androidx.compose.foundation.layout.statusBars
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyListState
 import androidx.compose.foundation.background
 import androidx.compose.foundation.shape.CircleShape
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.automirrored.filled.ArrowBack
 import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.CardDefaults
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.Icon
+import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
+import androidx.compose.material3.TopAppBar
+import androidx.compose.material3.TopAppBarDefaults
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.Stable
@@ -50,6 +72,7 @@ import androidx.compose.runtime.mutableFloatStateOf
 import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.saveable.Saver
 import androidx.compose.runtime.saveable.listSaver
@@ -70,24 +93,37 @@ import androidx.compose.ui.graphics.TransformOrigin
 import androidx.compose.ui.graphics.drawscope.clipPath
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
 import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
 import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.Constraints
 import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.unit.IntRect
+import androidx.compose.ui.unit.IntSize
+import androidx.compose.ui.unit.LayoutDirection
 import androidx.compose.ui.unit.TextUnit
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import androidx.compose.ui.window.Popup
+import androidx.compose.ui.window.PopupPositionProvider
+import androidx.compose.ui.window.PopupProperties
 import androidx.compose.ui.zIndex
+import kotlinx.coroutines.launch
+import kotlin.math.abs
 import kotlin.math.max
+import kotlin.math.roundToInt
 
 @UiComposable
 @Composable
@@ -899,6 +935,508 @@ fun CollapsingPreviewItem(
                 }
         ) {
             content()
+        }
+    }
+}
+
+/* ------------------------------------------------------------------ 沉浸式顶栏 ---- */
+
+/**
+ * 通用沉浸式顶栏：状态栏遮罩 + 渐变底 + 随滚动收起的 TopAppBar。
+ *
+ * 调用方需把 [CollapsingTopBarState.nestedScrollConnection] 挂到页面滚动容器所在父节点，
+ * 并用 [contentTopPadding] 给列表顶部留出让位空间；内容即可从顶栏下方透出、随滚动滑入。
+ *
+ * [navigationIcon] 为 null 时使用默认返回箭头（[onNavigateBack]）；传自定义图标时由调用方自行处理返回。
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun ImmersiveTopBar(
+    state: CollapsingTopBarState,
+    onNavigateBack: () -> Unit,
+    title: @Composable () -> Unit,
+    modifier: Modifier = Modifier,
+    navigationIcon: (@Composable () -> Unit)? = null,
+    actions: @Composable RowScope.() -> Unit = {}
+) {
+    Box(modifier = modifier.fillMaxWidth()) {
+        // 遮罩固定在顶部，不随顶栏一起位移
+        StatusBarScrim(modifier = Modifier.align(Alignment.TopCenter))
+        Box(
+            modifier = Modifier
+                .fillMaxWidth()
+                .onSizeChanged { size ->
+                    if (size.height > 0) state.topBarHeightPx = size.height.toFloat()
+                }
+                .graphicsLayer { translationY = state.titleOffsetPx }
+                .background(
+                    Brush.verticalGradient(
+                        colors = listOf(
+                            MaterialTheme.colorScheme.surface,
+                            MaterialTheme.colorScheme.surface.copy(alpha = 0.9f),
+                            Color.Transparent
+                        )
+                    )
+                )
+        ) {
+            TopAppBar(
+                title = title,
+                windowInsets = TopAppBarDefaults.windowInsets,
+                colors = TopAppBarDefaults.topAppBarColors(
+                    containerColor = Color.Transparent,
+                    scrolledContainerColor = Color.Transparent,
+                    navigationIconContentColor = MaterialTheme.colorScheme.onSurface,
+                    titleContentColor = MaterialTheme.colorScheme.onSurface,
+                    actionIconContentColor = MaterialTheme.colorScheme.onSurface
+                ),
+                navigationIcon = navigationIcon ?: {
+                    IconButton(onClick = onNavigateBack) {
+                        Icon(
+                            imageVector = Icons.AutoMirrored.Filled.ArrowBack,
+                            contentDescription = "返回"
+                        )
+                    }
+                },
+                actions = actions
+            )
+        }
+    }
+}
+
+/** 列表顶部占位：展开高度 + 与顶栏位移同源的占位偏移，再加 [extra] 视觉间距 */
+@Composable
+fun CollapsingTopBarState.contentTopPadding(extra: Dp = 16.dp): Dp {
+    val density = LocalDensity.current
+    val height = with(density) { topBarHeightPx.toDp() }
+    val offset = with(density) { contentOffsetPx.toDp() }
+    return (height + offset + extra).coerceAtLeast(0.dp)
+}
+
+/* ------------------------------------------------------------------ 释义气泡 ---- */
+
+// 气泡四周透明留白：alpha 动画会强制开离屏图层，留白加在图层内部才能把 elevation 阴影包进 bounds
+private val BUBBLE_SHADOW_PAD = 16.dp
+
+/**
+ * 气泡定位：**默认弹在锚点上方** [gapPx] 处（词条多在页面中下部，向上更贴近阅读视线，
+ * 也不会被底部按钮/导航栏挤压）；上方放不下时才翻到锚点下方同样留 [gapPx]；
+ * 左右夹在屏幕边距内，避免贴边或被裁。
+ *
+ * [insetPx] 是气泡四周的透明留白（为 elevation 阴影撑出离屏图层 bounds，见 [AnchorBubble]），
+ * 定位一律按"可见矩形"计算，最后再减回留白，否则留白会把气泡整体顶偏一个 padding 的距离。
+ */
+private class BubblePositionProvider(
+    private val gapPx: Int,
+    private val marginPx: Int,
+    private val insetPx: Int
+) : PopupPositionProvider {
+    // 接口形参顺序是 (anchorBounds, windowSize, layoutDirection, popupContentSize)：
+    // 两个 IntSize 位置写反会编译通过但宽高互换，判定全部落到边界值，气泡堆到屏幕左上角
+    override fun calculatePosition(
+        anchorBounds: IntRect,
+        windowSize: IntSize,
+        layoutDirection: LayoutDirection,
+        popupContentSize: IntSize
+    ): IntOffset {
+        val visibleW = (popupContentSize.width - insetPx * 2).coerceAtLeast(0)
+        val visibleH = (popupContentSize.height - insetPx * 2).coerceAtLeast(0)
+        val aboveY = anchorBounds.top - gapPx - visibleH
+        val belowY = anchorBounds.bottom + gapPx
+        val maxVisibleY = (windowSize.height - marginPx - visibleH).coerceAtLeast(marginPx)
+        val y = if (aboveY >= marginPx) aboveY else belowY.coerceAtMost(maxVisibleY)
+        val maxVisibleX = (windowSize.width - marginPx - visibleW).coerceAtLeast(marginPx)
+        val x = anchorBounds.left.coerceIn(marginPx, maxVisibleX)
+        return IntOffset(x - insetPx, y - insetPx)
+    }
+}
+
+/**
+ * 锚定释义气泡：宽度随内容（上限 300dp），默认向上弹，进出各带淡入 + 轻微上浮缩放。
+ * 挂在锚点（词条/时辰列）的 Box 内，Popup 以该 Box 为定位锚。
+ * [onDismissRequest] 必须是"只关不开"的语义（黄历页词条、择日页 chip 的 onDismiss 同此）。
+ *
+ * [dismissOnOutsideTouch] = false 用于"按住显示、松手消失"的跟手场景：
+ * 弹窗不抢焦点也不拦截外部点击，否则手指还按着就被新窗口的触屏事件判为"点击外部"而立刻收起。
+ */
+@Composable
+fun AnchorBubble(
+    expanded: Boolean,
+    onDismissRequest: () -> Unit,
+    modifier: Modifier = Modifier,
+    dismissOnOutsideTouch: Boolean = true,
+    content: @Composable ColumnScope.() -> Unit
+) {
+    // mounted 让 Popup 多挂到退出动画放完；expanded 一到 true 就挂载，动画由 progress 自己驱动
+    var mounted by remember { mutableStateOf(expanded) }
+    if (expanded) mounted = true
+    val density = LocalDensity.current
+    val risePx = with(density) { 10.dp.toPx() }
+    val shadowPadPx = with(density) { BUBBLE_SHADOW_PAD.roundToPx() }
+    val provider = remember(density, shadowPadPx) {
+        BubblePositionProvider(
+            gapPx = with(density) { 10.dp.roundToPx() },
+            marginPx = with(density) { 16.dp.roundToPx() },
+            insetPx = shadowPadPx
+        )
+    }
+    // 0=隐藏 1=显示。用 graphicsLayer 而不是 AnimatedVisibility 做进出场：
+    // AnimatedVisibility 会先以"无内容"状态挂载，Popup 定位拿到的是 0×0，
+    // 下一帧才用真实尺寸重算 —— 起跳位置随这两帧的时序漂移，表现为忽而从右下、忽而从正下方进来。
+    // 图层变换不参与布局，尺寸从第一帧就是真值，落点稳定。
+    val progress = remember { Animatable(0f) }
+    LaunchedEffect(expanded, mounted) {
+        if (!mounted) return@LaunchedEffect
+        if (expanded) {
+            progress.animateTo(1f, tween(170))
+        } else {
+            progress.animateTo(0f, tween(130))
+            mounted = false
+        }
+    }
+    if (mounted) {
+        val interactive = expanded && dismissOnOutsideTouch
+        Popup(
+            popupPositionProvider = provider,
+            onDismissRequest = onDismissRequest,
+            // 退出期间窗口不再抢焦点/拦截外部点击：否则淡出未结束时点击会打在隐形窗口上被吞掉
+            // interactive=false 时窗口整体不接收触摸（isTouchable=false），按住的手指事件仍归页面
+            properties = PopupProperties(focusable = interactive, dismissOnClickOutside = interactive)
+        ) {
+            val shown = progress.value
+            // 透明留白必须加在带 alpha 图层的**内部**：alpha 会强制开离屏图层，其 bounds = 该节点
+            // 布局尺寸，elevation 阴影画在 bounds 外就被裁掉（留白加在图层外面撑不开 bounds，同 FAB 定案）
+            Box(
+                modifier = modifier.graphicsLayer {
+                    alpha = shown
+                    val scale = 0.94f + 0.06f * shown
+                    scaleX = scale
+                    scaleY = scale
+                    translationY = (1f - shown) * risePx
+                }
+            ) {
+                Surface(
+                    shape = RoundedCornerShape(20.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainer,
+                    contentColor = MaterialTheme.colorScheme.onSurface,
+                    border = BorderStroke(
+                        1.dp,
+                        MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.35f)
+                    ),
+                    shadowElevation = 6.dp,
+                    modifier = Modifier
+                        .padding(BUBBLE_SHADOW_PAD)
+                        .widthIn(max = 300.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(16.dp),
+                        verticalArrangement = Arrangement.spacedBy(6.dp),
+                        content = content
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** 气泡正文：标题 + 白话解释（宜忌词条、择日 chip 与信息格共用） */
+@Composable
+fun ExplanationBubbleBody(title: String, explanation: String) {
+    Text(
+        text = title,
+        style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold)
+    )
+    Text(
+        text = explanation,
+        style = MaterialTheme.typography.bodySmall,
+        color = MaterialTheme.colorScheme.onSurfaceVariant
+    )
+}
+
+/* ------------------------------------------------------------------ 分类滚动条 ---- */
+
+/** 分类滚动条定位锚点：分类首条在列表中的条目下标 + 气泡文案（如「宜·婚嫁喜事」） */
+data class CategoryScrollAnchor(val label: String, val itemIndex: Int)
+
+// 拇指最短可视高度与**长度上限**：静止态位置按真实进度，但长度不再按"一屏占三成"如实画——
+// 拇指太长会挤掉轨道上的可分辨空间，找分类时手感变差。要恢复严格成比例就把这个上限调到 1f。
+private val MIN_THUMB_HEIGHT = 24.dp
+private const val MAX_THUMB_RATIO = 0.12f
+private val TRACK_TOP_PAD = 20.dp
+private val SCRUBBER_WIDTH = 24.dp
+
+/** 一轮测量的产物：真实进度、拇指占轨道比例、各分类在轨道上的位置、量程 */
+private class ScrollTrackMetrics(
+    val progress: Float,
+    val thumbRatio: Float,
+    val anchorFractions: FloatArray,
+    val rangePx: Float
+)
+
+/**
+ * 右侧分类滚动条（定稿口径）：
+ * - **静止态**：拇指**位置**按页面真实滚动进度；页首贴轨道顶端、触底贴轨道末端。
+ *   已滚像素 = 首条前累计高度 + (`expandedTopPaddingPx` - `liveTopPaddingPx`) - 首条相对内容线的位移。
+ *   必须补那一项让位差：`LazyList` 的滚动量以"内容线（视口顶 + 实时让位）"为原点，顶栏收起 Δ
+ *   就会让滚动量凭空掉 Δ（真机实测：内容不动、只收顶栏，5350 → 5002），拇指会跟着顶栏跑，
+ *   并把触底学到的量程永久带偏一个顶栏高（此后怎么滚都到底不了）。量程仍在**静止且触底**时实测标定一次。
+ * - **交互态**：轨道按**分类序号**等分吸附（不按内容位置映射——末尾约一屏内容物理上滚不到视口顶，
+ *   按内容位置会把末尾几个分类全压到轨道末端重叠）。每跨一个分类震一下并弹出「宜·婚嫁喜事」气泡；
+ *   目标分类顶边落到 [jumpLandingPx]（顶栏下方一点）。
+ * - 轨道上**不画定位点**；拇指长度按视口占比但封顶 `MAX_THUMB_RATIO`，非活跃态用中性色低透明度。
+ *
+ * @param measuredHeights 条目下标 → 真实高度（列表只测得到入镜条目，调用方用隐藏探针一次性量全后传入；
+ *   估算偏小会让拇指偏长、锚点错位）。优先级：列表真实排版 > 本参数 > 均值兜底。
+ */
+@Composable
+fun CategoryScrollBar(
+    listState: LazyListState,
+    anchors: List<CategoryScrollAnchor>,
+    jumpLandingPx: Int,
+    liveTopPaddingPx: Int,
+    expandedTopPaddingPx: Int,
+    measuredHeights: Map<Int, Int> = emptyMap(),
+    modifier: Modifier = Modifier
+) {
+    if (anchors.size < 2) return
+
+    val density = LocalDensity.current
+    val scope = rememberCoroutineScope()
+    val haptic = LocalHapticFeedback.current
+    var trackHeightPx by remember { mutableIntStateOf(0) }
+    var overlayHeightPx by remember { mutableIntStateOf(0) }
+    var bubbleHeightPx by remember { mutableIntStateOf(with(density) { 36.dp.roundToPx() }) }
+    var dragging by remember { mutableStateOf(false) }
+    var dragProgress by remember { mutableFloatStateOf(0f) }
+    var dragLabel by remember { mutableStateOf<String?>(null) }
+
+    // 未入镜条目的兜底估算（调用方给了实测高度就不走这里了）
+    val heightCache = remember { HashMap<Int, Int>() }
+    // 触底静止时学到的真实量程（唯一需要标定的量：内容高度里含底部 contentPadding）
+    val learnedMaxPx = remember { FloatArray(1) }
+
+    val scrolling by remember { derivedStateOf { listState.isScrollInProgress } }
+    val lastMetrics = remember { arrayOfNulls<ScrollTrackMetrics>(1) }
+    val trackState = remember(
+        anchors,
+        measuredHeights,
+        liveTopPaddingPx,
+        expandedTopPaddingPx
+    ) {
+        derivedStateOf {
+            val info = listState.layoutInfo
+            val total = info.totalItemsCount
+            val viewport = (info.viewportEndOffset - info.viewportStartOffset).toFloat()
+            val first = listState.firstVisibleItemIndex.coerceIn(0, (total - 1).coerceAtLeast(0))
+            val firstItem = info.visibleItemsInfo.firstOrNull { it.index == first }
+            if (total == 0 || viewport <= 0f || firstItem == null) {
+                // 取不到首条（滚动中/回弹的某一帧）就沿用上一次结果：按 offset=0 折算会让拇指瞬间抽一下
+                lastMetrics[0] ?: ScrollTrackMetrics(
+                    0f, 0.08f, FloatArray(anchors.size), 1f
+                )
+            } else {
+                info.visibleItemsInfo.forEach { heightCache[it.index] = it.size }
+                val avgHeight = if (heightCache.isEmpty()) 0f
+                else heightCache.values.sum().toFloat() / heightCache.size
+
+                var acc = 0f
+                var firstStartPx = 0f
+                val anchorStartPx = FloatArray(anchors.size)
+                var nextAnchor = 0
+                for (index in 0 until total) {
+                    if (nextAnchor < anchors.size && anchors[nextAnchor].itemIndex == index) {
+                        anchorStartPx[nextAnchor] = acc
+                        nextAnchor++
+                    }
+                    if (index == first) firstStartPx = acc
+                    // 优先级：列表真实排版高度 > 隐藏探针预估 > 均值兜底
+                    acc += (heightCache[index] ?: measuredHeights[index])?.toFloat() ?: avgHeight
+                }
+                val firstOffset = firstItem.offset.toFloat()
+                // 进度换算必须补回顶栏让位差：列表的滚动量是相对"内容线（视口顶 + 实时让位）"计的，
+                // 顶栏收起 Δ 就让位小 Δ，滚动量会凭空掉 Δ（真机实测：内容不动、只收顶栏，5350 → 5002）。
+                // 用文档坐标就 invariant：已滚 = 首条前累计 + (展开态让位 - 实时让位) - 首条相对内容线位移。
+                val scrolledPx = (firstStartPx + expandedTopPaddingPx - liveTopPaddingPx - firstOffset)
+                    .coerceAtLeast(0f)
+                val atRest = !listState.isScrollInProgress
+                if (atRest && !listState.canScrollForward) {
+                    learnedMaxPx[0] = max(learnedMaxPx[0], scrolledPx)
+                }
+                val rangePx = if (learnedMaxPx[0] > 0f) learnedMaxPx[0]
+                else (acc + expandedTopPaddingPx - viewport).coerceAtLeast(1f)
+                ScrollTrackMetrics(
+                    progress = (scrolledPx / rangePx).coerceIn(0f, 1f),
+                    thumbRatio = (viewport / (viewport + rangePx)).coerceIn(0.08f, MAX_THUMB_RATIO),
+                    anchorFractions = FloatArray(anchors.size) { k ->
+                        (anchorStartPx[k] / rangePx).coerceIn(0f, 1f)
+                    },
+                    rangePx = rangePx
+                ).also { lastMetrics[0] = it }
+            }
+        }
+    }
+    val track by trackState
+
+    val shownProgress = if (dragging) dragProgress else track.progress
+    val activeIndex = track.anchorFractions.indices
+        .minByOrNull { abs(track.anchorFractions[it] - shownProgress) } ?: 0
+    // 拖拽中标签用吸附到的分类（轨道按序号等分，与"最近真实位置"不再一一对应）
+    val activeLabel = if (dragging) dragLabel ?: anchors[activeIndex].label else anchors[activeIndex].label
+
+    val trackTopPadPx = with(density) { TRACK_TOP_PAD.toPx() }
+    val minThumbPx = with(density) { MIN_THUMB_HEIGHT.toPx() }
+    val thumbHeightPx = (trackHeightPx * track.thumbRatio)
+        .coerceAtLeast(minThumbPx)
+        .coerceAtMost(trackHeightPx.toFloat())
+    val thumbCenterPx = trackTopPadPx +
+        shownProgress * (trackHeightPx - thumbHeightPx) + thumbHeightPx / 2f
+    val bubbleY = (thumbCenterPx - bubbleHeightPx / 2f).coerceIn(
+        0f,
+        (overlayHeightPx - bubbleHeightPx).coerceAtLeast(0).toFloat()
+    )
+
+    val thumbWidth by animateDpAsState(
+        targetValue = if (dragging) 7.dp else 4.dp,
+        animationSpec = tween(180),
+        label = "scrollbarThumbWidth"
+    )
+    // 非活跃态不抢眼：中性 outlineVariant + 低透明度；一旦滚动/拖拽才转成 primary 并提亮
+    val active = dragging || scrolling
+    val thumbColor by animateColorAsState(
+        targetValue = if (active) MaterialTheme.colorScheme.primary
+        else MaterialTheme.colorScheme.outlineVariant,
+        animationSpec = tween(260),
+        label = "scrollbarThumbColor"
+    )
+    val thumbAlpha by animateFloatAsState(
+        targetValue = if (active) 1f else 0.5f,
+        animationSpec = tween(220),
+        label = "scrollbarThumbAlpha"
+    )
+    val trackAlpha by animateFloatAsState(
+        targetValue = if (dragging) 0.38f else if (scrolling) 0.28f else 0.14f,
+        animationSpec = tween(220),
+        label = "scrollbarTrackAlpha"
+    )
+    val trackColor = MaterialTheme.colorScheme.outlineVariant
+
+    // 不取消上一次跳转！`scrollToItem` 是挂起点，快速跨类时 cancel 会让后面那步"落点修正"丢失，
+    // 条目就停在屏幕顶（用户报的"部分定位点飘得很远"）。多次跳转在同一主线程作用域里依次跑完，
+    // 视觉上以最后一次为准。
+    fun jumpToAnchor(index: Int) {
+        scope.launch {
+            val itemIndex = anchors[index].itemIndex
+            listState.scrollToItem(itemIndex)
+            val item = listState.layoutInfo.visibleItemsInfo
+                .firstOrNull { it.index == itemIndex }
+            if (item != null) {
+                listState.dispatchRawDelta(item.offset.toFloat() - jumpLandingPx)
+            }
+        }
+    }
+
+    Box(modifier = modifier.onSizeChanged { overlayHeightPx = it.height }) {
+        Box(
+            modifier = Modifier
+                .align(Alignment.CenterEnd)
+                .fillMaxHeight()
+                .padding(vertical = TRACK_TOP_PAD)
+                .width(SCRUBBER_WIDTH)
+                .onSizeChanged { trackHeightPx = it.height }
+                .pointerInput(anchors, trackHeightPx) {
+                    awaitEachGesture {
+                        val down = awaitFirstDown(requireUnconsumed = false)
+                        down.consume()
+                        dragging = true
+                        var lastAnchor = -1
+
+                        // 轨道按**分类序号**等分吸附。不能按"内容位置/量程"映射：
+                        // 末尾约一屏内容物理上滚不到视口顶，它们的真实进度全被压到 1.0（真机日志实测），
+                        // 于是最后几个分类在轨道上挤成一坨——表现为"分类缺少"和"定位不准"。
+                        fun snapTo(y: Float) {
+                            val height = size.height.toFloat().coerceAtLeast(1f)
+                            val metrics = trackState.value
+                            val thumb = (height * metrics.thumbRatio)
+                                .coerceAtLeast(minThumbPx)
+                                .coerceAtMost(height)
+                            val travel = (height - thumb).coerceAtLeast(1f)
+                            val rawFraction = ((y - thumb / 2f) / travel).coerceIn(0f, 1f)
+                            val target = (rawFraction * (anchors.size - 1))
+                                .roundToInt()
+                                .coerceIn(0, anchors.lastIndex)
+                            if (target == lastAnchor) return
+                            lastAnchor = target
+                            // 定位点不画在轨道上，靠这一震 + 气泡告知已卡到分类
+                            haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                            dragLabel = anchors[target].label
+                            // 拇指跟手指走（序号轨道），松手后回落到真实进度位置
+                            dragProgress = rawFraction
+                            jumpToAnchor(target)
+                        }
+
+                        snapTo(down.position.y)
+                        while (true) {
+                            val event = awaitPointerEvent()
+                            val change = event.changes.firstOrNull { it.id == down.id } ?: break
+                            if (!change.pressed) break
+                            change.consume()
+                            snapTo(change.position.y)
+                        }
+                        dragging = false
+                    }
+                }
+        ) {
+            Canvas(modifier = Modifier.fillMaxSize()) {
+                val trackWidth = 3.dp.toPx()
+                drawRoundRect(
+                    color = trackColor.copy(alpha = trackAlpha),
+                    topLeft = Offset((size.width - trackWidth) / 2f, 0f),
+                    size = Size(trackWidth, size.height),
+                    cornerRadius = CornerRadius(trackWidth / 2f)
+                )
+                val thumbHeight = (size.height * track.thumbRatio)
+                    .coerceAtLeast(24.dp.toPx())
+                    .coerceAtMost(size.height)
+                val thumbTop = (size.height - thumbHeight) * shownProgress
+                val widthPx = thumbWidth.toPx()
+                drawRoundRect(
+                    color = thumbColor.copy(alpha = thumbAlpha),
+                    topLeft = Offset((size.width - widthPx) / 2f, thumbTop),
+                    size = Size(widthPx, thumbHeight),
+                    cornerRadius = CornerRadius(widthPx / 2f)
+                )
+            }
+        }
+
+        AnimatedVisibility(
+            visible = dragging,
+            modifier = Modifier
+                .align(Alignment.TopEnd)
+                .padding(end = 40.dp)
+                .graphicsLayer { translationY = bubbleY },
+            enter = fadeIn(tween(140)) +
+                scaleIn(initialScale = 0.86f, animationSpec = tween(160)) +
+                slideInHorizontally(initialOffsetX = { it / 5 }, animationSpec = tween(160)),
+            exit = fadeOut(tween(110)) +
+                scaleOut(targetScale = 0.92f, animationSpec = tween(110))
+        ) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surfaceContainer,
+                contentColor = MaterialTheme.colorScheme.onSurface,
+                border = BorderStroke(
+                    1.dp,
+                    MaterialTheme.colorScheme.outlineVariant.copy(alpha = 0.4f)
+                ),
+                shadowElevation = 6.dp,
+                modifier = Modifier.onSizeChanged { bubbleHeightPx = it.height }
+            ) {
+                Text(
+                    text = activeLabel,
+                    style = MaterialTheme.typography.labelLarge,
+                    fontWeight = FontWeight.SemiBold,
+                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 8.dp)
+                )
+            }
         }
     }
 }

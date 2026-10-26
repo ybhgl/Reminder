@@ -59,8 +59,10 @@ import androidx.compose.ui.input.nestedscroll.NestedScrollSource
 import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.core.net.toUri
 import android.content.Intent
@@ -103,6 +105,10 @@ fun CalendarScreen(
     items: List<ReminderItem>,
     onNavigateDetail: (Int) -> Unit,
     onAddReminder: (LocalDate) -> Unit,
+    onNavigateAlmanac: (LocalDate) -> Unit,
+    /** 黄历页回传的查看日期：非空则同步选中日与显示月，随后由调用方置空 */
+    externalSelectedDate: LocalDate? = null,
+    onExternalDateConsumed: () -> Unit = {},
     isActive: Boolean = true,
     modifier: Modifier = Modifier
 ) {
@@ -112,8 +118,15 @@ fun CalendarScreen(
     var selectedDate by rememberSaveable(stateSaver = LocalDateSaver) { mutableStateOf(today) }
     var displayMonth by rememberSaveable(stateSaver = YearMonthSaver) { mutableStateOf(YearMonth.from(selectedDate)) }
     var showDatePicker by rememberSaveable { mutableStateOf(false) }
-    var showAlmanac by rememberSaveable { mutableStateOf(false) }
     val headerInteraction = remember { MutableInteractionSource() }
+
+    LaunchedEffect(externalSelectedDate) {
+        externalSelectedDate?.let {
+            selectedDate = it
+            displayMonth = YearMonth.from(it)
+            onExternalDateConsumed()
+        }
+    }
 
     // ===== 日历跟手收展（riji collapsePx 像素模型）=====
     // 收缩像素是唯一状态：0=完全展开，maxCollapsePx=收缩到仅选中行；
@@ -280,49 +293,14 @@ fun CalendarScreen(
             }
             // 选中日非今天时显示回今天按钮（切月/切周后选中日会跟随，故只需比对今天）
             if (selectedDate != today) {
-                // "今"字圆形按钮：回到今天
-                Surface(
-                    onClick = {
-                        selectedDate = today
-                        displayMonth = YearMonth.from(today)
-                    },
-                    shape = CircleShape,
-                    color = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.primary,
-                    modifier = Modifier.size(40.dp)
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
-                    ) {
-                        Text(
-                            text = "今",
-                            style = MaterialTheme.typography.titleMedium,
-                            fontWeight = FontWeight.SemiBold
-                        )
-                    }
-                }
+                TodayCircleButton(onClick = {
+                    selectedDate = today
+                    displayMonth = YearMonth.from(today)
+                })
                 Spacer(modifier = Modifier.width(8.dp))
             }
             // 添加提醒按钮（预填选中日期）
-            Surface(
-                onClick = { onAddReminder(selectedDate) },
-                shape = CircleShape,
-                color = MaterialTheme.colorScheme.primary,
-                contentColor = MaterialTheme.colorScheme.onPrimary,
-                modifier = Modifier.size(40.dp)
-            ) {
-                Column(
-                    horizontalAlignment = Alignment.CenterHorizontally,
-                    verticalArrangement = Arrangement.Center
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.Add,
-                        contentDescription = "添加提醒",
-                        modifier = Modifier.size(22.dp)
-                    )
-                }
-            }
+            AddReminderCircleButton(onClick = { onAddReminder(selectedDate) })
         }
 
         // ===== 月历 =====
@@ -385,7 +363,7 @@ fun CalendarScreen(
                     date = selectedDate,
                     today = today,
                     holidays = holidayDays,
-                    onClick = { showAlmanac = true }
+                    onClick = { onNavigateAlmanac(selectedDate) }
                 )
             }
             items(dayOccurrences, key = { "${it.item.id}_${it.calendarDate}_${it.kind}" }) { occurrence ->
@@ -423,14 +401,6 @@ fun CalendarScreen(
                 displayMonth = YearMonth.from(date)
                 showDatePicker = false
             }
-        )
-    }
-
-    if (showAlmanac) {
-        AlmanacDialog(
-            date = selectedDate,
-            today = today,
-            onDismissRequest = { showAlmanac = false }
         )
     }
 
@@ -488,11 +458,72 @@ fun CalendarScreen(
 }
 
 /**
+ * "今"字圆形按钮：回到今天。日历页顶栏与黄历页顶栏共用同一视觉，
+ * 避免两处各写一份导致尺寸/配色漂移。
+ * 两页顶栏标题字号不同（日历页 headlineMedium / 黄历页 titleLarge），
+ * 故圆径与字形做成参数，黄历页按小一号标题等比缩小。
+ */
+@Composable
+internal fun TodayCircleButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    containerSize: Dp = 40.dp,
+    glyphStyle: TextStyle = MaterialTheme.typography.titleMedium
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.secondaryContainer,
+        contentColor = MaterialTheme.colorScheme.primary,
+        modifier = modifier.size(containerSize)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Text(
+                text = "今",
+                style = glyphStyle,
+                fontWeight = FontWeight.SemiBold
+            )
+        }
+    }
+}
+
+/** 添加提醒圆形按钮（primary + Add 图标）：点击预填传入的日期 */
+@Composable
+internal fun AddReminderCircleButton(
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    containerSize: Dp = 40.dp,
+    iconSize: Dp = 22.dp
+) {
+    Surface(
+        onClick = onClick,
+        shape = CircleShape,
+        color = MaterialTheme.colorScheme.primary,
+        contentColor = MaterialTheme.colorScheme.onPrimary,
+        modifier = modifier.size(containerSize)
+    ) {
+        Column(
+            horizontalAlignment = Alignment.CenterHorizontally,
+            verticalArrangement = Arrangement.Center
+        ) {
+            Icon(
+                imageVector = Icons.Default.Add,
+                contentDescription = "添加提醒",
+                modifier = Modifier.size(iconSize)
+            )
+        }
+    }
+}
+
+/**
  * 收缩态"添加事件"卡：与事件卡同款卡面（surfaceVariant 半透明大圆角），无文字、
  * 中央 filled add 图标；点击进入添加页并预填选中日期。
  */
 @Composable
-private fun AddEventCard(
+internal fun AddEventCard(
     onClick: () -> Unit,
     modifier: Modifier = Modifier
 ) {

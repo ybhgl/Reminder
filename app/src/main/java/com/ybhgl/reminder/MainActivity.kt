@@ -101,7 +101,10 @@ import androidx.compose.material.icons.filled.ViewModule
 import androidx.compose.material.icons.filled.Category
 import androidx.compose.material.icons.filled.Calculate
 import androidx.compose.material.icons.filled.RestoreFromTrash
+import com.ybhgl.reminder.ui.calendar.AlmanacDetailScreen
 import com.ybhgl.reminder.ui.calendar.CalendarScreen
+import com.ybhgl.reminder.ui.calendar.ZejiDetailScreen
+import com.ybhgl.reminder.ui.calendar.ZejiScreen
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.ArrowBack
@@ -711,7 +714,8 @@ object Routes {
     const val REMINDER_LIST = "reminder_list"
     const val ADD_REMINDER_BASE = "add_reminder"
     const val ADD_REMINDER = ADD_REMINDER_BASE
-    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}&initialDate={initialDate}&initialEndDate={initialEndDate}"
+    const val ADD_REMINDER_PATTERN = "$ADD_REMINDER_BASE?initialType={initialType}&initialDate={initialDate}" +
+        "&initialEndDate={initialEndDate}&initialTitle={initialTitle}"
     private const val EDIT_REMINDER_BASE = "edit_reminder"
     const val EDIT_REMINDER_PATTERN = "$EDIT_REMINDER_BASE/{reminderId}?readOnly={readOnly}"
     const val SETTINGS = "settings"
@@ -739,16 +743,33 @@ object Routes {
     /** 权限管理页（功能权限/常规权限/联网开关）；target=webdav|update 时直达并高亮对应开关 */
     const val PERMISSION_MANAGEMENT = "permission_management"
     const val PERMISSION_MANAGEMENT_PATTERN = "$PERMISSION_MANAGEMENT?target={target}"
+    /** 黄历详情页（date=ISO 日期） */
+    const val ALMANAC_DETAIL_BASE = "almanac_detail"
+    const val ALMANAC_DETAIL_PATTERN = "$ALMANAC_DETAIL_BASE?date={date}"
+    /** 择日页：宜忌事件分类总览 */
+    const val ZEJI = "zeji"
+    /** 择日详情页：某事件的吉日/忌日筛选（term 为黄历事件名） */
+    const val ZEJI_DETAIL = "zeji_detail"
+    const val ZEJI_DETAIL_PATTERN = "$ZEJI_DETAIL?term={term}&recommended={recommended}"
+    /** 黄历页当前查看日期回传键（写回 reminder_list 条目，返回后日历页同步选中） */
+    const val ALMANAC_DATE_RESULT_KEY = "almanacDate"
 
     fun editReminder(reminderId: Int, readOnly: Boolean = false): String = "$EDIT_REMINDER_BASE/$reminderId?readOnly=$readOnly"
     fun detailReminder(reminderId: Int): String = "$DETAIL_REMINDER_BASE/$reminderId"
     fun shareReminder(reminderId: Int): String = "$SHARE_REMINDER_BASE/$reminderId"
     fun birthdayList(reminderId: Int): String = "$BIRTHDAY_LIST_BASE/$reminderId"
-    fun addReminder(initialType: String? = null, initialDate: String? = null, initialEndDate: String? = null): String {
+    fun addReminder(
+        initialType: String? = null,
+        initialDate: String? = null,
+        initialEndDate: String? = null,
+        initialTitle: String? = null
+    ): String {
         val parts = listOfNotNull(
             initialType?.let { "initialType=$it" },
             initialDate?.let { "initialDate=$it" },
-            initialEndDate?.let { "initialEndDate=$it" }
+            initialEndDate?.let { "initialEndDate=$it" },
+            // 标题含中文与「·」，必须转义；NavType.StringType 取值时会 Uri.decode
+            initialTitle?.let { "initialTitle=${android.net.Uri.encode(it)}" }
         )
         return if (parts.isEmpty()) ADD_REMINDER_BASE else "$ADD_REMINDER_BASE?" + parts.joinToString("&")
     }
@@ -764,6 +785,9 @@ object Routes {
     }
     fun tagManagement(isSortMode: Boolean = false): String = "$TAG_MANAGEMENT?isSortMode=$isSortMode"
     fun permissionManagement(target: String? = null): String = "$PERMISSION_MANAGEMENT?target=${target ?: ""}"
+    fun almanacDetail(date: LocalDate): String = "$ALMANAC_DETAIL_BASE?date=$date"
+    fun zejiDetail(term: String, recommended: Boolean): String =
+        "$ZEJI_DETAIL?term=${android.net.Uri.encode(term)}&recommended=$recommended"
 }
 
 @OptIn(ExperimentalSerializationApi::class, ExperimentalFoundationApi::class)
@@ -889,6 +913,11 @@ fun ReminderApp(onPermissionsFlowSettled: () -> Unit = {}) {
                             type = NavType.StringType
                             nullable = true
                             defaultValue = null
+                        },
+                        navArgument("initialTitle") {
+                            type = NavType.StringType
+                            nullable = true
+                            defaultValue = null
                         }
                     )
                 ) { }
@@ -950,6 +979,23 @@ fun ReminderApp(onPermissionsFlowSettled: () -> Unit = {}) {
                 composable(route = Routes.BACKUP_AND_RESTORE) { }
                 composable(route = Routes.DATE_CALCULATOR) { }
                 composable(route = Routes.RECYCLE_BIN) { }
+                composable(route = Routes.ZEJI) { }
+                composable(
+                    route = Routes.ALMANAC_DETAIL_PATTERN,
+                    arguments = listOf(
+                        navArgument("date") {
+                            type = NavType.StringType
+                            defaultValue = ""
+                        }
+                    )
+                ) { }
+                composable(
+                    route = Routes.ZEJI_DETAIL_PATTERN,
+                    arguments = listOf(
+                        navArgument("term") { type = NavType.StringType; defaultValue = "" },
+                        navArgument("recommended") { type = NavType.BoolType; defaultValue = true }
+                    )
+                ) { }
                 composable(
                     route = Routes.PERMISSION_MANAGEMENT_PATTERN,
                     arguments = listOf(
@@ -1429,6 +1475,20 @@ fun ReminderListScreen(
 ) {
     val reminderListUiState by viewModel.reminderListUiState.collectAsState()
     val context = LocalContext.current
+
+    // 黄历页回传的查看日期：非空即让日历页同步选中同一天，消费后清空避免重复应用。
+    // 走 savedStateHandle 而非返回参数，系统返回手势/预测返回同样生效。
+    val listBackStackEntry = remember { navController.getBackStackEntry(Routes.REMINDER_LIST) }
+    val almanacDateResult by listBackStackEntry.savedStateHandle
+        .getStateFlow(Routes.ALMANAC_DATE_RESULT_KEY, "")
+        .collectAsState()
+    var pendingAlmanacDate by remember { mutableStateOf<LocalDate?>(null) }
+    LaunchedEffect(almanacDateResult) {
+        if (almanacDateResult.isNotEmpty()) {
+            pendingAlmanacDate = runCatching { LocalDate.parse(almanacDateResult) }.getOrNull()
+            listBackStackEntry.savedStateHandle[Routes.ALMANAC_DATE_RESULT_KEY] = ""
+        }
+    }
     val backupReminderEnabled by remember(context) { BackupPreferences.backupReminderEnabledFlow(context) }.collectAsState(initial = false)
     val lastBackupTimestamp by remember(context) { BackupPreferences.lastBackupTimestampFlow(context) }.collectAsState(initial = 0L)
     val lastDataChangeTimestamp by remember(context) { BackupPreferences.lastDataChangeTimestampFlow(context) }.collectAsState(initial = 0L)
@@ -1850,6 +1910,9 @@ fun ReminderListScreen(
                         onAddReminder = { date ->
                             navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
                         },
+                        onNavigateAlmanac = { date -> navController.navigate(Routes.almanacDetail(date)) },
+                        externalSelectedDate = pendingAlmanacDate,
+                        onExternalDateConsumed = { pendingAlmanacDate = null },
                         // 主页 pager 会预组合日历页，"进入日历页"须以落页为准（授权弹窗/节假日同步门控）
                         isActive = pagerState.currentPage == 0
                     )
@@ -4132,6 +4195,52 @@ private fun ReminderNavContent(
             }
         )
         Routes.RECYCLE_BIN -> RecycleBinScreen(navController = navController)
+        Routes.ALMANAC_DETAIL_PATTERN -> {
+            val dateArg = entry.arguments?.getString("date").orEmpty()
+            val initialDate = remember(dateArg) {
+                runCatching { LocalDate.parse(dateArg) }.getOrDefault(LocalDate.now())
+            }
+            AlmanacDetailScreen(
+                initialDate = initialDate,
+                onNavigateBack = { navController.navigateUp() },
+                onNavigateZeji = { navController.navigate(Routes.ZEJI) },
+                onNavigateDetail = { id -> navController.navigate(Routes.detailReminder(id)) },
+                onAddReminder = { date ->
+                    navController.navigate(Routes.addReminder(ReminderType.ANNUAL.name, date.toString()))
+                },
+                onDateChanged = { date ->
+                    // 回写给日历页所在条目；previousBackStackEntry 即 reminder_list
+                    navController.previousBackStackEntry
+                        ?.savedStateHandle
+                        ?.set(Routes.ALMANAC_DATE_RESULT_KEY, date.toString())
+                }
+            )
+        }
+        Routes.ZEJI -> ZejiScreen(
+            onNavigateBack = { navController.navigateUp() },
+            onOpenDetail = { term, recommended ->
+                navController.navigate(Routes.zejiDetail(term, recommended))
+            }
+        )
+        Routes.ZEJI_DETAIL_PATTERN -> {
+            val zejiTerm = entry.arguments?.getString("term").orEmpty()
+            val zejiRecommended = entry.arguments?.getBoolean("recommended") ?: true
+            ZejiDetailScreen(
+                term = zejiTerm,
+                recommended = zejiRecommended,
+                onNavigateBack = { navController.navigateUp() },
+                onAddReminder = { date ->
+                    // 标题预填成事项名（如「宜·嫁娶」），日期沿用所选那天
+                    navController.navigate(
+                        Routes.addReminder(
+                            initialType = ReminderType.ANNUAL.name,
+                            initialDate = date.toString(),
+                            initialTitle = "${if (zejiRecommended) "宜" else "忌"}·$zejiTerm"
+                        )
+                    )
+                }
+            )
+        }
         Routes.PERMISSION_MANAGEMENT_PATTERN -> PermissionManagementScreen(
             onNavigateBack = { navController.navigateUp() },
             focusTarget = entry.arguments?.getString("target")?.takeIf { it.isNotEmpty() }
