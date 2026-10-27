@@ -1,5 +1,6 @@
 package com.ybhgl.reminder.ui.calendar
 
+import com.ybhgl.reminder.util.HolidayDay
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
@@ -144,7 +145,7 @@ class MonthCalendarTest {
     }
 
     @Test
-    fun `legal holiday label only shows on first day of holiday run`() {
+    fun `legal holiday label is anchored to the festival day inside the run`() {
         // 10/1 当天走公历节日分支=国庆节
         assertEquals("国庆节" to DayCellLabelKind.FESTIVAL, DayCellFormatter.subLabel(LocalDate.of(2026, 10, 1)))
         // 10/3 处于国庆连休内但非节日当天 → 不应再显示国庆节，回退农历
@@ -153,6 +154,92 @@ class MonthCalendarTest {
         org.junit.Assert.assertNotEquals("国庆节", label)
         assertTrue(label.isNotEmpty())
     }
+
+    @Test
+    fun `spring festival appears once in february 2026 on lunar new year day`() {
+        // 离线口径（tyme4kt）：春节连休 2/15~2/23，区间内含本体日 2/17（正月初一）→ 假日层整段不出名
+        assertSpringFestivalAnchoring(emptyMap())
+    }
+
+    @Test
+    fun `spring festival appears once in february 2026 with network holiday data`() {
+        // 联网口径（holiday-cn 2026 实录）：2/14 与 2/28 为班，2/15~2/23 连休，名称均为"春节"
+        val offDays = (15..23).map { HolidayDay("春节", LocalDate.of(2026, 2, it), isOffDay = true) }
+        val network = holidaysOf(
+            HolidayDay("春节", LocalDate.of(2026, 2, 14), isOffDay = false),
+            HolidayDay("春节", LocalDate.of(2026, 2, 28), isOffDay = false)
+        ) + offDays.associateBy { it.date }
+        assertSpringFestivalAnchoring(network)
+    }
+
+    /** 春节锚定断言：月内"春节"只出现一次且落在 2/17，假期首日 2/15 回退农历、只留休/班圆标 */
+    private fun assertSpringFestivalAnchoring(holidays: Map<LocalDate, HolidayDay>) {
+        val cells = buildMonthCells(YearMonth.of(2026, 2), emptyMap(), holidays)
+        val springFestivalCells = cells.filter { it.subLabel == "春节" }
+        assertEquals(listOf(LocalDate.of(2026, 2, 17)), springFestivalCells.map { it.date })
+        assertEquals(DayCellLabelKind.FESTIVAL, springFestivalCells.single().subKind)
+        // 2/15 假期首日：不再有第二个"春节"，回退农历廿八（休/班圆标由 holidayMark 单独承载）
+        val firstOffDay = cells.first { it.date == LocalDate.of(2026, 2, 15) }
+        assertEquals(DayCellLabelKind.LUNAR, firstOffDay.subKind)
+        assertEquals("廿八", firstOffDay.subLabel)
+        // 2/16 除夕、2/17 春节均为节日本体日
+        val newYearEve = cells.first { it.date == LocalDate.of(2026, 2, 16) }
+        assertEquals("除夕" to DayCellLabelKind.FESTIVAL, newYearEve.subLabel to newYearEve.subKind)
+    }
+
+    @Test
+    fun `qingming label is not duplicated by term and holiday naming`() {
+        // 联网口径（holiday-cn 2026 实录）：4/4~4/6 连休名为"清明节"，区间内含交节日 4/5
+        val network = listOf(
+            HolidayDay("清明节", LocalDate.of(2026, 4, 4), isOffDay = true),
+            HolidayDay("清明节", LocalDate.of(2026, 4, 5), isOffDay = true),
+            HolidayDay("清明节", LocalDate.of(2026, 4, 6), isOffDay = true)
+        ).associateBy { it.date }
+        for (holidays in listOf(emptyMap(), network)) {
+            val cells = buildMonthCells(YearMonth.of(2026, 4), emptyMap(), holidays)
+            // 跨源命名差异（节气"清明" vs 假日"清明节"）不靠文本比对也不会重复：整个 4 月无"清明节"
+            assertTrue(cells.none { it.subLabel == "清明节" })
+            assertEquals(DayCellLabelKind.TERM, cells.first { it.date == LocalDate.of(2026, 4, 5) }.subKind)
+            assertEquals("清明", cells.first { it.date == LocalDate.of(2026, 4, 5) }.subLabel)
+            val qingmingStart = cells.first { it.date == LocalDate.of(2026, 4, 4) }
+            assertEquals(DayCellLabelKind.LUNAR, qingmingStart.subKind)
+            assertEquals("十七", qingmingStart.subLabel)
+        }
+    }
+
+    @Test
+    fun `holiday run without any festival day still labels its first day`() {
+        // 兜底分支保留：2026/3/21~23 无节气交节、无公历/农历节日 → 区间首日仍显示假日名
+        val network = listOf(
+            HolidayDay("纪念假日", LocalDate.of(2026, 3, 21), isOffDay = true),
+            HolidayDay("纪念假日", LocalDate.of(2026, 3, 22), isOffDay = true),
+            HolidayDay("纪念假日", LocalDate.of(2026, 3, 23), isOffDay = true)
+        ).associateBy { it.date }
+        assertEquals(
+            "纪念假日" to DayCellLabelKind.HOLIDAY,
+            DayCellFormatter.subLabel(LocalDate.of(2026, 3, 21), network)
+        )
+        assertEquals(
+            DayCellLabelKind.LUNAR,
+            DayCellFormatter.subLabel(LocalDate.of(2026, 3, 22), network).second
+        )
+    }
+
+    @Test
+    fun `no festival or term label repeats inside one month grid`() {
+        // 回归防线：修复前 2026-02 网格同时存在"春节"(2/15 法定连休首日) 与"春节"(2/17 本体日)
+        for (y in 2025..2027) {
+            for (m in 1..12) {
+                val labels = buildMonthCells(YearMonth.of(y, m), emptyMap())
+                    .filter { it.subKind != DayCellLabelKind.LUNAR }
+                    .map { it.subLabel }
+                assertEquals("month $y-$m duplicated labels: $labels", labels.distinct(), labels)
+            }
+        }
+    }
+
+    /** 构造联网节假日表（键为日期） */
+    private fun holidaysOf(vararg days: HolidayDay): Map<LocalDate, HolidayDay> = days.associateBy { it.date }
 
     @Test
     fun `expanded height is fixed 6 rows and covers every month natural height`() {

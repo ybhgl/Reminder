@@ -84,20 +84,22 @@ data class CalendarDayCell(
 /**
  * tyme4kt 调用收口：某日格副标签。
  * 优先级：交节节气 > 公历节日 > 农历节日 > 法定节假日 > 农历日（初一显示月名）。
- * 法定节假日层联网优先：[holidays] 覆盖该年（holiday-cn 数据已下载）时该层完全以联网数据为准，
+ *
+ * 前三层是**节日本体层**（[intrinsicLabel]）：一个节日在一年里只有唯一一个由历法确定的日期
+ * （正月初一=春节、交节当日=清明、10/1=国庆节），层内逐日互斥，天然不会重复。
+ * 第四层法定节假日按**区间锚定**出标签（[HolidayRunLabels]）：一个连休区间最多贡献一个名称，
+ * 且只有当区间内不存在任何节日本体日时才把名称落在区间首日；区间内已有本体日（春节假期的 2/17、
+ * 清明假期的 4/5）则该层整段不出名称——本体日自己会显示节日名，区间首日只保留休/班圆标。
+ * 该判定只依赖区间结构与层级归属，绝不比对节日名文本，故数据源之间的命名差异
+ * （节气「清明」vs holiday-cn「清明节」、离线「春节」vs 农历「春节」）不可能造成同一节日重复显示。
+ *
+ * 联网优先：[holidays] 覆盖该年（holiday-cn 数据已下载）时法定节假日层完全以联网数据为准，
  * 未覆盖的年份回退 tyme4kt 离线口径。
  */
 internal object DayCellFormatter {
 
-    fun subLabel(date: LocalDate, holidays: Map<LocalDate, HolidayDay> = emptyMap()): Pair<String, DayCellLabelKind> =
-        subLabel(date, holidays, holidays.keys.any { it.year == date.year })
-
-    /** [holidayYearCovered] 由调用方按月预计算，避免逐日扫描年份 */
-    fun subLabel(
-        date: LocalDate,
-        holidays: Map<LocalDate, HolidayDay>,
-        holidayYearCovered: Boolean
-    ): Pair<String, DayCellLabelKind> {
+    /** 节日本体层（交节节气 > 公历节日 > 农历节日）命中结果；普通日为 null */
+    fun intrinsicLabel(date: LocalDate): Pair<String, DayCellLabelKind>? {
         val solar = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth)
         // 仅在交节当天显示节气名（getTerm 返回"所在节气"，需比对交节日）
         val term = solar.getTerm()
@@ -108,39 +110,111 @@ internal object DayCellFormatter {
         if (solarFestival != null) {
             return solarFestival.getName() to DayCellLabelKind.FESTIVAL
         }
-        val lunar = solar.getLunarDay()
-        val lunarFestival = lunar.getFestival()
+        val lunarFestival = solar.getLunarDay().getFestival()
         if (lunarFestival != null) {
             return lunarFestival.getName() to DayCellLabelKind.FESTIVAL
         }
-        if (holidayYearCovered) {
-            // 联网法定节假日层：同名连休仅首日显示（与 tyme4kt 口径一致），补班日（班）不占副标签
-            val networkHoliday = holidays[date]
-            if (networkHoliday != null && networkHoliday.isOffDay) {
-                val prev = holidays[date.minusDays(1)]
-                val isRunStart = prev == null || !prev.isOffDay || prev.name != networkHoliday.name
-                if (isRunStart) {
-                    return networkHoliday.name to DayCellLabelKind.HOLIDAY
-                }
-            }
-        } else {
-            val legalHoliday = solar.getLegalHoliday()
-            if (legalHoliday != null && !legalHoliday.isWork()) {
-                // 法定节假日按调休连休区间逐日返回同名 → 仅在连休首日（节日当天）显示，
-                // 其余补休日照常显示农历（如国庆 10/1 显示，10/2-7 不重复显示）
-                val prev = date.minusDays(1)
-                val prevHoliday = SolarDay.fromYmd(prev.year, prev.monthValue, prev.dayOfMonth).getLegalHoliday()
-                val isRunStart = prevHoliday == null || prevHoliday.isWork() || prevHoliday.getName() != legalHoliday.getName()
-                if (isRunStart) {
-                    return legalHoliday.getName() to DayCellLabelKind.HOLIDAY
-                }
-            }
-        }
+        return null
+    }
+
+    fun subLabel(date: LocalDate, holidays: Map<LocalDate, HolidayDay> = emptyMap()): Pair<String, DayCellLabelKind> =
+        subLabel(date, holidays, coveredYearsOf(holidays))
+
+    /** [coveredYears] 由调用方按网格预计算，避免逐日扫描年份 */
+    fun subLabel(
+        date: LocalDate,
+        holidays: Map<LocalDate, HolidayDay>,
+        coveredYears: Set<Int>
+    ): Pair<String, DayCellLabelKind> {
+        intrinsicLabel(date)?.let { return it }
+        // 法定节假日层：区间锚定后仅"无本体日的连休"才在区间首日挂名；补班日（班）不占副标签
+        HolidayRunLabels.labelOf(date, holidays, coveredYears)?.let { return it to DayCellLabelKind.HOLIDAY }
+        val lunar = SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth).getLunarDay()
         return if (lunar.day == 1) {
             CalendarUtil.getMappedMonthName(lunar.getLunarMonth()!!.getName()) to DayCellLabelKind.LUNAR
         } else {
             lunar.getName() to DayCellLabelKind.LUNAR
         }
+    }
+
+    /** 已下载联网节假日数据的年份集合（该年内法定节假日层完全联网优先） */
+    fun coveredYearsOf(holidays: Map<LocalDate, HolidayDay>): Set<Int> =
+        holidays.keys.mapTo(mutableSetOf()) { it.year }
+}
+
+/**
+ * 法定节假日「连休区间 → 副标签」锚定计算。
+ *
+ * 区间 = 同名且逐日连续的「休」最大日期段（ holiday-cn 与 tyme4kt 离线口径同构：
+ * 2026 春节为 2/14[班] + 2/15~2/23[休] + 2/28[班]）。补班日不构成本层的名称候选。
+ *
+ * 出名称的唯一条件：区间内没有任何一天被节日本体层命中。区间内含本体日时整段不出名，
+ * 名称由本体日自己给出（2/17 春节、4/5 清明），区间首日只显示休/班圆标。
+ * 全程不做节日名字符串比对，故不受"清明/清明节""端午/端午节"这类跨源命名差异影响。
+ */
+internal object HolidayRunLabels {
+
+    /** 某法定节假日连休区间：[start]~[end] 闭区间全为同名「休」日 */
+    private data class Run(val start: LocalDate, val end: LocalDate, val name: String)
+
+    /**
+     * 某日在法定节假日层的（名称, 是否休）。[coveredYears] 内的年份走联网数据，
+     * 其余回退 tyme4kt 内置口径；跨年区间以当日所属年的口径为准。
+     */
+    private fun legalHolidayOf(
+        date: LocalDate,
+        holidays: Map<LocalDate, HolidayDay>,
+        coveredYears: Set<Int>
+    ): Pair<String, Boolean>? =
+        if (date.year in coveredYears) {
+            holidays[date]?.let { it.name to it.isOffDay }
+        } else {
+            SolarDay.fromYmd(date.year, date.monthValue, date.dayOfMonth).getLegalHoliday()
+                ?.let { it.getName() to !it.isWork() }
+        }
+
+    /** 含 [date] 的连休区间；[date] 非「休」日时为 null */
+    private fun runOf(
+        date: LocalDate,
+        holidays: Map<LocalDate, HolidayDay>,
+        coveredYears: Set<Int>
+    ): Run? {
+        val at = legalHolidayOf(date, holidays, coveredYears) ?: return null
+        if (!at.second) return null
+        var start = date
+        while (true) {
+            val prev = legalHolidayOf(start.minusDays(1), holidays, coveredYears)
+            if (prev == null || !prev.second || prev.first != at.first) break
+            start = start.minusDays(1)
+        }
+        var end = date
+        while (true) {
+            val next = legalHolidayOf(end.plusDays(1), holidays, coveredYears)
+            if (next == null || !next.second || next.first != at.first) break
+            end = end.plusDays(1)
+        }
+        return Run(start, end, at.first)
+    }
+
+    /** 区间内是否含节日本体日（其名称由更高优先级层给出，无需本层重复） */
+    private fun containsIntrinsicDay(run: Run): Boolean {
+        var date = run.start
+        while (!date.isAfter(run.end)) {
+            if (DayCellFormatter.intrinsicLabel(date) != null) return true
+            date = date.plusDays(1)
+        }
+        return false
+    }
+
+    /** 某日法定节假日层应显示的假日名；区间已含本体日、或本日不是区间首日时返回 null */
+    fun labelOf(
+        date: LocalDate,
+        holidays: Map<LocalDate, HolidayDay>,
+        coveredYears: Set<Int> = DayCellFormatter.coveredYearsOf(holidays)
+    ): String? {
+        val run = runOf(date, holidays, coveredYears) ?: return null
+        if (date != run.start) return null
+        return if (containsIntrinsicDay(run)) null else run.name
     }
 }
 
@@ -160,10 +234,10 @@ fun buildMonthCells(
     val start = firstDay.minusDays(lead.toLong())
     val totalCells = ((lead + month.lengthOfMonth()) + 6) / 7 * 7
     // 补位周可能侵入相邻年：覆盖判定按年集合逐日比对（该年已下载联网数据 → 该年假日层完全联网优先）
-    val coveredYears = holidays.keys.mapTo(mutableSetOf()) { it.year }
+    val coveredYears = DayCellFormatter.coveredYearsOf(holidays)
     return (0 until totalCells).map { i ->
         val date = start.plusDays(i.toLong())
-        val (label, kind) = DayCellFormatter.subLabel(date, holidays, date.year in coveredYears)
+        val (label, kind) = DayCellFormatter.subLabel(date, holidays, coveredYears)
         CalendarDayCell(
             date = date,
             inMonth = YearMonth.from(date) == month,

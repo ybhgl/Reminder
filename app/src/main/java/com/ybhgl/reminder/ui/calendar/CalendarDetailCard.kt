@@ -65,7 +65,7 @@ data class DayAlmanac(
     val lunarMonthDay: String,
     /** 交节当天的节气名，如"立冬"；非交节日为 null */
     val termName: String?,
-    /** 节日名（公历/农历/法定节假日连休首日），与日历格 subLabel 同口径；交节日当天只显示节气、与 termName 互斥 */
+    /** 节日名（节日本体日 / 无本体日连休的区间首日），与日历格 subLabel 同口径；交节日当天只显示节气、与 termName 互斥 */
     val festivalName: String?,
     /** 干支三柱（立春分界口径），如"丙午马年 己亥月 乙酉日" */
     val ganzhiLine: String,
@@ -89,7 +89,7 @@ fun dayAlmanac(
     val term = solar.getTerm()
     val termName = if (term != null && term.getSolarDay() == solar) term.getName() else null
 
-    // 节日口径复用日历格 DayCellFormatter（公历节日>农历节日>法定节假日连休首日；联网数据年优先；
+    // 节日口径复用日历格 DayCellFormatter（节气>公历节日>农历节日>法定节假日区间锚定；联网数据年优先；
     // 交节日节气优先于节日，subLabel 返回节气名，此处自然得 null，两行互斥不重复）
     val (subLabel, subKind) = DayCellFormatter.subLabel(date, holidays)
     val festivalName =
