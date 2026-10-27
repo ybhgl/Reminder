@@ -1132,6 +1132,16 @@ fun ReminderDetailCard(
         buildDayCountFormats(displayInfo.dayCount, dayCountIsToday, formatAnchor, formatTarget)
     }
     var dayFormatIndex by rememberSaveable(reminderItem.id) { mutableIntStateOf(0) }
+    // 液态玻璃逐字图层数必须与当前格式无关、取该事件所有格式的最大数字位数：
+    // LiquidGlassTextOverlay 的 for (i in 0 until charCount) 会按位置复用槽位，若图层数随
+    // 格式增减（如 "44"2 位 → "1月14天"3 位），尾部图层是全新挂载的子组合，其内部的
+    // AnimatedContent 首帧直接吸附目标态不做入场动画，反向切换时又被整层销毁——
+    // 表现为"两格式共用那位数字不上滑、闪现到位、再切换时凭空消失"（其余层动画正常）。
+    // 越界下标由 visibleOnlyAnnotated/visibleChar 渲染成全透明、距离场为空 → 该层 DstIn
+    // 后自然不显示，故常驻多余层无视觉副作用。
+    val glassCharLayerCount = remember(dayCountFormats) {
+        dayCountFormats.maxOf { format -> format.sumOf { it.number.length } }.coerceAtLeast(1)
+    }
 
     val rotation by animateFloatAsState(
         targetValue = if (isFlipped) 180f else 0f,
@@ -1355,8 +1365,7 @@ fun ReminderDetailCard(
                             refraction = spec.liquidRefraction,
                             thickness = spec.liquidThickness,
                             highlight = spec.liquidHighlight,
-                            charCount = dayCountFormats[dayFormatIndex % dayCountFormats.size]
-                                .sumOf { it.number.length },
+                            charCount = glassCharLayerCount,
                             fontWeight = visuals.numberFontWeight,
                             modifier = Modifier.matchParentSize(),
                             backdrop = {
