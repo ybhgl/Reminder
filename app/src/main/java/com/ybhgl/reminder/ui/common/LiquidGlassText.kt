@@ -12,7 +12,6 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.asComposeRenderEffect
@@ -26,41 +25,46 @@ import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import kotlin.math.PI
 import kotlin.math.cos
-import kotlin.math.min
+import kotlin.math.pow
 import kotlin.math.sin
 
 /**
- * 液态玻璃 AGSL（磨砂玻璃体模型，参照液态玻璃质感参考图）：
- * 数字字形为一块半透明磨砂玻璃——
- * - 玻璃体：中性灰底色 + 低比例"流动纹理"（磨砂背景经轻微折射采样的模糊色）
- * - 立体感：距离场法线 × 45° 光照 → 受光面提亮、背光面压暗
- * - 边缘倒角：近边缘内侧按背光程度压暗（内阴影），最外缘按受光程度叠加亮 rim
+ * 液态玻璃 AGSL（通透透镜模型，对齐 kyant backdrop 质感）：
+ * 每个文字笔画是一枚独立玻璃——
+ * - 中心：清晰透视磨砂背景（不再灰雾玻璃体），仅极薄 tint 罩色保可读
+ * - 边缘带：circleMap 曲线沿法线向内弯折采样（贴边最急、向中心迅速趋零），
+ *   RGB 沿位移向量 ±dispersion·edgeT² 分通道取样——彩边只出现在倒角带
+ * - 光泽：距离场法线 × 45° 光照，迎光侧亮 rim、背光侧内阴影，中心轻微明暗
  *
- * 距离场编码：合成流 rgb=背景 premultiplied 色、alpha=背景 alpha × 模糊 mask 高斯场
- * （经 DstIn 混合自然形成，无颜色污染），`rgb/a` 解码恒为真色。
+ * 距离场编码：合成流 rgb=背景 premultiplied 色、alpha=背景 alpha × mask 高斯场。
+ * 逐字独立：每个字符单独录 mask、单独成玻璃层（共享背景层 + 该字场 DstIn），
+ * 字缝不共享模糊尾——相邻字永不桥接融合；场 σ 与"边缘厚度"滑杆解耦，
+ * 厚度只改变倒角带覆盖比例（bandFill），文字轮廓全程零变形。
  *
  * 输入/输出均为 premultiplied。
  */
 private const val LIQUID_GLASS_LENS_ADSL = """
     uniform shader content;
     uniform float2 size;
-    uniform float refractionHeightPx;
+    uniform float bandFill;
     uniform float refractionAmountPx;
     uniform float highlightIntensity;
+    uniform float dispersion;
+    uniform float tintStrength;
     uniform float lightAngle;
-    uniform half3 glassColor;
+    uniform half3 tintColor;
 
     float circleMap(float x) {
-        return 1.0 - sqrt(1.0 - x * x);
+        return 1.0 - sqrt(max(0.0, 1.0 - x * x));
     }
 
-    // 解码 premultiplied 采样为直色（a=0 保护）
-    half4 unpack(half4 c) {
-        return half4(c.a > 0.0 ? c.rgb / c.a : half3(0.0), 1.0);
+    // 解码 premultiplied 采样为直色（低 alpha 保护：场外除零会放大噪声）
+    half3 unpack(half4 c) {
+        return c.a > 0.02 ? c.rgb / c.a : half3(0.0);
     }
 
     half4 main(float2 coord) {
-        // 距离场：alpha = 背景alpha × 高斯mask，边缘≈0.5、字内→1、字外→0
+        // 距离场：alpha = 背景alpha × 高斯mask，笔画轮廓≈0.5、字内→1、字外→0
         float m = content.eval(coord).a;
         if (m < 0.01) {
             return half4(0.0);
@@ -74,43 +78,48 @@ private const val LIQUID_GLASS_LENS_ADSL = """
             content.eval(coord + float2(0.0, e)).a - content.eval(coord - float2(0.0, e)).a
         );
 
-        // 形状 alpha：高斯场 0.5 阈值化（尖角天然圆化）；
-        // AA 带宽按局部梯度归一（fieldGrad 为 ±1.5px 中心差分 ≈ 3×斜率，
-        // 0.7×gradMag ≈ 恒定 4px 过渡带），与场模糊 σ 无关——弯曲处同样平滑无锯齿；
-        // 深内部梯度→0、aa→0，m=1 时 smoothstep 恒为 1
+        // 形状 alpha：高斯场 0.5 阈值化（尖角天然圆化）；σ 固定小值与"边缘厚度"解耦——
+        // 滑杆只改变倒角带覆盖比例（bandFill），文字轮廓在滑杆全程零变形
         float gradMag = length(fieldGrad);
         float aa = min(0.7 * gradMag, 0.5);
         float shapeAlpha = smoothstep(0.5 - aa, 0.5 + aa, m);
 
-        float sd = (0.5 - m) * refractionHeightPx * 2.0;
-        // edgeT：0=深内部 → 1=字形边缘
-        float edgeT = clamp(1.0 - (-sd) / refractionHeightPx, 0.0, 1.0);
+        // edgeT：0=笔画中心 → 1=轮廓（场值 0.5→1 区间即倒角带）
+        float edgeT = clamp(2.0 - 2.0 * m, 0.0, 1.0);
 
         float2 centered = coord - size * 0.5;
         float2 normal = normalize(-fieldGrad + 0.35 * normalize(centered + float2(0.0001)));
         float2 light = float2(cos(lightAngle), sin(lightAngle));
         float lit = dot(normal, light);
 
-        // 流动纹理：轻微折射采样磨砂背景（负位移 = 向字内采样）
+        // 通透中心：edgeT≈0 → 位移 0 → 清晰原背景；边缘沿法线向内弯折采样（真实玻璃切面）
         float d = circleMap(edgeT) * refractionAmountPx;
-        float2 refractedCoord = coord + d * normal;
-        half3 flow = unpack(content.eval(refractedCoord)).rgb;
+        // 色散沿倒角带升高（edgeT²），笔画中心保持干净
+        float k = dispersion * edgeT * edgeT;
+        float2 inward = normal * d;
+        half3 base = half3(
+            unpack(content.eval(coord - inward * (1.0 + k))).r,
+            unpack(content.eval(coord - inward)).g,
+            unpack(content.eval(coord - inward * (1.0 - k))).b
+        );
 
-        // 玻璃体：中性磨砂底色 + 流动纹理混入（低比例，避免复杂背景把玻璃体拖暗）
-        half3 col = glassColor + (flow - glassColor) * 0.30;
+        // 薄玻璃罩色（恒定，保复杂背景上的可读性，不遮通透）
+        half3 col = mix(base, tintColor, tintStrength);
 
         // 立体感：非对称光照——受光面提亮，背光面仅轻微压暗
-        //（对称压暗会让左上角等背光边缘在复杂背景上难以辨认）
         col *= 1.0 + max(lit, 0.0) * 0.10 - min(lit, 0.0) * 0.05;
 
-        // 边缘倒角：近边缘背光侧轻内阴影，最外缘受光侧亮 rim（对侧弱化补光）
-        float innerShadow = smoothstep(0.45, 0.95, edgeT) * max(-lit, 0.0);
-        col *= 1.0 - innerShadow * 0.15;
-        float rim = smoothstep(0.70, 0.98, edgeT);
+        // 边缘倒角带：bandFill 0→1 = 从最外缘细亮线渐扩到覆盖整条笔画（"全边缘"玻璃质感），
+        // 起点阈值随厚度下移、形状不受影响
+        float shadowStart = clamp(1.0 - bandFill, 0.0, 1.0);
+        float rimStart = clamp(1.0 - 0.55 * bandFill, 0.0, 1.0);
+        float innerShadow = smoothstep(shadowStart, 1.0, edgeT) * max(-lit, 0.0);
+        col *= 1.0 - innerShadow * 0.35;
+        float rim = smoothstep(rimStart, 1.0, edgeT);
         col += half3(rim * max(lit, 0.0) * highlightIntensity);
-        col += half3(rim * abs(lit) * 0.35 * highlightIntensity);
+        col += half3(rim * abs(lit) * 0.30 * highlightIntensity);
 
-        float alpha = 0.92 * shapeAlpha;
+        float alpha = shapeAlpha;
         return half4(col * alpha, alpha);
     }
 """
@@ -128,64 +137,75 @@ private fun rememberLiquidGlassShader(): RuntimeShader? {
 
 /**
  * 液态玻璃数字效果层（仅作用于数字字形，其余文字由调用方在底层正常渲染）：
- * ① 数字 mask 录制（[GlassTextMode.NUMBERS_ONLY]，不上屏）——模糊后作距离场
- * ② 玻璃层：[磨砂模糊背景 → DstIn 距离场] 合成流 → lens shader
- *    shader 内部完成边缘处理：高斯场阈值化（尖角天然圆化）+ smoothstep 抗锯齿
+ * ① 逐字符 mask 录制（[GlassTextMode.NUMBERS_ONLY] + visibleChar，不上屏）——每字独立场，
+ *    字缝不共享模糊尾，相邻字符永不融合
+ * ② 玻璃层：[调色(vibrancy) → 轻磨砂背景 → DstIn 距离场] 合成流 → lens shader
+ *    中心清晰透视、边缘折射带+彩边+rim（kyant backdrop 通透透镜模型）
  *
- * 环带厚度（6%）与高光强度（90%）为固定参数，不对外暴露。
  * API < 33 时 shader 不可用，降级为磨砂玻璃（仅模糊）。
  *
- * @param blur 流动纹理磨砂模糊半径（dp，0..24）
- * @param refraction 流动折射强度（0..1，映射采样位移比例）
+ * @param blur 磨砂强度滑杆值（0..24，重映射为轻磨砂：24→6dp、默认 12→≈1.9dp，
+ *   拉低即通透、拉满才起雾）
+ * @param refraction 边缘折射强度（0..1，映射倒角带向内采样位移）
+ * @param thickness 边缘厚度（0..1 → bandFill）：倒角带从最外缘细亮线（0）渐变到
+ *   覆盖整条笔画（1），只增厚玻璃边缘、不改变文字轮廓
+ * @param highlight 高光强度（存储值 0..1，×1.5 封顶 1）
+ * @param charCount mask 内数字字符数（>1 时逐字符录制 DstMax 合成）
  * @param fontWeight 数字字重（与 mask 实际渲染字重一致）：距离场 σ 随字重收缩，
- *   防止细笔画经高斯模糊后场峰值低于 0.5 阈值导致字形消失
+ *   防止细笔画经高斯模糊后场峰值过低导致字形消失
  * @param backdrop 背景内容（玻璃层内折射/模糊采样；底层清晰背景由调用方绘制）
  * @param textContent 数字内容（应以 [GlassTextMode.NUMBERS_ONLY] 渲染：数字正常填充、
- *   其余文字透明占位，保证 mask 与底层排版对齐）
+ *   其余文字透明占位）；参数为可见字符下标，null = 全部数字可见
  */
 @Composable
 fun LiquidGlassTextOverlay(
     blur: Float,
     refraction: Float,
     modifier: Modifier = Modifier,
+    thickness: Float = 0.13f,
+    highlight: Float = 0.6f,
+    charCount: Int = 1,
     fontWeight: FontWeight = FontWeight.Bold,
     backdrop: @Composable () -> Unit,
-    textContent: @Composable () -> Unit
+    textContent: @Composable (visibleChar: Int?) -> Unit
 ) {
     val density = LocalDensity.current
     val lensShader = rememberLiquidGlassShader()
     var layerSize by remember { mutableStateOf(IntSize.Zero) }
 
-    val minDimensionPx = min(layerSize.width, layerSize.height).toFloat()
-    // 固定参数：环带厚度 6%、高光强度 90%
-    val thickness = 0.06f
-    val highlight = 0.9f
-    // 倒角带宽 → 边缘处理带宽度像素（层短边的 0..50%）
-    val refractionHeightPx = thickness.coerceIn(0f, 1f) * 0.5f * minDimensionPx
-    // 折射强度（0.1..1，下限防止历史存储的 0 值使效果退化）→ 流动采样最大位移（负值 = 向字内采样）
-    val refractionAmountPx = -refraction.coerceIn(0.1f, 1f) * 0.3f * minDimensionPx
-    // 距离场模糊半径 = 倒角带宽的一半（高斯过渡带宽 ≈ 2σ，对齐倒角带）；
-    // σ 必须随字重收缩：细字重笔画窄，σ 过大时高斯场峰值低于 0.5 阈值（阈值化后整条笔画消失），
-    // 峰值 ≥ 0.5 要求 σ ≲ 0.74×笔画宽度，故按字重线性缩放（下限 0.15 防止 σ 退化过锐）
-    val weightScale = (fontWeight.weight / 700f).coerceIn(0.15f, 1f)
-    val fieldSigmaPx = (refractionHeightPx * 0.5f * weightScale).coerceAtLeast(1f)
-    val frostSigma = with(density) { blur.coerceIn(0f, 24f).dp }
-    val highlightIntensity = highlight.coerceIn(0f, 1f)
+    // 边缘厚度（存储 0..1）→ bandFill：倒角带（rim/内阴影）从最外缘细线渐变到覆盖整条笔画；
+    // 距离场 σ 与之解耦（固定小值），滑杆全程文字轮廓零变形
+    val bandFill = thickness.coerceIn(0f, 1f)
+    val bandHighlight = (highlight.coerceIn(0f, 1f) * 1.5f).coerceAtMost(1f)
+    // 边缘向内采样最大位移随厚度扩展（不改变形状，只改变倒角弯折深度）
+    val refractionAmountPx = refraction.coerceIn(0.1f, 1f) *
+        with(density) { (2f + 22f * bandFill).dp.toPx() }
+    // 距离场模糊 σ 固定小值：仅决定轮廓过渡锐度；随字重收缩防细笔画场峰值不足而消失
+    val weightScale = (fontWeight.weight / 700f).coerceIn(0.2f, 1f)
+    val fieldSigmaPx = with(density) { (3f * weightScale).dp.toPx() }.coerceAtLeast(1f)
+    // 磨砂滑杆重映射：幂曲线压缩量程，默认 12 仅 ≈1.9dp 轻磨砂（通透），24 才到 6dp
+    val frostPx = 6f * with(density) { 1.dp.toPx() } *
+        (blur.coerceIn(0f, 24f) / 24f).pow(1.7f)
+    val highlightIntensity = bandHighlight.coerceIn(0f, 1f)
+    // 色散强度随折射强度增强：倒角带上的虹彩宽度
+    val dispersion = 0.15f + 0.45f * refraction.coerceIn(0.1f, 1f)
 
     // lens RenderEffect 按参数缓存（graphicsLayer 每帧换新对象会触发 Skia 重建图层闪烁）
-    val lensEffect = remember(lensShader, refractionHeightPx, refractionAmountPx, highlightIntensity, layerSize) {
-        if (lensShader == null || layerSize == IntSize.Zero ||
-            refractionHeightPx <= 0f || refractionAmountPx >= 0f
-        ) {
+    val lensEffect = remember(
+        lensShader, bandFill, refractionAmountPx, highlightIntensity, dispersion, layerSize
+    ) {
+        if (lensShader == null || layerSize == IntSize.Zero || refractionAmountPx <= 0f) {
             null
         } else {
             lensShader.setFloatUniform("size", layerSize.width.toFloat(), layerSize.height.toFloat())
-            lensShader.setFloatUniform("refractionHeightPx", refractionHeightPx)
+            lensShader.setFloatUniform("bandFill", bandFill)
             lensShader.setFloatUniform("refractionAmountPx", refractionAmountPx)
             lensShader.setFloatUniform("highlightIntensity", highlightIntensity)
+            lensShader.setFloatUniform("dispersion", dispersion)
+            lensShader.setFloatUniform("tintStrength", 0.18f)
             lensShader.setFloatUniform("lightAngle", (45f * PI / 180f).toFloat())
-            // 中性磨砂玻璃底色（亮灰微冷，保证复杂背景上的可读性）
-            lensShader.setFloatUniform("glassColor", 0.84f, 0.88f, 0.90f)
+            // 薄玻璃罩色（亮灰微冷，保复杂背景上的可读性）
+            lensShader.setFloatUniform("tintColor", 0.90f, 0.93f, 0.95f)
             RenderEffect.createRuntimeShaderEffect(lensShader, "content").asComposeRenderEffect()
         }
     }
@@ -213,43 +233,79 @@ fun LiquidGlassTextOverlay(
         }
     }
 
-    val fieldLayer = rememberGraphicsLayer()
+    // 磨砂背景预处理链：调色(饱和 1.35/对比 1.05) → 轻磨砂。
+    // 复刻库 vibrancy→blur 定案：先给背景"增色"再折射，玻璃不发白
+    val frostEffect = remember(frostPx) {
+        if (android.os.Build.VERSION.SDK_INT < android.os.Build.VERSION_CODES.S) {
+            null
+        } else {
+            val tint = RenderEffect.createColorFilterEffect(
+                ColorMatrixColorFilter(
+                    colorControlsMatrix(brightness = 0.02f, contrast = 1.05f, saturation = 1.35f)
+                )
+            )
+            if (frostPx > 0f) {
+                val blurEffect = RenderEffect.createBlurEffect(frostPx, frostPx, Shader.TileMode.CLAMP)
+                RenderEffect.createChainEffect(blurEffect, tint).asComposeRenderEffect()
+            } else {
+                tint.asComposeRenderEffect()
+            }
+        }
+    }
+
+    val perChar = charCount.coerceAtLeast(1)
+    val bgLayer = rememberGraphicsLayer()
 
     Box(modifier.onSizeChanged { layerSize = it }) {
-        // ① 数字 mask 录制：仅录制不上屏（模糊后作距离场，shader 内阈值化成形状）
-        Box(
-            modifier = Modifier
-                .matchParentSize()
-                .drawWithContent { fieldLayer.record { this@drawWithContent.drawContent() } }
-        ) {
-            textContent()
+        // ① 逐字符 mask 录制（不上屏）：每个字符单独高斯场，字缝不共享模糊尾——
+        //    相邻字的距离场彼此独立，杜绝旧版整串一次模糊在字缝叠加过阈值导致的融合
+        val charFields = ArrayList<androidx.compose.ui.graphics.layer.GraphicsLayer>(perChar)
+        for (i in 0 until perChar) {
+            val field = rememberGraphicsLayer()
+            charFields.add(field)
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .drawWithContent { field.record { this@drawWithContent.drawContent() } }
+            ) {
+                textContent(i)
+            }
         }
 
-        // ② 玻璃层：合成流（磨砂背景 × DstIn 距离场）→ lens shader（含边缘圆化与抗锯齿）
+        // ② 磨砂背景录制（仅一次）：调色(饱和 1.35/对比 1.05) → 轻磨砂（库 vibrancy→blur 定案），
+        //    逐字玻璃层共享采样同一张背景纹理
         Box(
             modifier = Modifier
                 .matchParentSize()
-                .graphicsLayer { renderEffect = lensEffect }
-                .drawWithContent {
-                    drawContent()
-                    // 距离场乘入背景 alpha（DstIn）：a = 背景alpha × 高斯mask、rgb = 背景色 × 同系数
-                    fieldLayer.renderEffect = fieldEffect
-                    fieldLayer.blendMode = BlendMode.DstIn
-                    drawLayer(fieldLayer)
-                }
+                .drawWithContent { bgLayer.record { this@drawWithContent.drawContent() } }
         ) {
-            // 磨砂背景：整体放大避免模糊边缘的透明收缩露馅
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer {
                         scaleX = 1.12f
                         scaleY = 1.12f
+                        renderEffect = frostEffect
                     }
-                    .then(if (frostSigma.value > 0f) Modifier.blur(frostSigma) else Modifier)
             ) {
                 backdrop()
             }
+        }
+
+        // ③ 逐字玻璃层：背景 → DstIn 该字距离场 → lens shader（中心清晰透视、
+        //    边缘折射带+彩边+rim）。每字独立图层叠加，场外语义 shader 内早退为透明，互不干扰
+        for (i in 0 until perChar) {
+            Box(
+                modifier = Modifier
+                    .matchParentSize()
+                    .graphicsLayer { renderEffect = lensEffect }
+                    .drawWithContent {
+                        drawLayer(bgLayer)
+                        charFields[i].renderEffect = fieldEffect
+                        charFields[i].blendMode = BlendMode.DstIn
+                        drawLayer(charFields[i])
+                    }
+            )
         }
     }
 }

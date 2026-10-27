@@ -5,6 +5,7 @@ package com.ybhgl.reminder.ui.common
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.BitmapShader
+import android.graphics.ColorMatrix
 import android.graphics.LinearGradient
 import android.graphics.Matrix
 import android.graphics.Paint
@@ -16,6 +17,7 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
@@ -25,22 +27,25 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.composed
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawWithCache
 import androidx.compose.ui.draw.drawWithContent
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.BlendMode
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.CompositingStrategy
+import androidx.compose.ui.graphics.ExperimentalGraphicsApi
 import androidx.compose.ui.graphics.StrokeJoin
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.graphics.asComposeRenderEffect
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.luminance
+import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.graphics.nativeCanvas
 import androidx.compose.ui.graphics.rememberGraphicsLayer
-import androidx.compose.ui.graphics.layer.drawLayer
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalContext
@@ -366,31 +371,47 @@ fun CardBackgroundLayer(
     // 密度 0..1 → 条纹间距 72dp..6dp（密度越高条纹越密）
     val spacingDp = 72f - 66f * spec.glassDensity.coerceIn(0f, 1f)
     val spacingPx = with(density) { spacingDp.dp.toPx() }
-    // 量取卡片实际宽度，把间距取整为「宽度 / 整数条纹数」，保证棱纹完整铺满、不出现半道条纹
-    var cardWidthPx by remember { mutableStateOf(0f) }
-    val ridgeSpacingPx = if (cardWidthPx > 0f && spacingPx > 0f) {
-        val count = (cardWidthPx / spacingPx).roundToInt().coerceAtLeast(1)
-        cardWidthPx / count
+    // 量取卡片实际尺寸：间距取整为「宽度 / 整数条纹数」保证棱纹完整铺满；
+    // 宽高同时驱动边缘透镜折射（圆角矩形 SDF，圆角 = 卡片 16dp）
+    var cardSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+    val ridgeSpacingPx = if (cardSize.width > 0 && spacingPx > 0f) {
+        val count = (cardSize.width / spacingPx).roundToInt().coerceAtLeast(1)
+        cardSize.width.toFloat() / count
     } else spacingPx
     val glassActive = spec.type == CardBackgroundType.IMAGE && spec.glassEnabled && loadedBitmap != null
     val runtimeGlass = glassActive && Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU
     // AGSL 编译开销大，缓存 shader 仅更新 uniform
     val flutedShader = rememberFlutedShader()
-    // 模糊度（dp）→ 磨砂雾面模糊像素；折射度（0..0.5）→ distort/间距 比例（默认 0.24）
+    // 模糊度（dp）→ 磨砂雾面模糊像素；折射度（0..0.5）→ distort/间距 比例与边缘透镜强度（默认 0.24）
     val frostBlurPx = with(density) { spec.glassBlur.coerceIn(0f, 24f).dp.toPx() }
+    val cardCornerPx = with(density) { CardGlassCornerRadius.toPx() }
     // RenderEffect 按参数缓存：graphicsLayer 每次重组赋新对象会触发 Skia 重建图层产生一帧空白（闪烁）
     val glassRenderEffect = remember(
-        runtimeGlass, flutedShader, spec.glassFrosted, spec.type, ridgeSpacingPx, frostBlurPx, spec.glassRefraction
+        runtimeGlass, flutedShader, spec.glassFrosted, spec.type, ridgeSpacingPx, frostBlurPx,
+        spec.glassRefraction, cardSize
     ) {
         when {
             runtimeGlass && flutedShader != null -> {
+                val refraction = spec.glassRefraction.coerceIn(0f, 0.5f)
+                val width = cardSize.width.toFloat()
+                val height = cardSize.height.toFloat()
                 flutedShader.setFloatUniform("spacing", ridgeSpacingPx)
                 // 幅度 > 间距/(2π) 时棱纹中部会出现真实柱面透镜的图像翻转，
                 // 折射度由用户调节（默认 0.24：每道棱纹呈现"独立小透镜"的折射观感，保持自然透明）
-                flutedShader.setFloatUniform(
-                    "distort", ridgeSpacingPx * spec.glassRefraction.coerceIn(0f, 0.5f)
-                )
-                flutedGlassEffect(
+                flutedShader.setFloatUniform("distort", ridgeSpacingPx * refraction)
+                // 边缘透镜带：首帧尺寸未量到时 edgeHeight=0（只保留棱纹），量到后仅更新 uniform、不重建链
+                if (width > 0f && height > 0f) {
+                    val edgeHeight = min(with(density) { 18.dp.toPx() }, min(width, height) * 0.35f)
+                    flutedShader.setFloatUniform("size", width, height)
+                    flutedShader.setFloatUniform("cornerRadii", cardCornerPx, cardCornerPx, cardCornerPx, cardCornerPx)
+                    flutedShader.setFloatUniform("edgeHeight", edgeHeight)
+                    // 折射度同时驱动边缘位移量与色散强度（默认 0.24 → 中等内弯 + 细彩边）
+                    flutedShader.setFloatUniform("edgeAmount", edgeHeight * (0.35f + 0.9f * refraction))
+                    flutedShader.setFloatUniform("dispersion", 0.10f + 0.34f * refraction)
+                } else {
+                    flutedShader.setFloatUniform("edgeHeight", 0f)
+                }
+                reedImageEffect(
                     shader = flutedShader,
                     frosted = spec.glassFrosted,
                     frostBlurPx = frostBlurPx
@@ -406,7 +427,7 @@ fun CardBackgroundLayer(
     // 透明度：缩放玻璃表面存在感（竖纹明暗、色调、光泽、磨砂颗粒），折射位移本身保留
     val glassOverlayAlpha = spec.glassTransparency.coerceIn(0f, 1f)
 
-    Box(modifier.onSizeChanged { cardWidthPx = it.width.toFloat() }) {
+    Box(modifier.onSizeChanged { cardSize = it }) {
         Box(
             Modifier
                 .fillMaxSize()
@@ -474,6 +495,8 @@ fun CardBackgroundLayer(
                                 )
                             )
                     )
+                    // 边缘高光带：沿卡片边缘法线做 45° 光照，迎光侧加性发光（"灯带包边"）
+                    EdgeHighlightOverlay()
                 }
             }
             glassActive -> {
@@ -515,43 +538,218 @@ internal fun rememberFlutedShader(): RuntimeShader? {
 }
 
 /**
- * 折射 + 磨砂渲染链。createChainEffect(a, b) 中 b 先执行、a 后作用于 b 的结果，
- * 因此这里 = 先磨砂模糊，再做柱面折射位移（与 HTML filter 链顺序一致）。
+ * 折射 + 磨砂渲染链。createChainEffect(a, b) 中 b 先执行、a 后作用于 b 的结果。
+ * 链序 = 调色 → 各向异性磨砂 → 折射（kyant backdrop / IRISMusic 定案）：
+ * - 调色前置：先提升饱和度与对比，保证"有颜色可折射"，玻璃不发白；
+ * - 磨砂各向异性：竖直棱纹是柱面透镜，离焦沿水平轴扩散，垂直细节保留 → 更"真实磨砂"；
+ * - 折射最后做：若先折射再模糊会把拽到的锐利像素二次糊成重影。
  */
-private fun flutedGlassEffect(shader: RuntimeShader, frosted: Boolean, frostBlurPx: Float): RenderEffect {
-    val distortEffect = RenderEffect.createRuntimeShaderEffect(shader, "content")
-    return if (frosted) {
-        val blurEffect = RenderEffect.createBlurEffect(frostBlurPx, frostBlurPx, Shader.TileMode.CLAMP)
-        RenderEffect.createChainEffect(distortEffect, blurEffect)
+private fun reedImageEffect(shader: RuntimeShader, frosted: Boolean, frostBlurPx: Float): RenderEffect {
+    val tint = RenderEffect.createColorFilterEffect(
+        android.graphics.ColorMatrixColorFilter(
+            colorControlsMatrix(brightness = 0.02f, contrast = 1.05f, saturation = 1.2f)
+        )
+    )
+    val base = if (frosted && frostBlurPx > 0f) {
+        val frost = RenderEffect.createBlurEffect(
+            frostBlurPx * 1.3f, frostBlurPx * 0.35f, Shader.TileMode.CLAMP
+        )
+        RenderEffect.createChainEffect(frost, tint)
     } else {
-        distortEffect
+        tint
     }
+    val distortEffect = RenderEffect.createRuntimeShaderEffect(shader, "content")
+    return RenderEffect.createChainEffect(distortEffect, base)
 }
+
+/** 复刻 kyant backdrop colorControls 的亮度/对比/饱和 ColorMatrix（先饱和后对比）；包内共享（光栅玻璃/液态玻璃数字） */
+internal fun colorControlsMatrix(brightness: Float, contrast: Float, saturation: Float): ColorMatrix {
+    val invSat = 1f - saturation
+    val r = 0.213f * invSat
+    val g = 0.715f * invSat
+    val b = 0.072f * invSat
+    val c = contrast
+    val t = (0.5f - c * 0.5f + brightness) * 255f
+    val cs = c * saturation
+    val cr = c * r
+    val cg = c * g
+    val cb = c * b
+    return ColorMatrix(
+        floatArrayOf(
+            cr + cs, cg, cb, 0f, t,
+            cr, cg + cs, cb, 0f, t,
+            cr, cg, cb + cs, 0f, t,
+            0f, 0f, 0f, 1f, 0f
+        )
+    )
+}
+
+/** 卡片玻璃的边缘圆角半径（首页/详情/个性化/分享卡统一 16dp） */
+internal val CardGlassCornerRadius = 16.dp
 
 /** 磨砂回退（AGSL 不可用时）：仅施加雾面模糊 */
 private fun frostOnlyEffect(frostBlurPx: Float): RenderEffect =
     RenderEffect.createBlurEffect(frostBlurPx, frostBlurPx, Shader.TileMode.CLAMP)
 
 /**
- * AGSL 柱面折射（含色散）：每道竖直棱纹视为一枚柱面透镜。
- * 正弦位移场（一个周期覆盖一道棱纹）驱动水平采样偏移：
- * 棱纹中心位移最强、边界归零，位移在相邻棱纹间连续，避免接缝；
- * R/B 通道用 ±10% 的偏移量分别采样，模拟玻璃棱镜的色散（边缘彩色镶边）。
+ * AGSL 光栅玻璃（柱面棱纹 + 边缘透镜 + 局部色散）：
+ * - 棱纹：正弦水平位移场（一个周期一道棱纹），坡面位移最强、脊顶与槽缝归零，跨棱纹连续；
+ * - 边缘带：移植 kyant backdrop 的圆角矩形 SDF + circleMap 透镜曲线——贴边弯折最急、
+ *   向中心迅速趋零，配合深度法线把"平板边"弯成"透镜弧"，整卡像一块有厚度的玻璃；
+ * - 色散：RGB 沿合位移向量 ±k 采样，强度正比于位移梯度（棱纹坡面/槽缝 + 边缘带），
+ *   脊顶保持干净，彩边只出现在高曲率处，替代旧版全局固定 ±10%。
  */
 private const val FLUTED_ADSL = """
     uniform shader content;
     uniform float spacing;
     uniform float distort;
+    uniform float2 size;
+    uniform float4 cornerRadii;
+    uniform float edgeHeight;
+    uniform float edgeAmount;
+    uniform float dispersion;
+
+    float radiusAt(float2 coord, float4 radii) {
+        if (coord.x >= 0.0) {
+            if (coord.y <= 0.0) return radii.y;
+            else return radii.z;
+        } else {
+            if (coord.y <= 0.0) return radii.x;
+            else return radii.w;
+        }
+    }
+
+    float sdRoundedRect(float2 coord, float2 halfSize, float radius) {
+        float2 cornerCoord = abs(coord) - (halfSize - float2(radius));
+        float outside = length(max(cornerCoord, 0.0)) - radius;
+        float inside = min(max(cornerCoord.x, cornerCoord.y), 0.0);
+        return outside + inside;
+    }
+
+    float2 gradSdRoundedRect(float2 coord, float2 halfSize, float radius) {
+        float2 cornerCoord = abs(coord) - (halfSize - float2(radius));
+        if (cornerCoord.x >= 0.0 || cornerCoord.y >= 0.0) {
+            return sign(coord) * normalize(max(cornerCoord, 0.0));
+        } else {
+            float gradX = step(cornerCoord.y, cornerCoord.x);
+            return sign(coord) * float2(gradX, 1.0 - gradX);
+        }
+    }
+
+    float circleMap(float x) {
+        return 1.0 - sqrt(max(0.0, 1.0 - x * x));
+    }
 
     half4 main(float2 coord) {
+        float2 halfSize = size * 0.5;
+        float2 centered = coord - halfSize;
+        float2 edgeOff = float2(0.0);
+        float edgeW = 0.0;
+        if (edgeHeight > 0.0) {
+            float radius = radiusAt(centered, cornerRadii);
+            float sd = sdRoundedRect(centered, halfSize, radius);
+            if (-sd < edgeHeight) {
+                float sdc = min(sd, 0.0);
+                float e = circleMap(1.0 - -sdc / edgeHeight);
+                float gradRadius = min(radius * 1.5, min(halfSize.x, halfSize.y));
+                float2 radial = length(centered) > 0.0 ? normalize(centered) : float2(0.0);
+                float2 normal = normalize(
+                    gradSdRoundedRect(centered, halfSize, gradRadius) + radial
+                );
+                edgeOff = -normal * e * edgeAmount;
+                edgeW = e;
+            }
+        }
         float t = fract(coord.x / spacing);
         float w = sin(t * 6.2831853);
-        half4 r = content.eval(coord + vec2(w * distort * 1.10, 0.0));
-        half4 g = content.eval(coord + vec2(w * distort, 0.0));
-        half4 b = content.eval(coord + vec2(w * distort * 0.90, 0.0));
+        float2 off = float2(w * distort, 0.0) + edgeOff;
+        float seamW = abs(cos(t * 6.2831853));
+        float k = dispersion * (0.45 + 0.55 * seamW + edgeW);
+        half4 r = content.eval(coord + off * (1.0 + k));
+        half4 g = content.eval(coord + off);
+        half4 b = content.eval(coord + off * (1.0 - k));
         return half4(r.r, g.g, b.b, r.a);
     }
 """
+
+/**
+ * 边缘高光 AGSL（移植 kyant backdrop DefaultHighlight 模型）：圆角矩形边缘法线与
+ * 左上 45° 光源方向点积定强度，pow(lit, falloff) 让光只落在迎光侧，背光侧贡献为零。
+ */
+private const val EDGE_HIGHLIGHT_ADSL = """
+    uniform float2 size;
+    uniform float4 cornerRadii;
+    uniform float intensity;
+
+    float radiusAt(float2 coord, float4 radii) {
+        if (coord.x >= 0.0) {
+            if (coord.y <= 0.0) return radii.y;
+            else return radii.z;
+        } else {
+            if (coord.y <= 0.0) return radii.x;
+            else return radii.w;
+        }
+    }
+
+    float2 gradSdRoundedRect(float2 coord, float2 halfSize, float radius) {
+        float2 cornerCoord = abs(coord) - (halfSize - float2(radius));
+        if (cornerCoord.x >= 0.0 || cornerCoord.y >= 0.0) {
+            return sign(coord) * normalize(max(cornerCoord, 0.0));
+        } else {
+            float gradX = step(cornerCoord.y, cornerCoord.x);
+            return sign(coord) * float2(gradX, 1.0 - gradX);
+        }
+    }
+
+    half4 main(float2 coord) {
+        float2 halfSize = size * 0.5;
+        float2 centered = coord - halfSize;
+        float radius = radiusAt(centered, cornerRadii);
+        float gradRadius = min(radius * 1.5, min(halfSize.x, halfSize.y));
+        float2 grad = gradSdRoundedRect(centered, halfSize, gradRadius);
+        float lit = max(dot(grad, float2(-0.7071, -0.7071)), 0.0);
+        float a = pow(lit, 0.8) * intensity;
+        return half4(a, a, a, a);
+    }
+"""
+
+/** 边缘高光带：迎光侧包边发光（Additive 加性混合，只增亮不压暗），给整卡"厚实玻璃"的立体收边 */
+@Composable
+private fun EdgeHighlightOverlay() {
+    if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return
+    val shader = remember {
+        runCatching { RuntimeShader(EDGE_HIGHLIGHT_ADSL) }
+            .onFailure { android.util.Log.e("CardBackground", "边缘高光 AGSL 编译失败", it) }
+            .getOrNull()
+    } ?: return
+    val paint = remember(shader) {
+        Paint().apply {
+            isAntiAlias = true
+            style = Paint.Style.STROKE
+            // 加性混合：只增亮不压暗（公开 API，替代 @hide 的 AdditiveXfermode）
+            blendMode = android.graphics.BlendMode.PLUS
+        }
+    }
+    Box(
+        Modifier
+            .fillMaxSize()
+            .graphicsLayer { compositingStrategy = CompositingStrategy.Offscreen }
+            .clip(RoundedCornerShape(CardGlassCornerRadius))
+            .drawWithCache {
+                val r = CardGlassCornerRadius.toPx()
+                shader.setFloatUniform("size", size.width, size.height)
+                shader.setFloatUniform("cornerRadii", r, r, r, r)
+                shader.setFloatUniform("intensity", 0.42f)
+                paint.shader = shader
+                paint.strokeWidth = 2.4.dp.toPx()
+                onDrawBehind {
+                    drawContext.canvas.nativeCanvas.drawRoundRect(
+                        0f, 0f, size.width, size.height, r, r, paint
+                    )
+                }
+            }
+    )
+}
 
 /** 竖纹层：按柱面透镜光照模型采样生成平滑明暗（漫反射 + 镜面高光 + 槽缝阴影），对应 HTML .ridges */
 @Composable
@@ -789,15 +987,33 @@ fun GlassTextOverlay(
                     drawLayer(textLayer)
                 }
         ) {
-            // 模糊背景：整体放大避免模糊边缘的透明收缩露馅
+            // 模糊背景：整体放大避免模糊边缘的透明收缩露馅；
+            // 拷贝先调色（饱和 1.35 前置，库 vibrancy→blur 定案）再模糊， veil 裁切后色彩更"透"
             Box(
                 modifier = Modifier
                     .matchParentSize()
                     .graphicsLayer {
                         scaleX = 1.12f
                         scaleY = 1.12f
+                        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.S) {
+                            val tint = RenderEffect.createColorFilterEffect(
+                                android.graphics.ColorMatrixColorFilter(
+                                    colorControlsMatrix(brightness = 0.02f, contrast = 1.05f, saturation = 1.35f)
+                                )
+                            )
+                            renderEffect = if (sigma > 0.dp) {
+                                RenderEffect.createChainEffect(
+                                    RenderEffect.createBlurEffect(
+                                        with(density) { sigma.toPx() }, with(density) { sigma.toPx() },
+                                        Shader.TileMode.CLAMP
+                                    ),
+                                    tint
+                                ).asComposeRenderEffect()
+                            } else {
+                                tint.asComposeRenderEffect()
+                            }
+                        }
                     }
-                    .then(if (sigma > 0.dp) Modifier.blur(sigma) else Modifier)
             ) {
                 backdrop()
             }

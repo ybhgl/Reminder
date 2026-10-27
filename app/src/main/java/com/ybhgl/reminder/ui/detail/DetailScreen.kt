@@ -17,6 +17,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -758,6 +759,20 @@ fun DetailTopAppBar(onBackClick: () -> Unit, onEditClick: () -> Unit) {
 /** 天数栏分段：数字 + 跟随单位（"年"/"月"/"天"），单位为空表示纯数字段 */
 private data class DayCountSegment(val number: String, val unit: String)
 
+/** 逐字 mask 注解：仅 visible 下标字符保留原色，其余透明；visible=null 时整段透明 */
+private fun visibleOnlyAnnotated(
+    text: String,
+    visible: Int?
+): androidx.compose.ui.text.AnnotatedString =
+    androidx.compose.ui.text.buildAnnotatedString {
+        text.forEachIndexed { i, c ->
+            withStyle(
+                if (i == visible) androidx.compose.ui.text.SpanStyle()
+                else androidx.compose.ui.text.SpanStyle(color = Color.Transparent)
+            ) { append(c) }
+        }
+    }
+
 /** 按日历实际月份换算 anchor→target 的"整月数 + 剩余天数"；target 不晚于 anchor 时返回 null */
 private fun monthsAndDaysBetween(anchor: LocalDate, target: LocalDate): Pair<Int, Int>? {
     if (!target.isAfter(anchor)) return null
@@ -870,6 +885,8 @@ private fun DayCountRow(
     glassMode: GlassTextMode? = null,
     glassStrokeColor: Color = Color.White,
     glassShadowColor: Color = Color.Black,
+    /** 逐字 mask：仅该全局下标的数字字符可见（其余数字与单位字透明），null = 全部数字 */
+    glassVisibleChar: Int? = null,
     onClick: (() -> Unit)? = null
 ) {
     val strokePx = with(androidx.compose.ui.platform.LocalDensity.current) { GlassStrokeWidth.toPx() }
@@ -879,6 +896,8 @@ private fun DayCountRow(
     // HIDE_NUMBERS：液态玻璃底层——数字完全透明（玻璃是数字的唯一呈现），
     // 否则底层文字会从圆角玻璃收缩边缘露出白边
     val hideNumbers = glassMode == GlassTextMode.HIDE_NUMBERS
+    // 逐字可见仅在 NUMBERS_ONLY mask 中生效
+    val perCharMask = glassMode == GlassTextMode.NUMBERS_ONLY && glassVisibleChar != null
     val numberStyle = MaterialTheme.typography.displayLarge.copy(
         fontSize = 140.sp,
         fontWeight = visuals.numberFontWeight,
@@ -920,7 +939,8 @@ private fun DayCountRow(
                 modifier = Modifier
                     .weight(1f, fill = false)
                     .alignByBaseline(),
-                checkHeight = true
+                checkHeight = true,
+                visibleChar = if (perCharMask) glassVisibleChar else null
             )
             Spacer(modifier = Modifier.width(6.dp))
             Text(
@@ -1000,8 +1020,16 @@ private fun DayCountRow(
                     val scaledNumberStyle = styledNumberStyle.copy(fontSize = numberFontSize)
                     segments.forEachIndexed { index, segment ->
                         if (index > 0) Spacer(modifier = Modifier.width(6.dp))
+                        // 逐字 mask：全局下标映射到本段的局部下标（按前序段数字长度偏移）
+                        val displayNumber: androidx.compose.ui.text.AnnotatedString = if (perCharMask) {
+                            val segmentStart = segments.take(index).sumOf { it.number.length }
+                            val local = glassVisibleChar!! - segmentStart
+                            visibleOnlyAnnotated(segment.number, local.takeIf { it in segment.number.indices })
+                        } else {
+                            androidx.compose.ui.text.buildAnnotatedString { append(segment.number) }
+                        }
                         Text(
-                            text = segment.number,
+                            text = displayNumber,
                             style = scaledNumberStyle,
                             softWrap = false,
                             modifier = Modifier.alignByBaseline()
@@ -1142,7 +1170,7 @@ fun ReminderDetailCard(
                     // 卡片前景文字：玻璃字激活时由 GlassTextOverlay 管理（mask/描边/玻璃/阴影分层），
                     // 否则按普通模式直接排布
                     @Composable
-                    fun CardTexts(mode: GlassTextMode) {
+                    fun CardTexts(mode: GlassTextMode, visibleChar: Int? = null) {
                         fun modeStyle(base: TextStyle): TextStyle = when (mode) {
                             GlassTextMode.STROKE -> glassStrokeTextStyle(base, glassStrokeResolved, glassStrokeWidthPx)
                             GlassTextMode.SHADOW -> glassShadowTextStyle(base, glassShadowResolved)
@@ -1231,6 +1259,7 @@ fun ReminderDetailCard(
                                         segments = segments,
                                         visuals = effectiveVisuals,
                                         glassMode = mode,
+                                        glassVisibleChar = visibleChar,
                                         glassStrokeColor = glassStrokeResolved,
                                         glassShadowColor = glassShadowResolved,
                                         onClick = if (enableDayFormatToggle && dayCountFormats.size > 1) {
@@ -1324,6 +1353,10 @@ fun ReminderDetailCard(
                         com.ybhgl.reminder.ui.common.LiquidGlassTextOverlay(
                             blur = spec.liquidBlur,
                             refraction = spec.liquidRefraction,
+                            thickness = spec.liquidThickness,
+                            highlight = spec.liquidHighlight,
+                            charCount = dayCountFormats[dayFormatIndex % dayCountFormats.size]
+                                .sumOf { it.number.length },
                             fontWeight = visuals.numberFontWeight,
                             modifier = Modifier.matchParentSize(),
                             backdrop = {
@@ -1332,7 +1365,7 @@ fun ReminderDetailCard(
                                     bitmap = backgroundBitmap
                                 )
                             },
-                            textContent = { CardTexts(GlassTextMode.NUMBERS_ONLY) }
+                            textContent = { vis -> CardTexts(GlassTextMode.NUMBERS_ONLY, vis) }
                         )
                     } else {
                         CardTexts(GlassTextMode.MASK)

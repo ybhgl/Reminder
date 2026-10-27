@@ -102,6 +102,8 @@ import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.text.TextStyle
+import androidx.compose.ui.text.buildAnnotatedString
+import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.rememberTextMeasurer
 import androidx.compose.ui.text.style.TextAlign
@@ -287,7 +289,9 @@ fun AutoResizeText(
     color: Color = Color.Unspecified,
     checkHeight: Boolean = false,
     /** true 时文字铺满可用宽度并水平居中；默认 false 保持包裹宽度，不影响基线对齐的既有调用方 */
-    fillWidth: Boolean = false
+    fillWidth: Boolean = false,
+    /** 非 null 时仅该下标字符可见、其余透明（逐字液态玻璃距离场录制用）；布局占位不变 */
+    visibleChar: Int? = null
 ) {
     val textMeasurer = rememberTextMeasurer()
     // 测量键剥离颜色：颜色（如纯色效果透明度）连续变化时不重置字号、不重启测量协程，
@@ -326,8 +330,20 @@ fun AutoResizeText(
         }
 
         if (readyToDraw) {
+            val displayText = if (visibleChar != null) {
+                buildAnnotatedString {
+                    text.forEachIndexed { i, c ->
+                        withStyle(
+                            if (i == visibleChar) androidx.compose.ui.text.SpanStyle()
+                            else androidx.compose.ui.text.SpanStyle(color = Color.Transparent)
+                        ) { append(c) }
+                    }
+                }
+            } else {
+                buildAnnotatedString { append(text) }
+            }
             Text(
-                text = text,
+                text = displayText,
                 color = if (color != Color.Unspecified) color else style.color,
                 textAlign = TextAlign.Center,
                 style = resizedTextStyle,

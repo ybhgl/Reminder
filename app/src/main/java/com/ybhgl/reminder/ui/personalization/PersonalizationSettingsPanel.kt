@@ -873,8 +873,8 @@ private fun FontSection(
         }
 
         LinkedPanel(visible = currentEffect == NumberFontEffect.GLASS && isCustomBackground) {
-            // 环带厚度（6%）与高光强度（90%）为固定参数不暴露；
-            // 折射强度最低 0.1（为 0 时无折射流动感）
+            // 折射强度最低 0.1（为 0 时无折射流动感）；
+            // 边缘厚度/高光接库内存量字段（customGlassDensity/Highlight），默认值渲染效果与旧固定参数一致
             Column {
                 SliderRow(
                     title = "模糊程度",
@@ -891,6 +891,24 @@ private fun FontSection(
                     value = config.customGlassRefraction.coerceIn(0.1f, 1f),
                     valueRange = 0.1f..1f,
                     onValueChange = { onUpdate(config.copy(customGlassRefraction = it)) }
+                )
+
+                SectionGap()
+                SliderRow(
+                    title = "边缘厚度",
+                    valueText = "${(config.customGlassDensity * 100).roundToInt()}%",
+                    value = config.customGlassDensity,
+                    valueRange = 0f..1f,
+                    onValueChange = { onUpdate(config.copy(customGlassDensity = it)) }
+                )
+
+                SectionGap()
+                SliderRow(
+                    title = "高光强度",
+                    valueText = "${(config.customGlassHighlight * 100).roundToInt()}%",
+                    value = config.customGlassHighlight,
+                    valueRange = 0f..1f,
+                    onValueChange = { onUpdate(config.copy(customGlassHighlight = it)) }
                 )
             }
         }

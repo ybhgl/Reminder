@@ -1345,7 +1345,9 @@ private fun DayCountRow(
     modifier: Modifier = Modifier,
     glassMode: GlassTextMode? = null,
     glassStrokeColor: Color = Color.White,
-    glassShadowColor: Color = Color.Black
+    glassShadowColor: Color = Color.Black,
+    /** 逐字 mask：仅该下标数字字符可见（其余透明占位），null = 全部数字可见 */
+    glassVisibleChar: Int? = null
 ) {
     val isToday = dayCount == 0 && !isCountUp
     val textToShow = if (isToday) "今" else dayCount.toString()
@@ -1387,7 +1389,8 @@ private fun DayCountRow(
                 hideNumbers -> Color.Transparent
                 else -> visuals.numberColor
             },
-            checkHeight = false
+            checkHeight = false,
+            visibleChar = if (glassMode == GlassTextMode.NUMBERS_ONLY) glassVisibleChar else null
         )
         Spacer(modifier = Modifier.width(spacing))
         val styledSuffixStyle = when (glassMode) {
@@ -3186,7 +3189,7 @@ internal fun ReminderSummaryCard(
                 // 卡片前景文字：玻璃字激活时由 GlassTextOverlay 管理（mask/描边/玻璃/阴影分层），
                 // 否则按普通模式直接排布
                 @Composable
-                fun CardTexts(mode: GlassTextMode) {
+                fun CardTexts(mode: GlassTextMode, visibleChar: Int? = null) {
                     fun modeStyle(base: TextStyle): TextStyle = when (mode) {
                             GlassTextMode.STROKE -> glassStrokeTextStyle(base, glassStrokeResolved, glassStrokeWidthPx)
                             GlassTextMode.SHADOW -> glassShadowTextStyle(base, glassShadowResolved)
@@ -3238,7 +3241,8 @@ internal fun ReminderSummaryCard(
                             isCountUp = reminder.type == ReminderType.COUNT_UP,
                             glassMode = mode,
                             glassStrokeColor = glassStrokeResolved,
-                            glassShadowColor = glassShadowResolved
+                            glassShadowColor = glassShadowResolved,
+                            glassVisibleChar = visibleChar
                         )
                     }
                     // 自定义卡片背景下隐藏底栏分割线，保持背景视觉完整
@@ -3305,6 +3309,13 @@ internal fun ReminderSummaryCard(
                     LiquidGlassTextOverlay(
                         blur = spec.liquidBlur,
                         refraction = spec.liquidRefraction,
+                        thickness = spec.liquidThickness,
+                        highlight = spec.liquidHighlight,
+                        charCount = if (displayInfo.dayCount == 0 && reminder.type != ReminderType.COUNT_UP) {
+                            1
+                        } else {
+                            displayInfo.dayCount.toString().length
+                        },
                         fontWeight = visuals.numberFontWeight,
                         modifier = Modifier.matchParentSize(),
                         backdrop = {
@@ -3313,7 +3324,7 @@ internal fun ReminderSummaryCard(
                                 bitmap = backgroundBitmap
                             )
                         },
-                        textContent = { CardTexts(GlassTextMode.NUMBERS_ONLY) }
+                        textContent = { vis -> CardTexts(GlassTextMode.NUMBERS_ONLY, vis) }
                     )
                 } else {
                     CardTexts(GlassTextMode.MASK)
