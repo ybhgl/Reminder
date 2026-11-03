@@ -960,7 +960,7 @@ private fun AlmanacSourceFooter() {
     var expanded by remember { mutableStateOf(false) }
     Box(Modifier.fillMaxWidth()) {
         Text(
-            text = "黄历数据来源：tyme4kt 库及传统择日典籍口诀表",
+            text = "黄历数据来源：tyme4kt 库及传统择日典籍",
             style = MaterialTheme.typography.bodySmall,
             color = MaterialTheme.colorScheme.onSurfaceVariant,
             textAlign = TextAlign.Center,
