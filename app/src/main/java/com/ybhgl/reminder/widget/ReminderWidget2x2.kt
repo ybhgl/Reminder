@@ -1,14 +1,10 @@
 package com.ybhgl.reminder.widget
 
-import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
 import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
-import android.widget.RemoteViews
-import com.ybhgl.reminder.MainActivity
-import com.ybhgl.reminder.R
 import com.ybhgl.reminder.ReminderApplication
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -23,7 +19,9 @@ class ReminderWidget2x2 : AppWidgetProvider() {
             Intent.ACTION_DATE_CHANGED,
             Intent.ACTION_TIME_CHANGED,
             Intent.ACTION_TIMEZONE_CHANGED,
-            Intent.ACTION_USER_PRESENT -> {
+            Intent.ACTION_USER_PRESENT,
+            // 桌面拉伸/调整小组件尺寸后重渲染：尺寸选项变化 → 方形钳制与响应式字号全部按新边长重算
+            AppWidgetManager.ACTION_APPWIDGET_OPTIONS_CHANGED -> {
                 val appWidgetManager = AppWidgetManager.getInstance(context)
                 val appWidgetIds = appWidgetManager.getAppWidgetIds(ComponentName(context, ReminderWidget2x2::class.java))
                 if (appWidgetIds.isNotEmpty()) {
@@ -42,70 +40,12 @@ class ReminderWidget2x2 : AppWidgetProvider() {
                 val reminders = repository.getAllRemindersStream().first()
 
                 for (appWidgetId in appWidgetIds) {
-                    val views = RemoteViews(context.packageName, R.layout.widget_layout_2x2)
-
-                    // Apply transparency
-                    WidgetUpdateHelper.applyWidgetOpacity(context, views, R.id.widget_2x2_bg, appWidgetId)
-
+                    // 渲染逻辑统一收敛到 WidgetUpdateHelper.update2x2WidgetWithData，避免与配置页/全局刷新路径分叉
+                    val opacity = WidgetConfigStore.getWidgetOpacity(context, appWidgetId)
                     val configuredId = WidgetConfigStore.get1x2Or2x2Config(context, appWidgetId)
-                    val featured = if (configuredId != -1) {
-                        reminders.find { it.id == configuredId } ?: WidgetUpdateHelper.getFeaturedReminder(reminders)
-                    } else {
-                        WidgetUpdateHelper.getFeaturedReminder(reminders)
-                    }
-
-                    if (featured != null) {
-                        val displayInfo = WidgetUpdateHelper.getDisplayInfo(context, featured)
-                        
-                        val headerText = "${displayInfo.title} ${displayInfo.label}"
-                        views.setTextViewText(R.id.widget_2x2_header_title, headerText)
-                        views.setTextViewText(R.id.widget_2x2_days, displayInfo.days)
-                        views.setTextViewText(R.id.widget_2x2_unit, displayInfo.unit)
-                        views.setTextViewText(R.id.widget_2x2_date, displayInfo.dateString)
-
-                        // 应用响应式字号（同时考虑数字和单位）
-                        val (cellWidth, cellHeight) = WidgetUpdateHelper.getWidgetCellSize(appWidgetManager, appWidgetId)
-                        val responsiveTextSize = WidgetUpdateHelper.getResponsiveDaysTextSize(context, displayInfo.days, displayInfo.unit, cellWidth, cellHeight)
-                        views.setFloat(R.id.widget_2x2_days, "setTextSize", responsiveTextSize)
-                        val unitTextSize = responsiveTextSize * 0.32f
-                        views.setFloat(R.id.widget_2x2_unit, "setTextSize", unitTextSize)
-
-                        views.setInt(R.id.widget_2x2_header_bg, "setColorFilter", context.getColor(displayInfo.accentColorResId))
-                        views.setTextColor(R.id.widget_2x2_days, context.getColor(displayInfo.accentColorResId))
-
-                        val intent = Intent(context, MainActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                            putExtra("reminderId", featured.id)
-                        }
-                        val pendingIntent = PendingIntent.getActivity(
-                            context,
-                            featured.id + 10000,
-                            intent,
-                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                        )
-                        views.setOnClickPendingIntent(R.id.widget_2x2_container, pendingIntent)
-                    } else {
-                        views.setTextViewText(R.id.widget_2x2_header_title, "暂无日程")
-                        views.setTextViewText(R.id.widget_2x2_days, "0")
-                        views.setTextViewText(R.id.widget_2x2_unit, "天")
-                        views.setTextViewText(R.id.widget_2x2_date, "——")
-
-                        views.setInt(R.id.widget_2x2_header_bg, "setColorFilter", context.getColor(R.color.widget_accent_annual))
-                        views.setTextColor(R.id.widget_2x2_days, context.getColor(R.color.widget_accent_annual))
-
-                        val intent = Intent(context, MainActivity::class.java).apply {
-                            flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
-                        }
-                        val pendingIntent = PendingIntent.getActivity(
-                            context,
-                            1,
-                            intent,
-                            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
-                        )
-                        views.setOnClickPendingIntent(R.id.widget_2x2_container, pendingIntent)
-                    }
-
-                    appWidgetManager.updateAppWidget(appWidgetId, views)
+                    WidgetUpdateHelper.update2x2WidgetWithData(
+                        context, appWidgetManager, appWidgetId, opacity, configuredId, reminders
+                    )
                 }
             } catch (e: Exception) {
                 e.printStackTrace()

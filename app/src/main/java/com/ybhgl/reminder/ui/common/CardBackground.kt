@@ -226,7 +226,7 @@ fun cardBackgroundLuminance(spec: CardBackgroundSpec, bitmap: Bitmap?): Float {
 }
 
 /** 采样计算位图平均颜色（用于反色字体效果） */
-private fun bitmapAverageColor(bitmap: Bitmap): Color {
+internal fun bitmapAverageColor(bitmap: Bitmap): Color {
     val step = max(1, max(bitmap.width, bitmap.height) / 64)
     var r = 0.0; var g = 0.0; var b = 0.0
     var count = 0

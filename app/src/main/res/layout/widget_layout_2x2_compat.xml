@@ -1,0 +1,138 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  2x2 小组件布局（API 28~30 降级版，近似方形）。
+  低版本无 setViewLayoutWidth/Height，卡片只能 wrap_content + 反射 setMinimumWidth/Height 保下限；
+  容器内严禁 match_parent 高度或 layout_weight（AT_MOST 下会把内容撑满整个单元格、方形失效），
+  高度靠响应式字号把 body 撑到接近边长，内容列整体居中形成近似方形。
+  id 必须与 widget_layout_2x2.xml 保持一致（RemoteViews 按 id 应用 action）。
+-->
+<FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:id="@+id/widget_2x2_container"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <FrameLayout
+        android:id="@+id/widget_2x2_card"
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:layout_gravity="center">
+
+        <ImageView
+            android:id="@+id/widget_2x2_bg"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitXY"
+            android:src="@drawable/widget_bg_shape" />
+
+        <!-- 个性化背景图覆盖层：运行时显式 GONE/VISIBLE（RemoteViews 视图复用，默认值不可依赖） -->
+        <ImageView
+            android:id="@+id/widget_2x2_bg_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitXY"
+            android:visibility="gone" />
+
+        <LinearLayout
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_gravity="center"
+            android:orientation="vertical">
+
+            <!-- Header Frame：高度运行时按 sizeScale 用 setViewLayoutHeight 钉比例 -->
+            <FrameLayout
+                android:id="@+id/widget_2x2_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <ImageView
+                    android:id="@+id/widget_2x2_header_bg"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_header_shape" />
+
+                <TextView
+                    android:id="@+id/widget_2x2_header_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:paddingStart="12dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="8dp"
+                    android:text="测试事件"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <!-- Body：wrap_content 且无 weight，高度由响应式字号撑到接近方形 -->
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:orientation="horizontal"
+                android:gravity="bottom|center_horizontal">
+
+                <!-- 自定义字体/字重/玻璃字时运行时绘制位图并显式 VISIBLE，同时 GONE 掉 days TextView -->
+                <ImageView
+                    android:id="@+id/widget_2x2_days_image"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:adjustViewBounds="true"
+                    android:contentDescription="@null"
+                    android:visibility="gone" />
+
+                <TextView
+                    android:id="@+id/widget_2x2_days"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/widget_text_primary"
+                    android:textSize="44sp"
+                    android:textStyle="bold"
+                    android:text="0" />
+
+                <TextView
+                    android:id="@+id/widget_2x2_unit"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="14sp"
+                    android:layout_marginStart="4dp"
+                    android:text="天" />
+            </LinearLayout>
+
+            <!-- Divider：自定义背景时运行时显式 GONE（与首页一致） -->
+            <FrameLayout
+                android:id="@+id/widget_2x2_divider"
+                android:layout_width="match_parent"
+                android:layout_height="0.6dp"
+                android:background="@color/widget_divider" />
+
+            <!-- Footer：内边距运行时随 sizeScale 等比放大 -->
+            <FrameLayout
+                android:id="@+id/widget_2x2_footer"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp">
+
+                <TextView
+                    android:id="@+id/widget_2x2_date"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="13sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:text="2026-06-12" />
+            </FrameLayout>
+        </LinearLayout>
+    </FrameLayout>
+</FrameLayout>

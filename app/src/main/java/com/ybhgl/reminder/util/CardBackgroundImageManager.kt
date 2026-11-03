@@ -115,18 +115,22 @@ object CardBackgroundImageManager {
         }
     }
 
-    /** 按文件名加载背景位图（带内存缓存），加载失败返回 null */
-    suspend fun loadBitmap(context: Context, fileName: String): Bitmap? = withContext(Dispatchers.IO) {
-        if (fileName.isEmpty()) return@withContext null
-        bitmapCache.get(fileName)?.let { return@withContext it }
-        try {
+    /** 按文件名同步加载背景位图（带内存缓存），加载失败返回 null。供小组件等非协程环境使用 */
+    fun loadBitmapSync(context: Context, fileName: String): Bitmap? {
+        if (fileName.isEmpty()) return null
+        bitmapCache.get(fileName)?.let { return it }
+        return try {
             val file = File(backgroundDir(context), fileName)
-            if (!file.exists()) return@withContext null
-            BitmapFactory.decodeFile(file.absolutePath)?.also { putCache(fileName, it) }
+            if (!file.exists()) null
+            else BitmapFactory.decodeFile(file.absolutePath)?.also { putCache(fileName, it) }
         } catch (_: Throwable) {
             null
         }
     }
+
+    /** 按文件名加载背景位图（带内存缓存），加载失败返回 null */
+    suspend fun loadBitmap(context: Context, fileName: String): Bitmap? =
+        withContext(Dispatchers.IO) { loadBitmapSync(context, fileName) }
 
     /** 删除已转存的背景图片（旧图替换或恢复默认时调用） */
     suspend fun deleteImage(context: Context, fileName: String) = withContext(Dispatchers.IO) {

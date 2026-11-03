@@ -66,12 +66,14 @@ class WidgetConfigureActivity : ComponentActivity() {
         val providerClassName = info?.provider?.className ?: ""
 
         val isSingleSelection = providerClassName.contains("ReminderWidget1x2") || providerClassName.contains("ReminderWidget2x2")
+        val is2x2 = providerClassName.contains("ReminderWidget2x2")
 
         val container = (applicationContext as ReminderApplication).container
         val repository = container.reminderRepository
 
         val initialOpacity = WidgetConfigStore.getWidgetOpacity(this, appWidgetId)
         val initialSelectedId = WidgetConfigStore.get1x2Or2x2Config(this, appWidgetId)
+        val initialFollowPersonalization = if (is2x2) WidgetConfigStore.get2x2FollowPersonalization(this, appWidgetId) else false
         val initialFilterType = if (!isSingleSelection) WidgetConfigStore.get4x2FilterType(this, appWidgetId) else "all"
         val initialCustomIds = if (!isSingleSelection) WidgetConfigStore.get4x2CustomIds(this, appWidgetId) else emptySet()
         val initialTags = if (!isSingleSelection) WidgetConfigStore.get4x2Tags(this, appWidgetId) else emptySet()
@@ -85,18 +87,24 @@ class WidgetConfigureActivity : ComponentActivity() {
                 ) {
                     WidgetConfigureScreen(
                         isSingleSelection = isSingleSelection,
+                        is2x2 = is2x2,
                         initialOpacity = initialOpacity,
                         initialSelectedId = initialSelectedId,
+                        initialFollowPersonalization = initialFollowPersonalization,
                         initialFilterType = initialFilterType,
                         initialCustomIds = initialCustomIds,
                         initialTags = initialTags,
                         initialDualColumn = initialDualColumn,
                         onCancel = { finish() },
-                        onSave = { selectedId, filterType, customIds, tags, opacity, dualColumn, items ->
+                        onSave = { selectedId, filterType, customIds, tags, opacity, dualColumn, followPersonalization, items ->
                             // Save opacity first for any widget
                             WidgetConfigStore.saveWidgetOpacity(this@WidgetConfigureActivity, appWidgetId, opacity)
 
                             if (isSingleSelection) {
+                                // 先落盘跟随个性化开关，update2x2WidgetWithData 内部会读取该值
+                                if (is2x2) {
+                                    WidgetConfigStore.save2x2FollowPersonalization(this@WidgetConfigureActivity, appWidgetId, followPersonalization)
+                                }
                                 WidgetConfigStore.save1x2Or2x2Config(this@WidgetConfigureActivity, appWidgetId, selectedId)
                                 
                                 val is1x2 = providerClassName.contains("ReminderWidget1x2")
@@ -143,14 +151,16 @@ class WidgetConfigureActivity : ComponentActivity() {
 @Composable
 fun WidgetConfigureScreen(
     isSingleSelection: Boolean,
+    is2x2: Boolean = false,
     initialOpacity: Int = 100,
     initialSelectedId: Int = -1,
+    initialFollowPersonalization: Boolean = false,
     initialFilterType: String = "all",
     initialCustomIds: Set<Int> = emptySet(),
     initialTags: Set<String> = emptySet(),
     initialDualColumn: Boolean = false,
     onCancel: () -> Unit,
-    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, tags: Set<String>, opacity: Int, dualColumn: Boolean, reminders: List<ReminderItem>) -> Unit,
+    onSave: (selectedId: Int, filterType: String, customIds: Set<Int>, tags: Set<String>, opacity: Int, dualColumn: Boolean, followPersonalization: Boolean, reminders: List<ReminderItem>) -> Unit,
     loadReminders: suspend () -> List<ReminderItem>,
     loadTags: suspend () -> List<TagItem>
 ) {
@@ -170,6 +180,7 @@ fun WidgetConfigureScreen(
     var customSelectedIds by remember { mutableStateOf(initialCustomIds) }
     var selectedTags by remember { mutableStateOf(initialTags) }
     var dualColumn by remember { mutableStateOf(initialDualColumn) }
+    var followPersonalization by remember { mutableStateOf(initialFollowPersonalization) }
 
     LaunchedEffect(Unit) {
         reminders = loadReminders()
@@ -301,6 +312,45 @@ fun WidgetConfigureScreen(
                 }
 
                 if (isSingleSelection) {
+                    // 跟随个性化设置开关（仅 2x2）：开启后按该事件的个性化效果渲染小组件
+                    if (is2x2) {
+                        item {
+                            Card(
+                                shape = widgetCardShape,
+                                colors = CardDefaults.cardColors(
+                                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                                ),
+                                modifier = Modifier.fillMaxWidth()
+                            ) {
+                                Row(
+                                    modifier = Modifier
+                                        .fillMaxWidth()
+                                        .padding(horizontal = 16.dp, vertical = 12.dp),
+                                    horizontalArrangement = Arrangement.SpaceBetween,
+                                    verticalAlignment = Alignment.CenterVertically
+                                ) {
+                                    Column(modifier = Modifier.weight(1f)) {
+                                        Text(
+                                            text = "跟随个性化设置",
+                                            style = MaterialTheme.typography.bodyLarge,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                        Spacer(modifier = Modifier.height(2.dp))
+                                        Text(
+                                            text = "开启后小组件跟随个性化效果显示（部分效果不支持）",
+                                            style = MaterialTheme.typography.bodySmall,
+                                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                                        )
+                                    }
+                                    Switch(
+                                        checked = followPersonalization,
+                                        onCheckedChange = { followPersonalization = it }
+                                    )
+                                }
+                            }
+                        }
+                    }
+
                     item {
                         Text(
                             text = "选择要显示的提醒：",
@@ -534,9 +584,9 @@ fun WidgetConfigureScreen(
                     Button(
                         onClick = {
                             if (isSingleSelection) {
-                                onSave(selectedReminderId, "", emptySet(), emptySet(), opacity.toInt(), false, reminders)
+                                onSave(selectedReminderId, "", emptySet(), emptySet(), opacity.toInt(), false, followPersonalization, reminders)
                             } else {
-                                onSave(-1, filterType, customSelectedIds, selectedTags, opacity.toInt(), dualColumn, reminders)
+                                onSave(-1, filterType, customSelectedIds, selectedTags, opacity.toInt(), dualColumn, false, reminders)
                             }
                         },
                         modifier = Modifier.weight(1f),

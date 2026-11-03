@@ -1,109 +1,145 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  2x2 小组件布局（API 31+ 使用）。
+  根布局透明，卡片容器 widget_2x2_card 由运行时 setViewLayoutWidth/Height 精确钳成
+  side=min(宽,高) 的正方形并居中，解决部分 OEM 桌面单元格高>宽导致的长方形问题。
+  卡片被钳为 EXACTLY 尺寸后，内容列可安全使用 match_parent + weight 撑满方形。
+  低版本近似方形降级版见 widget_layout_2x2_compat.xml（两文件 id 必须保持一致）。
+-->
 <FrameLayout xmlns:android="http://schemas.android.com/apk/res/android"
     android:id="@+id/widget_2x2_container"
     android:layout_width="match_parent"
     android:layout_height="match_parent">
 
-    <ImageView
-        android:id="@+id/widget_2x2_bg"
+    <FrameLayout
+        android:id="@+id/widget_2x2_card"
         android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:scaleType="fitXY"
-        android:src="@drawable/widget_bg_shape" />
+        android:layout_height="wrap_content"
+        android:layout_gravity="center">
 
-    <LinearLayout
-        android:layout_width="match_parent"
-        android:layout_height="match_parent"
-        android:orientation="vertical">
-
-        <!-- Header Frame -->
-        <FrameLayout
+        <ImageView
+            android:id="@+id/widget_2x2_bg"
             android:layout_width="match_parent"
-            android:layout_height="wrap_content">
-            
-            <ImageView
-                android:id="@+id/widget_2x2_header_bg"
-                android:layout_width="match_parent"
-                android:layout_height="match_parent"
-                android:scaleType="fitXY"
-                android:src="@drawable/widget_header_shape" />
+            android:layout_height="match_parent"
+            android:scaleType="fitXY"
+            android:src="@drawable/widget_bg_shape" />
 
-            <TextView
-                android:id="@+id/widget_2x2_header_title"
-                android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:ellipsize="end"
-                android:maxLines="1"
-                android:paddingStart="12dp"
-                android:paddingTop="8dp"
-                android:paddingEnd="12dp"
-                android:paddingBottom="8dp"
-                android:text="测试事件"
-                android:textAlignment="center"
-                android:textColor="#FFFFFF"
-                android:textSize="15sp"
-                android:textStyle="bold" />
-        </FrameLayout>
+        <!-- 个性化背景图覆盖层：运行时显式 GONE/VISIBLE（RemoteViews 视图复用，默认值不可依赖） -->
+        <ImageView
+            android:id="@+id/widget_2x2_bg_image"
+            android:layout_width="match_parent"
+            android:layout_height="match_parent"
+            android:scaleType="fitXY"
+            android:visibility="gone" />
 
-        <!-- Body -->
         <LinearLayout
             android:layout_width="match_parent"
-            android:layout_height="0dp"
-            android:layout_weight="1"
-            android:orientation="vertical"
-            android:gravity="center">
+            android:layout_height="match_parent"
+            android:orientation="vertical">
 
+            <!-- Header Frame：高度运行时按 sizeScale 用 setViewLayoutHeight 钉比例 -->
+            <FrameLayout
+                android:id="@+id/widget_2x2_header"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content">
+
+                <ImageView
+                    android:id="@+id/widget_2x2_header_bg"
+                    android:layout_width="match_parent"
+                    android:layout_height="match_parent"
+                    android:scaleType="fitXY"
+                    android:src="@drawable/widget_header_shape" />
+
+                <TextView
+                    android:id="@+id/widget_2x2_header_title"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center_vertical"
+                    android:ellipsize="end"
+                    android:maxLines="1"
+                    android:paddingStart="12dp"
+                    android:paddingTop="8dp"
+                    android:paddingEnd="12dp"
+                    android:paddingBottom="8dp"
+                    android:text="测试事件"
+                    android:textAlignment="center"
+                    android:textColor="#FFFFFF"
+                    android:textSize="15sp"
+                    android:textStyle="bold" />
+            </FrameLayout>
+
+            <!-- Body：weight 撑满方形剩余空间，数字行垂直居中（与首页卡片 contentAlignment=Center 对齐） -->
             <LinearLayout
                 android:layout_width="match_parent"
-                android:layout_height="wrap_content"
-                android:orientation="horizontal"
-                android:gravity="bottom|center_horizontal">
+                android:layout_height="0dp"
+                android:layout_weight="1"
+                android:orientation="vertical"
+                android:gravity="center">
 
-                <TextView
-                    android:id="@+id/widget_2x2_days"
-                    android:layout_width="wrap_content"
+                <LinearLayout
+                    android:layout_width="match_parent"
                     android:layout_height="wrap_content"
-                    android:textColor="@color/widget_text_primary"
-                    android:textSize="44sp"
-                    android:textStyle="bold"
-                    android:text="0" />
+                    android:orientation="horizontal"
+                    android:gravity="bottom|center_horizontal">
 
-                <TextView
-                    android:id="@+id/widget_2x2_unit"
-                    android:layout_width="wrap_content"
-                    android:layout_height="wrap_content"
-                    android:textColor="@color/widget_text_secondary"
-                    android:textSize="14sp"
-                    android:layout_marginStart="4dp"
-                    android:text="天" />
+                    <!-- 自定义字体/字重/玻璃字时运行时绘制位图并显式 VISIBLE，同时 GONE 掉 days TextView -->
+                    <ImageView
+                        android:id="@+id/widget_2x2_days_image"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:adjustViewBounds="true"
+                        android:contentDescription="@null"
+                        android:visibility="gone" />
+
+                    <TextView
+                        android:id="@+id/widget_2x2_days"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/widget_text_primary"
+                        android:textSize="44sp"
+                        android:textStyle="bold"
+                        android:text="0" />
+
+                    <TextView
+                        android:id="@+id/widget_2x2_unit"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:textColor="@color/widget_text_secondary"
+                        android:textSize="14sp"
+                        android:layout_marginStart="4dp"
+                        android:text="天" />
+                </LinearLayout>
             </LinearLayout>
-        </LinearLayout>
 
-        <!-- Divider -->
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="0.6dp"
-            android:background="@color/widget_divider" />
+            <!-- Divider：自定义背景时运行时显式 GONE（与首页一致） -->
+            <FrameLayout
+                android:id="@+id/widget_2x2_divider"
+                android:layout_width="match_parent"
+                android:layout_height="0.6dp"
+                android:background="@color/widget_divider" />
 
-        <!-- Footer -->
-        <FrameLayout
-            android:layout_width="match_parent"
-            android:layout_height="wrap_content"
-            android:paddingStart="12dp"
-            android:paddingEnd="12dp"
-            android:paddingTop="8dp"
-            android:paddingBottom="8dp">
-
-            <TextView
-                android:id="@+id/widget_2x2_date"
+            <!-- Footer：内边距运行时随 sizeScale 等比放大 -->
+            <FrameLayout
+                android:id="@+id/widget_2x2_footer"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:gravity="center"
-                android:textColor="@color/widget_text_secondary"
-                android:textSize="13sp"
-                android:maxLines="1"
-                android:ellipsize="end"
-                android:text="2026-06-12" />
-        </FrameLayout>
-    </LinearLayout>
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp">
+
+                <TextView
+                    android:id="@+id/widget_2x2_date"
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_gravity="center"
+                    android:gravity="center"
+                    android:textColor="@color/widget_text_secondary"
+                    android:textSize="13sp"
+                    android:maxLines="1"
+                    android:ellipsize="end"
+                    android:text="2026-06-12" />
+            </FrameLayout>
+        </LinearLayout>
+    </FrameLayout>
 </FrameLayout>
